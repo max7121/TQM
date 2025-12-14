@@ -6,6 +6,55 @@
     <title>TQM 品質管理系統 (本地版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js';
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            addDoc, 
+            setDoc, 
+            updateDoc, 
+            deleteDoc, 
+            getDocs, 
+            query, 
+            where, 
+            onSnapshot 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // 將 Firebase 函數掛載到 window 以供後續使用
+        window.firebase = {
+            initializeApp,
+            getAnalytics,
+            getFirestore,
+            collection,
+            doc,
+            addDoc,
+            setDoc,
+            updateDoc,
+            deleteDoc,
+            getDocs,
+            query,
+            where,
+            onSnapshot
+        };
+    </script>
+    <!-- <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom": "https://esm.sh/react-dom@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.294.0?external=react",
+            "recharts": "https://esm.sh/recharts@2.10.3?external=react,react-dom"
+        }
+    }
+    </script>
+    <style> -->
+
     <script type="importmap">
     {
         "imports": {
@@ -17,7 +66,7 @@
         }
     }
     </script>
-    <style>
+
         body { background-color: #f8fafc; }
     </style>
 </head>
@@ -94,341 +143,352 @@ import {
 } from 'recharts';
 
 // --- Configuration ---
-// 如果要使用伺服器模式，請將 USE_SERVER 改為 true，並設定 SERVER_URL
 const CONFIG = {
-  USE_SERVER: true, // 改為 true 以啟用伺服器模式 (多人共用)
-  SERVER_URL: window.location.origin.includes('localhost') || window.location.protocol === 'file:' 
-    ? "http://localhost:3002" 
-    : window.location.origin // 如果是從伺服器開啟，自動使用當前網址
+  USE_FIREBASE: true, // 使用 Firebase 雲端資料庫
+  DATABASE_TYPE: 'Firebase Firestore'
 };
 
-console.log('伺服器連線設定:', CONFIG.SERVER_URL);
+console.log('資料庫模式:', CONFIG.DATABASE_TYPE);
 
 
-// --- Remote Database Implementation (Server Mode) ---
-class RemoteDB {
+// // --- Remote Database Implementation (Server Mode) ---
+// class RemoteDB {
+//   constructor() {
+//     this.listeners = {};
+//     this.baseUrl = CONFIG.SERVER_URL + '/api';
+//     this.pollingInterval = null;
+//     this.cache = {}; // 簡單的前端快取，避免畫面閃爍
+//   }
+
+//   init() {
+//     console.log("正在連接伺服器:", this.baseUrl);
+//     // 每 2 秒向伺服器檢查一次最新資料 (輪詢)
+//     this.pollingInterval = setInterval(() => {
+//       Object.keys(this.listeners).forEach(collection => {
+//         this._fetchAndNotify(collection);
+//       });
+//     }, 2000);
+//   }
+
+//   async _fetchAndNotify(collection) {
+//     try {
+//       const res = await fetch(`${this.baseUrl}/${collection}`);
+//       if (res.ok) {
+//         const data = await res.json();
+//         // 只有當資料真的有變動時才通知 React 更新 (簡單比對)
+//         if (JSON.stringify(this.cache[collection]) !== JSON.stringify(data)) {
+//             this.cache[collection] = data;
+//             if (this.listeners[collection]) {
+//                 this.listeners[collection].forEach(cb => cb(data));
+//             }
+//         }
+//       } else {
+//           console.warn(`無法取得 ${collection} 資料, status: ${res.status}`);
+//       }
+//     } catch (e) {
+//       console.error("伺服器連線錯誤:", e);
+//     }
+//   }
+
+//   subscribe(collection, callback) {
+//     if (!this.listeners[collection]) this.listeners[collection] = [];
+//     this.listeners[collection].push(callback);
+    
+//     // 訂閱時立即抓取一次
+//     this._fetchAndNotify(collection);
+    
+//     return () => {
+//       this.listeners[collection] = this.listeners[collection].filter(cb => cb !== callback);
+//     };
+//   }
+
+//   async addDoc(collectionName, data) {
+//     // 確保有 ID
+//     const docToAdd = { ...data, id: data.id || ('doc_' + Date.now() + Math.random().toString(36).substr(2, 9)) };
+    
+//     const res = await fetch(`${this.baseUrl}/${collectionName}`, {
+//       method: 'POST',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify(docToAdd)
+//     });
+    
+//     if (!res.ok) throw new Error('Server Error: ' + res.statusText);
+    
+//     const newDoc = await res.json();
+//     this._fetchAndNotify(collectionName); // 立即更新畫面
+//     return newDoc;
+//   }
+
+//   async updateDoc(collectionName, id, data) {
+//     const res = await fetch(`${this.baseUrl}/${collectionName}/${id}`, {
+//       method: 'PUT',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify(data)
+//     });
+    
+//     if (!res.ok) throw new Error('Server Error: ' + res.statusText);
+//     this._fetchAndNotify(collectionName); // 立即更新畫面
+//   }
+
+//   async deleteDoc(collectionName, id) {
+//     const res = await fetch(`${this.baseUrl}/${collectionName}/${id}`, {
+//       method: 'DELETE'
+//     });
+    
+//     if (!res.ok) throw new Error('Server Error: ' + res.statusText);
+//     this._fetchAndNotify(collectionName); // 立即更新畫面
+//   }
+
+//   async getDocs(collectionName, queryFn) {
+//     try {
+//       const res = await fetch(`${this.baseUrl}/${collectionName}`);
+//       let list = await res.json();
+//       if (queryFn) {
+//         list = list.filter(queryFn);
+//       }
+//       return list;
+//     } catch (e) {
+//       console.error("GetDocs Error:", e);
+//       return [];
+//     }
+//   }
+
+//   // 伺服器模式下的匯出 (從伺服器抓所有資料)
+//   async exportData() {
+//     const collections = ['tqm_users', 'tqm_records', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages', 'rd_machines'];
+//     const exportObj = { version: '2.0', exportedAt: new Date().toISOString() };
+    
+//     for (const col of collections) {
+//         exportObj[col] = await this.getDocs(col);
+//     }
+//     return exportObj;
+//   }
+
+//   async importData(data) {
+//     if (!confirm("警告：匯入資料將會新增至現有伺服器資料庫中。\n若有重複 ID 的資料可能會失敗。\n確定要繼續嗎？")) return;
+
+//     const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages'];
+//     let successCount = 0;
+//     let failCount = 0;
+
+//     for (const col of collections) {
+//         if (data[col] && Array.isArray(data[col])) {
+//             for (const item of data[col]) {
+//                 try {
+//                     // 嘗試新增
+//                     await this.addDoc(col, item);
+//                     successCount++;
+//                 } catch (e) {
+//                     console.warn(`Import failed for ${col} item ${item.id}:`, e);
+//                     // 如果失敗(例如ID重複)，嘗試用 updateDoc 覆蓋
+//                     try {
+//                         if (item.id) {
+//                             await this.updateDoc(col, item.id, item);
+//                             successCount++;
+//                         } else {
+//                             failCount++;
+//                         }
+//                     } catch (updateErr) {
+//                         failCount++;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     alert(`匯入完成！\n成功: ${successCount} 筆\n失敗/重複: ${failCount} 筆`);
+//     window.location.reload();
+//   }
+// }
+
+// // --- Mock Data for Machines ---
+// const MACHINES = [
+//     { id: 'M001', name: 'High-Speed Mounter A1', code: 'HSM-A1', status: 'Active', progress: 85, image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80', members: '' },
+//     { id: 'M002', name: 'Inspection Unit X5', code: 'AOI-X5', status: 'Warning', progress: 60, image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=300&q=80', members: '' },
+//     { id: 'M003', name: 'Reflow Oven R3', code: 'RO-R3', status: 'Active', progress: 92, image: 'https://images.unsplash.com/photo-1581092335397-9583eb92d232?auto=format&fit=crop&w=300&q=80', members: '' },
+//     { id: 'M004', name: 'Solder Paste Printer P2', code: 'SPP-P2', status: 'Active', progress: 78, image: 'https://images.unsplash.com/photo-1531297461136-82lw9f2125?auto=format&fit=crop&w=300&q=80', members: '' },
+// ];
+
+// // --- Mock Data ---
+// const PROJECTS = [
+//   { id: 1, machineId: 'M001', name: 'AI 視覺辨識模組 V2', owner: '陳建宏', department: '軟體部', stage: '驗證', progress: 85, status: 'normal', deadline: '2025-11-15', category: '新產品', specs: '1. 支援 4K 60fps 影像輸入\n2. 辨識準確率 > 99.5%\n3. 延遲 < 50ms' },
+//   { id: 2, machineId: 'M001', name: '高頻通訊晶片散熱座', owner: '林怡君', department: '機構部', stage: '試產', progress: 60, status: 'risk', deadline: '2025-10-20', category: '改款', specs: '1. 散熱功率 15W\n2. 噪音 < 30dB' },
+//   { id: 3, machineId: 'M001', name: '車用抬頭顯示器 (HUD)', owner: '張志偉', department: '電子部', stage: '設計', progress: 30, status: 'delay', deadline: '2025-09-30', category: '客製案', specs: '' },
+//   { id: 4, machineId: 'M002', name: '企業內部 ERP 整合', owner: '王大明', department: '軟體部', stage: '規劃', progress: 10, status: 'normal', deadline: '2025-12-01', category: '內部案', specs: '' },
+//   { id: 5, machineId: 'M002', name: '輕量化無人機機身', owner: '劉雅婷', department: '機構部', stage: '量產', progress: 98, status: 'normal', deadline: '2025-08-15', category: '新產品', specs: '' },
+// ];
+
+// const TASKS = [
+//   { id: 101, projectId: 1, title: '散熱模擬測試報告', status: 'Doing', owner: '林怡君', priority: 'P1', risk: true },
+//   { id: 102, projectId: 1, title: 'PCB 佈線優化', status: 'To Do', owner: '張志偉', priority: 'P2', risk: false },
+//   { id: 103, projectId: 1, title: 'AI 模型訓練 (Dataset B)', status: 'Done', owner: '陳建宏', priority: 'P1', risk: false },
+//   { id: 104, projectId: 1, title: '客戶需求變更確認', status: 'Review', owner: '王小美', priority: 'P3', risk: true },
+// ];
+
+// const CHANGES = [
+//   { id: 1, projectId: 1, date: '2025-08-10', type: '設計改善', desc: '優化散熱鰭片結構', owner: '林怡君', impact: 'Low' },
+//   { id: 2, projectId: 1, date: '2025-08-12', type: '客戶修改', desc: '新增 HDMI 介面需求', owner: '張志偉', impact: 'High' },
+//   { id: 3, projectId: 1, date: '2025-08-15', type: '設計疏失', desc: '干涉檢查未通過', owner: '劉雅婷', impact: 'Medium' },
+// ];
+
+// const HISTORY = [
+//   { id: 1, projectId: 1, version: 'V1.0', date: '2025-05-01', author: '林怡君', action: '初始設計建立', desc: '建立初步架構，包含主要散熱模組與 PCB 堆疊定義。', status: 'Approved' },
+//   { id: 2, projectId: 1, version: 'V1.1', date: '2025-06-15', author: '張志偉', action: '規格變更', desc: '因應客戶需求增加 HDMI 2.1 支援，修改 I/O 板設計。', status: 'Approved' },
+//   { id: 3, projectId: 1, version: 'V1.2', date: '2025-07-20', author: '陳建宏', action: '設計優化', desc: '優化散熱鰭片密度，降低整體重量 15%。', status: 'Pending' },
+// ];
+
+// const LOAD_DATA = [
+//   { name: '機構部', load: 120, capacity: 100 },
+//   { name: '電子部', load: 85, capacity: 100 },
+//   { name: '軟體部', load: 95, capacity: 100 },
+//   { name: '美工部', load: 40, capacity: 100 },
+// ];
+
+// const TREND_DATA = [
+//   { month: '5月', onTime: 92, delay: 8 },
+//   { month: '6月', onTime: 88, delay: 12 },
+//   { month: '7月', onTime: 85, delay: 15 },
+//   { month: '8月', onTime: 78, delay: 22 },
+// ];
+
+// const CHANGE_TYPE_DATA = [
+//   { name: '設計改善', value: 45 },
+//   { name: '設計疏失', value: 20 },
+//   { name: '客戶修改', value: 25 },
+//   { name: '料件問題', value: 10 },
+// ];
+
+// // --- Local Database Implementation ---
+// class LocalDB {
+//   constructor() {
+//     this.listeners = {};
+//     this.init();
+//   }
+
+//   init() {
+//     const initData = (key, data) => {
+//         const val = localStorage.getItem(key);
+//         if (!val || val === "undefined" || val === "null") {
+//             localStorage.setItem(key, JSON.stringify(data));
+//         }
+//     };
+
+//     initData('tqm_users', [{
+//         id: 'admin_001',
+//         username: 'admin',
+//         password: 'admin123',
+//         displayName: '系統管理員',
+//         department: '工程中心',
+//         role: 'admin',
+//         createdAt: new Date().toISOString()
+//     }]);
+    
+//     initData('tqm_records', []);
+    
+//     // Initialize R&D Nexus Collections with Mock Data
+//     initData('rd_machines', MACHINES);
+//     initData('rd_projects', PROJECTS);
+//     initData('rd_tasks', TASKS);
+//     initData('rd_changes', CHANGES);
+//     initData('rd_history', HISTORY);
+//     initData('rd_messages', []);
+//   }
+// --- Firebase Configuration ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCMQqRd2JQlRpBsERWUkUpAqFSGBM_UmP0",
+  authDomain: "rdsystemdatabase.firebaseapp.com",
+  projectId: "rdsystemdatabase",
+  storageBucket: "rdsystemdatabase.firebasestorage.app",
+  messagingSenderId: "321370607244",
+  appId: "1:321370607244:web:eaf0c8dc0ea9ca8212f5a9",
+  measurementId: "G-T9PL70TLJ2"
+};
+
+// --- Firebase Database Implementation ---
+class FirebaseDB {
   constructor() {
-    this.listeners = {};
-    this.baseUrl = CONFIG.SERVER_URL + '/api';
-    this.pollingInterval = null;
-    this.cache = {}; // 簡單的前端快取，避免畫面閃爍
-  }
-
-  init() {
-    console.log("正在連接伺服器:", this.baseUrl);
-    // 每 2 秒向伺服器檢查一次最新資料 (輪詢)
-    this.pollingInterval = setInterval(() => {
-      Object.keys(this.listeners).forEach(collection => {
-        this._fetchAndNotify(collection);
-      });
-    }, 2000);
-  }
-
-  async _fetchAndNotify(collection) {
+    console.log("正在初始化 Firebase...");
     try {
-      const res = await fetch(`${this.baseUrl}/${collection}`);
-      if (res.ok) {
-        const data = await res.json();
-        // 只有當資料真的有變動時才通知 React 更新 (簡單比對)
-        if (JSON.stringify(this.cache[collection]) !== JSON.stringify(data)) {
-            this.cache[collection] = data;
-            if (this.listeners[collection]) {
-                this.listeners[collection].forEach(cb => cb(data));
-            }
-        }
-      } else {
-          console.warn(`無法取得 ${collection} 資料, status: ${res.status}`);
-      }
+        this.app = window.firebase.initializeApp(firebaseConfig);
+        this.db = window.firebase.getFirestore(this.app);
+        this.analytics = window.firebase.getAnalytics(this.app);
+        this.listeners = {};
+        console.log("Firebase 連線成功！");
+        this.ensureAdminExists();
     } catch (e) {
-      console.error("伺服器連線錯誤:", e);
+        console.error("Firebase 初始化失敗:", e);
+        alert("資料庫連線失敗，請檢查網路。");
     }
   }
 
-  subscribe(collection, callback) {
-    if (!this.listeners[collection]) this.listeners[collection] = [];
-    this.listeners[collection].push(callback);
-    
-    // 訂閱時立即抓取一次
-    this._fetchAndNotify(collection);
-    
-    return () => {
-      this.listeners[collection] = this.listeners[collection].filter(cb => cb !== callback);
-    };
+  async ensureAdminExists() {
+      try {
+          const q = window.firebase.query(window.firebase.collection(this.db, 'tqm_users'), window.firebase.where("username", "==", "admin"));
+          const snapshot = await window.firebase.getDocs(q);
+          if (snapshot.empty) {
+              await window.firebase.setDoc(window.firebase.doc(this.db, 'tqm_users', 'admin_001'), {
+                id: 'admin_001', username: 'admin', password: 'admin123',
+                displayName: '系統管理員', department: '工程中心', role: 'admin',
+                createdAt: new Date().toISOString()
+              });
+              console.log("預設管理員建立完成");
+          }
+      } catch (e) { console.warn("檢查管理員帳號錯誤:", e); }
+  }
+
+  subscribe(collectionName, callback) {
+    return window.firebase.onSnapshot(window.firebase.collection(this.db, collectionName), (snapshot) => {
+        callback(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
   }
 
   async addDoc(collectionName, data) {
-    // 確保有 ID
-    const docToAdd = { ...data, id: data.id || ('doc_' + Date.now() + Math.random().toString(36).substr(2, 9)) };
-    
-    const res = await fetch(`${this.baseUrl}/${collectionName}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(docToAdd)
-    });
-    
-    if (!res.ok) throw new Error('Server Error: ' + res.statusText);
-    
-    const newDoc = await res.json();
-    this._fetchAndNotify(collectionName); // 立即更新畫面
-    return newDoc;
+    if (data.id) {
+        await window.firebase.setDoc(window.firebase.doc(this.db, collectionName, data.id), data);
+        return data;
+    } else {
+        const docRef = await window.firebase.addDoc(window.firebase.collection(this.db, collectionName), data);
+        await window.firebase.updateDoc(docRef, { id: docRef.id });
+        return { ...data, id: docRef.id };
+    }
   }
 
   async updateDoc(collectionName, id, data) {
-    const res = await fetch(`${this.baseUrl}/${collectionName}/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    
-    if (!res.ok) throw new Error('Server Error: ' + res.statusText);
-    this._fetchAndNotify(collectionName); // 立即更新畫面
+    await window.firebase.updateDoc(window.firebase.doc(this.db, collectionName, id), data);
   }
 
   async deleteDoc(collectionName, id) {
-    const res = await fetch(`${this.baseUrl}/${collectionName}/${id}`, {
-      method: 'DELETE'
-    });
-    
-    if (!res.ok) throw new Error('Server Error: ' + res.statusText);
-    this._fetchAndNotify(collectionName); // 立即更新畫面
+    await window.firebase.deleteDoc(window.firebase.doc(this.db, collectionName, id));
   }
 
   async getDocs(collectionName, queryFn) {
-    try {
-      const res = await fetch(`${this.baseUrl}/${collectionName}`);
-      let list = await res.json();
-      if (queryFn) {
-        list = list.filter(queryFn);
-      }
-      return list;
-    } catch (e) {
-      console.error("GetDocs Error:", e);
-      return [];
-    }
-  }
-
-  // 伺服器模式下的匯出 (從伺服器抓所有資料)
-  async exportData() {
-    const collections = ['tqm_users', 'tqm_records', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages', 'rd_machines'];
-    const exportObj = { version: '2.0', exportedAt: new Date().toISOString() };
-    
-    for (const col of collections) {
-        exportObj[col] = await this.getDocs(col);
-    }
-    return exportObj;
-  }
-
-  async importData(data) {
-    if (!confirm("警告：匯入資料將會新增至現有伺服器資料庫中。\n若有重複 ID 的資料可能會失敗。\n確定要繼續嗎？")) return;
-
-    const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages'];
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const col of collections) {
-        if (data[col] && Array.isArray(data[col])) {
-            for (const item of data[col]) {
-                try {
-                    // 嘗試新增
-                    await this.addDoc(col, item);
-                    successCount++;
-                } catch (e) {
-                    console.warn(`Import failed for ${col} item ${item.id}:`, e);
-                    // 如果失敗(例如ID重複)，嘗試用 updateDoc 覆蓋
-                    try {
-                        if (item.id) {
-                            await this.updateDoc(col, item.id, item);
-                            successCount++;
-                        } else {
-                            failCount++;
-                        }
-                    } catch (updateErr) {
-                        failCount++;
-                    }
-                }
-            }
-        }
-    }
-    alert(`匯入完成！\n成功: ${successCount} 筆\n失敗/重複: ${failCount} 筆`);
-    window.location.reload();
-  }
-}
-
-// --- Mock Data for Machines ---
-const MACHINES = [
-    { id: 'M001', name: 'High-Speed Mounter A1', code: 'HSM-A1', status: 'Active', progress: 85, image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80', members: '' },
-    { id: 'M002', name: 'Inspection Unit X5', code: 'AOI-X5', status: 'Warning', progress: 60, image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=300&q=80', members: '' },
-    { id: 'M003', name: 'Reflow Oven R3', code: 'RO-R3', status: 'Active', progress: 92, image: 'https://images.unsplash.com/photo-1581092335397-9583eb92d232?auto=format&fit=crop&w=300&q=80', members: '' },
-    { id: 'M004', name: 'Solder Paste Printer P2', code: 'SPP-P2', status: 'Active', progress: 78, image: 'https://images.unsplash.com/photo-1531297461136-82lw9f2125?auto=format&fit=crop&w=300&q=80', members: '' },
-];
-
-// --- Mock Data ---
-const PROJECTS = [
-  { id: 1, machineId: 'M001', name: 'AI 視覺辨識模組 V2', owner: '陳建宏', department: '軟體部', stage: '驗證', progress: 85, status: 'normal', deadline: '2025-11-15', category: '新產品', specs: '1. 支援 4K 60fps 影像輸入\n2. 辨識準確率 > 99.5%\n3. 延遲 < 50ms' },
-  { id: 2, machineId: 'M001', name: '高頻通訊晶片散熱座', owner: '林怡君', department: '機構部', stage: '試產', progress: 60, status: 'risk', deadline: '2025-10-20', category: '改款', specs: '1. 散熱功率 15W\n2. 噪音 < 30dB' },
-  { id: 3, machineId: 'M001', name: '車用抬頭顯示器 (HUD)', owner: '張志偉', department: '電子部', stage: '設計', progress: 30, status: 'delay', deadline: '2025-09-30', category: '客製案', specs: '' },
-  { id: 4, machineId: 'M002', name: '企業內部 ERP 整合', owner: '王大明', department: '軟體部', stage: '規劃', progress: 10, status: 'normal', deadline: '2025-12-01', category: '內部案', specs: '' },
-  { id: 5, machineId: 'M002', name: '輕量化無人機機身', owner: '劉雅婷', department: '機構部', stage: '量產', progress: 98, status: 'normal', deadline: '2025-08-15', category: '新產品', specs: '' },
-];
-
-const TASKS = [
-  { id: 101, projectId: 1, title: '散熱模擬測試報告', status: 'Doing', owner: '林怡君', priority: 'P1', risk: true },
-  { id: 102, projectId: 1, title: 'PCB 佈線優化', status: 'To Do', owner: '張志偉', priority: 'P2', risk: false },
-  { id: 103, projectId: 1, title: 'AI 模型訓練 (Dataset B)', status: 'Done', owner: '陳建宏', priority: 'P1', risk: false },
-  { id: 104, projectId: 1, title: '客戶需求變更確認', status: 'Review', owner: '王小美', priority: 'P3', risk: true },
-];
-
-const CHANGES = [
-  { id: 1, projectId: 1, date: '2025-08-10', type: '設計改善', desc: '優化散熱鰭片結構', owner: '林怡君', impact: 'Low' },
-  { id: 2, projectId: 1, date: '2025-08-12', type: '客戶修改', desc: '新增 HDMI 介面需求', owner: '張志偉', impact: 'High' },
-  { id: 3, projectId: 1, date: '2025-08-15', type: '設計疏失', desc: '干涉檢查未通過', owner: '劉雅婷', impact: 'Medium' },
-];
-
-const HISTORY = [
-  { id: 1, projectId: 1, version: 'V1.0', date: '2025-05-01', author: '林怡君', action: '初始設計建立', desc: '建立初步架構，包含主要散熱模組與 PCB 堆疊定義。', status: 'Approved' },
-  { id: 2, projectId: 1, version: 'V1.1', date: '2025-06-15', author: '張志偉', action: '規格變更', desc: '因應客戶需求增加 HDMI 2.1 支援，修改 I/O 板設計。', status: 'Approved' },
-  { id: 3, projectId: 1, version: 'V1.2', date: '2025-07-20', author: '陳建宏', action: '設計優化', desc: '優化散熱鰭片密度，降低整體重量 15%。', status: 'Pending' },
-];
-
-const LOAD_DATA = [
-  { name: '機構部', load: 120, capacity: 100 },
-  { name: '電子部', load: 85, capacity: 100 },
-  { name: '軟體部', load: 95, capacity: 100 },
-  { name: '美工部', load: 40, capacity: 100 },
-];
-
-const TREND_DATA = [
-  { month: '5月', onTime: 92, delay: 8 },
-  { month: '6月', onTime: 88, delay: 12 },
-  { month: '7月', onTime: 85, delay: 15 },
-  { month: '8月', onTime: 78, delay: 22 },
-];
-
-const CHANGE_TYPE_DATA = [
-  { name: '設計改善', value: 45 },
-  { name: '設計疏失', value: 20 },
-  { name: '客戶修改', value: 25 },
-  { name: '料件問題', value: 10 },
-];
-
-// --- Local Database Implementation ---
-class LocalDB {
-  constructor() {
-    this.listeners = {};
-    this.init();
-  }
-
-  init() {
-    const initData = (key, data) => {
-        const val = localStorage.getItem(key);
-        if (!val || val === "undefined" || val === "null") {
-            localStorage.setItem(key, JSON.stringify(data));
-        }
-    };
-
-    initData('tqm_users', [{
-        id: 'admin_001',
-        username: 'admin',
-        password: 'admin123',
-        displayName: '系統管理員',
-        department: '工程中心',
-        role: 'admin',
-        createdAt: new Date().toISOString()
-    }]);
-    
-    initData('tqm_records', []);
-    
-    // Initialize R&D Nexus Collections with Mock Data
-    initData('rd_machines', MACHINES);
-    initData('rd_projects', PROJECTS);
-    initData('rd_tasks', TASKS);
-    initData('rd_changes', CHANGES);
-    initData('rd_history', HISTORY);
-    initData('rd_messages', []);
-  }
-
-  _getData(collection) {
-    const val = localStorage.getItem(collection);
-    if (!val || val === "undefined" || val === "null") return [];
-    try {
-        return JSON.parse(val);
-    } catch (e) {
-        console.error(`Error parsing ${collection}:`, e);
-        return [];
-    }
-  }
-
-  _saveData(collection, data) {
-    localStorage.setItem(collection, JSON.stringify(data));
-    this._notify(collection);
-  }
-
-  _notify(collection) {
-    if (this.listeners[collection]) {
-      const data = this._getData(collection);
-      this.listeners[collection].forEach(cb => cb(data));
-    }
-  }
-
-  subscribe(collection, callback) {
-    if (!this.listeners[collection]) this.listeners[collection] = [];
-    this.listeners[collection].push(callback);
-    // Initial call
-    callback(this._getData(collection));
-    return () => {
-      this.listeners[collection] = this.listeners[collection].filter(cb => cb !== callback);
-    };
-  }
-
-  async addDoc(collectionName, data) {
-    const list = this._getData(collectionName);
-    const newDoc = { ...data, id: 'doc_' + Date.now() + Math.random().toString(36).substr(2, 9) };
-    list.push(newDoc);
-    this._saveData(collectionName, list);
-    return newDoc;
-  }
-
-  async updateDoc(collectionName, id, data) {
-    const list = this._getData(collectionName);
-    const index = list.findIndex(item => item.id === id);
-    if (index !== -1) {
-      list[index] = { ...list[index], ...data };
-      this._saveData(collectionName, list);
-    }
-  }
-
-  async deleteDoc(collectionName, id) {
-    const list = this._getData(collectionName);
-    const newList = list.filter(item => item.id !== id);
-    this._saveData(collectionName, newList);
-  }
-
-  async getDocs(collectionName, queryFn) {
-    let list = this._getData(collectionName);
-    if (queryFn) {
-      list = list.filter(queryFn);
-    }
+    const snapshot = await window.firebase.getDocs(window.firebase.collection(this.db, collectionName));
+    let list = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+    if (queryFn) list = list.filter(queryFn);
     return list;
   }
-
-  // --- New Methods for File Import/Export ---
-  exportData() {
-    return {
-      users: this._getData('tqm_users'),
-      records: this._getData('tqm_records'),
-      exportedAt: new Date().toISOString(),
-      version: '1.0'
-    };
+  
+  // 為了相容你的匯入匯出功能
+  async importData(data) {
+    if (!confirm("確定匯入至雲端？")) return;
+    const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages'];
+    for (const col of collections) {
+        if (data[col]) {
+            for (const item of data[col]) await this.addDoc(col, item);
+        }
+    }
+    alert("匯入完成，請重新整理頁面。");
   }
-
-  importData(data) {
-    if (data.users) this._saveData('tqm_users', data.users);
-    if (data.records) this._saveData('tqm_records', data.records);
+  
+  async exportData() {
+     const exportObj = { version: '3.0', exportedAt: new Date().toISOString() };
+     const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages'];
+     for (const col of collections) exportObj[col] = await this.getDocs(col);
+     return exportObj;
   }
 }
 
-const db = CONFIG.USE_SERVER ? new RemoteDB() : new LocalDB();
-if (CONFIG.USE_SERVER && db.init) db.init();
+// 初始化資料庫
+const db = new FirebaseDB();
 
 // --- Constants ---
 const DEPARTMENTS = ["機構設計", "多媒體設計", "電子設計", "工程中心", "研發部", "軟體部", "製造部", "機構部", "電子部", "美工部", "業務部", "品保部", "管理部"];
@@ -543,8 +603,8 @@ const LoginScreen = ({ onLogin, loading, onImportDB }) => {
             <CheckCircle2 className="text-white w-8 h-8" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">TQM 品質管理系統</h1>
-          <p className="text-slate-500 mt-2">請登入以繼續操作 ({CONFIG.USE_SERVER ? '伺服器連線版' : '單機本地版'})</p>
-          {CONFIG.USE_SERVER && <div className="mt-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded inline-block">已連線至: {CONFIG.SERVER_URL}</div>}
+          <p className="text-slate-500 mt-2">請登入以繼續操作 (Firebase 雲端版)</p>
+          <div className="mt-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block">🔥 Firebase Firestore 雲端資料庫</div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
