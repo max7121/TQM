@@ -123,7 +123,9 @@ import {
   Plus,
   Send,
   Paperclip,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Building,
+  CheckCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -1038,6 +1040,1070 @@ const StatusBadge = ({ status }) => {
     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[status] || styles.Unknown}`}>
       {labels[status] || status}
     </span>
+  );
+};
+
+// --- KPI Personal Entry System (簡化版個人填寫) ---
+const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
+  const [currentMonth, setCurrentMonth] = useState('12月');
+  const [formData, setFormData] = useState({
+    workCompletion: {},
+    quality: {},
+    initiative: ''
+  });
+
+  // 部門名稱對應 (用戶資料的部門 → KPI模板鍵名)
+  const DEPARTMENT_MAPPING = {
+    '機構設計': '機構設計課',
+    '機構設計課': '機構設計課',
+    '機構部': '機構設計課',
+    '電子設計': '電子設計課',
+    '電子設計課': '電子設計課',
+    '電子部': '電子設計課',
+    '多媒體設計': '多媒體設計課',
+    '多媒體設計課': '多媒體設計課',
+    '美工部': '多媒體設計課',
+    '工程中心': '工程中心',
+    '研發部': '工程中心',
+    '軟體部': '工程中心',
+    '線材設計': '線材設計課',
+    '線材設計課': '線材設計課'
+  };
+
+  // 部門 KPI 模板 - 整合 KPI 績效系統的指標
+  const DEPARTMENT_TEMPLATES = {
+    '機構設計課': {
+      // KPI 指標計算規則 - 基於填寫的工作數據自動計算
+      indicators: [
+        { 
+          category: '質量', 
+          name: '錯誤率', 
+          target: '≤ 3%', 
+          unit: '%', 
+          kpiField: 'errorRate',
+          calculate: (formData) => {
+            // 錯誤率 = (重大設計疏失 + 重複發生問題) / 總完成件數 * 100
+            const hasError = (formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0) + 
+                           (formData.quality?.['是否有重複發生問題'] === '有' ? 1 : 0);
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            return totalWork > 0 ? ((hasError / totalWork) * 100).toFixed(1) : '0';
+          }
+        },
+        { 
+          category: '質量', 
+          name: '一次通過率', 
+          target: '≥ 90%', 
+          unit: '%', 
+          kpiField: 'firstPassRate',
+          calculate: (formData) => {
+            // 一次通過率 = (無重工件數 / 總完成件數) * 100
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const hasRework = formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0;
+            const passedWork = totalWork - hasRework;
+            return totalWork > 0 ? ((passedWork / totalWork) * 100).toFixed(1) : '100';
+          }
+        },
+        { 
+          category: '效率', 
+          name: '月交付次數', 
+          target: '≥ 2次', 
+          unit: '次', 
+          kpiField: 'monthlyDelivery',
+          calculate: (formData) => {
+            // 月交付次數 = 新機構設計 + 設變支援
+            const newDesign = formData.workCompletion?.['新機構設計'] || 0;
+            const revisionSupport = formData.workCompletion?.['設變/改版支援'] || 0;
+            return (newDesign + revisionSupport).toString();
+          }
+        },
+        { 
+          category: '創新', 
+          name: '新設計提案', 
+          target: '1項', 
+          unit: '項', 
+          kpiField: 'newDesignProposal',
+          calculate: (formData) => {
+            // 新設計提案 = 主動貢獻文字長度 >= 50 視為有提案
+            const initiativeText = formData.initiative || '';
+            return initiativeText.length >= 50 ? '1' : '0';
+          }
+        }
+      ],
+      workCompletion: [
+        { name: '新機構設計', unit: '件', weight: 30 },
+        { name: '設變/改版支援', unit: '件', weight: 25 },
+        { name: '問題修正', unit: '件', weight: 20 },
+        { name: '文件/圖面完成', unit: '件', weight: 25 }
+      ],
+      quality: [
+        { name: '設計錯誤次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
+        { name: '客戶抱怨次數', type: 'number', max: 3, penalty: 6, unit: '次', desc: '每次扣6分' },
+        { name: '返工件數', type: 'number', max: 5, penalty: 3, unit: '件', desc: '每件扣3分' },
+        { name: '文件錯誤次數', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' },
+        { name: '遺漏改善項目', type: 'number', max: 3, penalty: 4, unit: '項', desc: '每項扣4分' }
+      ],
+      initiative: { 
+        label: '改善結構/可維修性建議', 
+        placeholder: '例如:優化 F58B 散熱結構,減少組裝工時 (至少50字可算1項新設計提案)',
+        maxScore: 20
+      },
+      scoring: {
+        excellent: 10,
+        good: 7,
+        pass: 5,
+        minimum: 3
+      }
+    },
+    '電子設計課': {
+      // KPI 指標計算規則
+      indicators: [
+        { 
+          category: '質量', 
+          name: '錯誤率', 
+          target: '≤ 1.5%', 
+          unit: '%', 
+          kpiField: 'errorRate',
+          calculate: (formData) => {
+            const hasError = (formData.quality?.['是否有因設計造成異常'] === '有' ? 1 : 0) + 
+                           (formData.quality?.['是否有重工'] === '有' ? 1 : 0);
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            return totalWork > 0 ? ((hasError / totalWork) * 100).toFixed(1) : '0';
+          }
+        },
+        { 
+          category: '效率', 
+          name: '開發時間縮短', 
+          target: '5%以上', 
+          unit: '%', 
+          kpiField: 'developmentShortenRate',
+          calculate: (formData) => {
+            // 韌體功能完成件數 >= 3 視為有效率提升
+            const firmwareCount = formData.workCompletion?.['韌體功能完成'] || 0;
+            return firmwareCount >= 3 ? '5' : '0';
+          }
+        },
+        { 
+          category: '創新', 
+          name: '問題改善案', 
+          target: '1項', 
+          unit: '項', 
+          kpiField: 'improvementCase',
+          calculate: (formData) => {
+            const initiativeText = formData.initiative || '';
+            return initiativeText.length >= 50 ? '1' : '0';
+          }
+        }
+      ],
+      workCompletion: [
+        { name: '電路/PCB設計', unit: '件', weight: 40 },
+        { name: '韌體功能完成', unit: '件', weight: 35 },
+        { name: '問題修正', unit: '件', weight: 25 }
+      ],
+      quality: [
+        { name: '電路設計錯誤', type: 'number', max: 3, penalty: 8, unit: '次', desc: '每次扣8分' },
+        { name: 'PCB修改次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
+        { name: '韌體Bug數', type: 'number', max: 5, penalty: 3, unit: '個', desc: '每個扣3分' },
+        { name: 'EMI/認證失敗', type: 'number', max: 2, penalty: 7, unit: '次', desc: '每次扣7分' }
+      ],
+      initiative: { 
+        label: '穩定度/成本/EMI改善', 
+        placeholder: '例如:降低電源雜訊,通過 CE 認證',
+        maxScore: 20
+      },
+      scoring: {
+        excellent: 8,
+        good: 6,
+        pass: 4,
+        minimum: 2
+      }
+    },
+    '工程中心': {
+      // KPI 指標計算規則
+      indicators: [
+        { 
+          category: '質量', 
+          name: 'ERP更新準確率', 
+          target: '≥ 99%', 
+          unit: '%', 
+          kpiField: 'erpAccuracyRate',
+          calculate: (formData) => {
+            const hasError = formData.quality?.['是否有資料錯誤'] === '有' ? 1 : 0;
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            return totalWork > 0 ? (((totalWork - hasError) / totalWork) * 100).toFixed(1) : '100';
+          }
+        },
+        { 
+          category: '效率', 
+          name: '設變單改BOM', 
+          target: '≥ 98%', 
+          unit: '%', 
+          kpiField: 'ecoCompletionRate',
+          calculate: (formData) => {
+            const bomCount = formData.workCompletion?.['BOM/設變處理'] || 0;
+            const hasError = formData.quality?.['是否有漏改/誤改'] === '有' ? 1 : 0;
+            return bomCount > 0 ? (((bomCount - hasError) / bomCount) * 100).toFixed(1) : '100';
+          }
+        },
+        { 
+          category: '準確性', 
+          name: '目錄命名規範', 
+          target: '100%', 
+          unit: '%', 
+          kpiField: 'namingStandardRate',
+          calculate: (formData) => {
+            const hasError = formData.quality?.['是否有資料錯誤'] === '有' ? 0 : 1;
+            return hasError ? '100' : '95';
+          }
+        },
+        { 
+          category: '維護性', 
+          name: '文件備份', 
+          target: '100%', 
+          unit: '%', 
+          kpiField: 'backupRate',
+          calculate: (formData) => {
+            const docCount = formData.workCompletion?.['文件/圖面歸檔'] || 0;
+            return docCount > 0 ? '100' : '0';
+          }
+        }
+      ],
+      workCompletion: [
+        { name: 'BOM/設變處理', unit: '件', weight: 50 },
+        { name: '文件/圖面歸檔', unit: '件', weight: 50 }
+      ],
+      quality: [
+        { name: 'BOM錯誤次數', type: 'number', max: 5, penalty: 5, unit: '次', desc: '每次扣5分' },
+        { name: '漏改/誤改次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
+        { name: '文件命名錯誤', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' },
+        { name: 'ERP資料錯誤', type: 'number', max: 3, penalty: 6, unit: '次', desc: '每次扣6分' }
+      ],
+      initiative: { 
+        label: '流程改善/標準化建議', 
+        placeholder: '例如:建立 BOM 檢核 SOP',
+        maxScore: 20
+      },
+      scoring: {
+        excellent: 12,
+        good: 9,
+        pass: 6,
+        minimum: 4
+      }
+    },
+    '多媒體設計課': {
+      // KPI 指標計算規則
+      indicators: [
+        { 
+          category: '質量', 
+          name: '客戶滿意度', 
+          target: '≥ 100%', 
+          unit: '%', 
+          kpiField: 'customerSatisfaction',
+          calculate: (formData) => {
+            const hasDelay = formData.quality?.['是否延誤交付'] === '有' ? 1 : 0;
+            const hasRevision = formData.quality?.['是否重大修改'] === '有' ? 1 : 0;
+            return hasDelay || hasRevision ? '95' : '100';
+          }
+        },
+        { 
+          category: '效率', 
+          name: '按時交付率', 
+          target: '≥ 100%', 
+          unit: '%', 
+          kpiField: 'onTimeDeliveryRate',
+          calculate: (formData) => {
+            const hasDelay = formData.quality?.['是否延誤交付'] === '有' ? 1 : 0;
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            return totalWork > 0 ? (((totalWork - hasDelay) / totalWork) * 100).toFixed(1) : '100';
+          }
+        },
+        { 
+          category: '創新', 
+          name: '每季新風格', 
+          target: '1項', 
+          unit: '項', 
+          kpiField: 'newStylePerQuarter',
+          calculate: (formData) => {
+            const initiativeText = formData.initiative || '';
+            return initiativeText.length >= 50 ? '1' : '0';
+          }
+        }
+      ],
+      workCompletion: [
+        { name: '畫面/UI完成', unit: '件', weight: 55 },
+        { name: '動畫/視覺素材', unit: '件', weight: 45 }
+      ],
+      quality: [
+        { name: '延誤交付次數', type: 'number', max: 3, penalty: 7, unit: '次', desc: '每次扣7分' },
+        { name: '重大修改次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
+        { name: '色彩/風格錯誤', type: 'number', max: 5, penalty: 3, unit: '次', desc: '每次扣3分' },
+        { name: '檔案規格錯誤', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' }
+      ],
+      initiative: { 
+        label: '新風格/呈現方式', 
+        placeholder: '例如:導入扁平化設計風格 (至少50字可算1項新風格)',
+        maxScore: 20
+      },
+      scoring: {
+        excellent: 8,
+        good: 6,
+        pass: 4,
+        minimum: 2
+      }
+    },
+    '線材設計課': {
+      // KPI 指標計算規則
+      indicators: [
+        { 
+          category: '質量', 
+          name: '錯誤率', 
+          target: '≤ 3%', 
+          unit: '%', 
+          kpiField: 'errorRate',
+          calculate: (formData) => {
+            const hasError = (formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0) + 
+                           (formData.quality?.['是否有重複發生問題'] === '有' ? 1 : 0);
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            return totalWork > 0 ? ((hasError / totalWork) * 100).toFixed(1) : '0';
+          }
+        },
+        { 
+          category: '質量', 
+          name: '一次通過率', 
+          target: '≥ 90%', 
+          unit: '%', 
+          kpiField: 'firstPassRate',
+          calculate: (formData) => {
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const hasRework = formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0;
+            const passedWork = totalWork - hasRework;
+            return totalWork > 0 ? ((passedWork / totalWork) * 100).toFixed(1) : '100';
+          }
+        },
+        { 
+          category: '效率', 
+          name: '月交付次數', 
+          target: '≥ 2次', 
+          unit: '次', 
+          kpiField: 'monthlyDelivery',
+          calculate: (formData) => {
+            const newDesign = formData.workCompletion?.['新線材設計'] || 0;
+            const revisionSupport = formData.workCompletion?.['設變/改版支援'] || 0;
+            return (newDesign + revisionSupport).toString();
+          }
+        },
+        { 
+          category: '創新', 
+          name: '新設計提案', 
+          target: '1項', 
+          unit: '項', 
+          kpiField: 'newDesignProposal',
+          calculate: (formData) => {
+            const initiativeText = formData.initiative || '';
+            return initiativeText.length >= 50 ? '1' : '0';
+          }
+        }
+      ],
+      workCompletion: [
+        { name: '新線材設計', unit: '件', weight: 30 },
+        { name: '設變/改版支援', unit: '件', weight: 25 },
+        { name: '問題修正', unit: '件', weight: 20 },
+        { name: '文件/圖面完成', unit: '件', weight: 25 }
+      ],
+      quality: [
+        { name: '設計錯誤次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
+        { name: '接頭/規格錯誤', type: 'number', max: 3, penalty: 6, unit: '次', desc: '每次扣6分' },
+        { name: '返工件數', type: 'number', max: 5, penalty: 3, unit: '件', desc: '每件扣3分' },
+        { name: '文件錯誤次數', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' }
+      ],
+      initiative: { 
+        label: '改善線材/接頭設計', 
+        placeholder: '例如:優化線材固定方式,提升耐久性 (至少50字可算1項新設計提案)',
+        maxScore: 20
+      },
+      scoring: {
+        excellent: 10,
+        good: 7,
+        pass: 5,
+        minimum: 3
+      }
+    }
+  };
+
+  // 取得用戶部門並對應到模板
+  const rawDepartment = user?.department || '機構設計';
+  const userDepartment = DEPARTMENT_MAPPING[rawDepartment] || '機構設計';
+  const template = DEPARTMENT_TEMPLATES[userDepartment] || DEPARTMENT_TEMPLATES['機構設計'];
+
+  // 初始化表單
+  useEffect(() => {
+    const initialWork = {};
+    template.workCompletion.forEach(item => {
+      initialWork[item.name] = 0;
+    });
+    const initialQuality = {};
+    template.quality.forEach(item => {
+      initialQuality[item.name] = 0; // 改為數字型態，預設0次
+    });
+    const initialIndicators = {};
+    if (template.indicators) {
+      template.indicators.forEach(item => {
+        initialIndicators[item.kpiField] = '';
+      });
+    }
+    setFormData({
+      workCompletion: initialWork,
+      quality: initialQuality,
+      initiative: '',
+      indicators: initialIndicators
+    });
+  }, [userDepartment]);
+
+  const handleWorkChange = (name, value) => {
+    setFormData(prev => ({
+      ...prev,
+      workCompletion: { ...prev.workCompletion, [name]: parseInt(value) || 0 }
+    }));
+  };
+
+  const handleQualityChange = (name, value) => {
+    setFormData(prev => ({
+      ...prev,
+      quality: { ...prev.quality, [name]: parseInt(value) || 0 } // 改為數字處理
+    }));
+  };
+
+  const handleIndicatorChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      indicators: { ...prev.indicators, [field]: value }
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // 🔥 自動計算 KPI 指標實際值
+    const calculatedIndicators = {};
+    if (template.indicators) {
+      template.indicators.forEach(indicator => {
+        if (indicator.calculate) {
+          calculatedIndicators[indicator.kpiField] = indicator.calculate(formData);
+        }
+      });
+    }
+    
+    // 進階計分邏輯 - 根據部門標準加權計算
+    const scoring = template.scoring;
+    
+    // 1. 工作完成度計分 (50分)
+    let workScore = 0;
+    let workDetails = {};
+    
+    template.workCompletion.forEach(item => {
+      const count = formData.workCompletion[item.name] || 0;
+      let itemScore = 0;
+      
+      // 根據數量評分
+      if (count >= scoring.excellent) itemScore = 100;
+      else if (count >= scoring.good) itemScore = 85;
+      else if (count >= scoring.pass) itemScore = 70;
+      else if (count >= scoring.minimum) itemScore = 60;
+      else itemScore = 40;
+      
+      // 加權計算
+      const weightedScore = (itemScore * item.weight) / 100;
+      workScore += weightedScore;
+      
+      workDetails[item.name] = {
+        count: count,
+        score: itemScore,
+        weight: item.weight,
+        weightedScore: weightedScore.toFixed(1)
+      };
+    });
+
+    // 2. 品質與穩定度計分 (30分)
+    let qualityScore = 100;
+    let qualityDetails = {};
+    
+    template.quality.forEach(item => {
+      const count = formData.quality[item.name] || 0;
+      const totalPenalty = count * item.penalty; // 次數 × 每次扣分
+      qualityScore -= totalPenalty;
+      
+      qualityDetails[item.name] = {
+        count: count,
+        penaltyPerTime: item.penalty,
+        totalPenalty: totalPenalty
+      };
+    });
+    
+    qualityScore = Math.max(0, qualityScore); // 最低0分
+    const finalQualityScore = (qualityScore * 30) / 100; // 轉換為30分制
+
+    // 3. 主動貢獻計分 (20分)
+    const initiativeText = formData.initiative.trim();
+    let initiativeScore = 0;
+    
+    if (initiativeText) {
+      // 根據文字長度和內容評分
+      if (initiativeText.length >= 20) initiativeScore = template.initiative.maxScore;
+      else if (initiativeText.length >= 10) initiativeScore = template.initiative.maxScore * 0.7;
+      else initiativeScore = template.initiative.maxScore * 0.5;
+    }
+
+    // 總分計算
+    const totalScore = workScore + finalQualityScore + initiativeScore;
+    
+    // 等級評定
+    let grade = 'F';
+    let level = '不合格';
+    if (totalScore >= 90) { grade = 'A'; level = '優秀'; }
+    else if (totalScore >= 80) { grade = 'B'; level = '良好'; }
+    else if (totalScore >= 70) { grade = 'C'; level = '合格'; }
+    else if (totalScore >= 60) { grade = 'D'; level = '待改進'; }
+    else { grade = 'F'; level = '不合格'; }
+
+    // 儲存到資料庫
+    try {
+      await db.addDoc('kpi_personal_entries', {
+        userName: user.displayName,
+        department: userDepartment,
+        month: currentMonth,
+        year: new Date().getFullYear(),
+        
+        // 原始填寫資料
+        workCompletion: formData.workCompletion,
+        quality: formData.quality,
+        initiative: formData.initiative,
+        
+        // 🔥 自動計算的 KPI 指標實際值
+        indicators: calculatedIndicators,
+        
+        // 計算後的分數
+        scores: {
+          work: {
+            total: parseFloat(workScore.toFixed(1)),
+            details: workDetails
+          },
+          quality: {
+            baseScore: qualityScore,
+            finalScore: parseFloat(finalQualityScore.toFixed(1)),
+            details: qualityDetails
+          },
+          initiative: {
+            score: parseFloat(initiativeScore.toFixed(1)),
+            text: initiativeText
+          },
+          total: parseFloat(totalScore.toFixed(1)),
+          grade: grade,
+          level: level
+        },
+        
+        createdAt: new Date().toISOString()
+      });
+
+      // 顯示詳細結果
+      const indicatorsText = template.indicators ? 
+        '\n\n📊 KPI 績效指標 (自動計算)\n' + 
+        template.indicators.map(ind => 
+          `  • ${ind.name}: ${calculatedIndicators[ind.kpiField]}${ind.unit} (目標:${ind.target})`
+        ).join('\n') : '';
+      
+      alert(`✅ 已提交 ${currentMonth} KPI 資料！
+
+━━━━━━━━━━━━━━━━━━━━━
+📊 評分結果
+━━━━━━━━━━━━━━━━━━━━━
+
+🎯 工作完成度: ${workScore.toFixed(1)} / 50 分
+${Object.entries(workDetails).map(([name, detail]) => 
+  `  • ${name}: ${detail.count}件 → ${detail.weightedScore}分`
+).join('\n')}
+
+🛡️ 品質穩定度: ${finalQualityScore.toFixed(1)} / 30 分
+  (基礎分: ${qualityScore}分)
+
+💡 主動貢獻: ${initiativeScore.toFixed(1)} / 20 分
+${indicatorsText}
+
+━━━━━━━━━━━━━━━━━━━━━
+✨ 總分: ${totalScore.toFixed(1)} 分
+🏆 等級: ${grade} (${level})
+━━━━━━━━━━━━━━━━━━━━━`);
+      
+      // 重置表單
+      const initialWork = {};
+      template.workCompletion.forEach(item => {
+        initialWork[item.name] = 0;
+      });
+      const initialQuality = {};
+      template.quality.forEach(item => {
+        initialQuality[item.name] = 0; // 改為0
+      });
+      const initialIndicators = {};
+      if (template.indicators) {
+        template.indicators.forEach(item => {
+          initialIndicators[item.kpiField] = '';
+        });
+      }
+      setFormData({
+        workCompletion: initialWork,
+        quality: initialQuality,
+        initiative: '',
+        indicators: initialIndicators
+      });
+    } catch (error) {
+      console.error('提交錯誤:', error);
+      alert('提交失敗,請重試');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* 頂部導航 */}
+      <nav className="bg-white shadow-sm border-b sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-lg">
+              <Target className="w-6 h-6 text-white"/>
+            </div>
+            <div>
+              <h1 className="font-bold text-lg text-slate-800">個人 KPI 填寫</h1>
+              <p className="text-xs text-slate-500">簡單、快速、不用算分數</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-sm">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-slate-400"/>
+                <span className="font-medium">{user?.displayName || '使用者'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-600">
+                <Building className="w-4 h-4 text-slate-400"/>
+                <span className="text-xs">{userDepartment}</span>
+              </div>
+            </div>
+            <button 
+              onClick={onBackToMenu}
+              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
+            >
+              <LogOut className="w-4 h-4"/>返回
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* 主要內容 */}
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* 月份選擇 */}
+        <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Calendar className="w-5 h-5 text-blue-600"/>
+            <span className="font-medium text-slate-700">填寫月份:</span>
+            <select 
+              value={currentMonth}
+              onChange={(e) => setCurrentMonth(e.target.value)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              {['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'].map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div className="text-sm text-slate-500">
+            {userDepartment} 專屬表單
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* 模組一：工作完成度 */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-green-600"/>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">模組一：工作完成度 (50%)</h2>
+                <p className="text-sm text-slate-500">這個月你實際完成了哪些研發工作？</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {template.workCompletion.map((item, idx) => (
+                <div key={idx} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                      {item.name} <span className="text-xs text-slate-500">(權重{item.weight}%)</span>
+                    </label>
+                    <div className="text-xs text-slate-500">
+                      優秀≥{template.scoring.excellent} | 良好≥{template.scoring.good} | 合格≥{template.scoring.pass}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.workCompletion[item.name] || 0}
+                      onChange={(e) => handleWorkChange(item.name, e.target.value)}
+                      className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-center text-lg font-bold focus:ring-2 focus:ring-green-500 outline-none"
+                    />
+                    <span className="text-slate-600">{item.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-sm text-blue-700">
+                ✨ <strong>填寫提示:</strong> 只需填寫數量,系統會根據您的部門標準自動評分
+              </p>
+            </div>
+          </div>
+
+          {/* KPI 績效指標填寫 (對應管理系統) */}
+          {template.indicators && template.indicators.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                  <Target className="w-6 h-6 text-indigo-600"/>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">部門 KPI 績效指標 (自動計算)</h2>
+                  <p className="text-sm text-slate-500">根據您填寫的工作數據自動計算,提交後同步到管理系統</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {template.indicators.map((indicator, idx) => {
+                  const calculatedValue = indicator.calculate ? indicator.calculate(formData) : '-';
+                  const targetMet = (() => {
+                    if (!calculatedValue || calculatedValue === '-') return null;
+                    const numValue = parseFloat(calculatedValue);
+                    const targetStr = indicator.target;
+                    
+                    if (targetStr.includes('≤')) {
+                      const threshold = parseFloat(targetStr.replace('≤', '').trim());
+                      return numValue <= threshold;
+                    } else if (targetStr.includes('≥')) {
+                      const threshold = parseFloat(targetStr.replace('≥', '').trim());
+                      return numValue >= threshold;
+                    }
+                    return null;
+                  })();
+                  
+                  // 生成計算公式說明
+                  const getFormulaExplanation = () => {
+                    const wc = formData.workCompletion || {};
+                    const q = formData.quality || {};
+                    const initiative = formData.initiative || '';
+                    
+                    // 機構設計課 / 線材設計課
+                    if (indicator.kpiField === 'errorRate' && (userDepartment === '機構設計課' || userDepartment === '線材設計課')) {
+                      const hasError1 = q['是否有重大設計疏失'] === '有' ? 1 : 0;
+                      const hasError2 = q['是否有重複發生問題'] === '有' ? 1 : 0;
+                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
+                      return `(${hasError1} + ${hasError2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'firstPassRate' && (userDepartment === '機構設計課' || userDepartment === '線材設計課')) {
+                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
+                      const hasRework = q['是否有重大設計疏失'] === '有' ? 1 : 0;
+                      const passedWork = totalWork - hasRework;
+                      return `(${totalWork} - ${hasRework}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'monthlyDelivery' && userDepartment === '機構設計課') {
+                      const newDesign = wc['新機構設計'] || 0;
+                      const revision = wc['設變/改版支援'] || 0;
+                      return `${newDesign} + ${revision} = ${calculatedValue}次`;
+                    }
+                    if (indicator.kpiField === 'monthlyDelivery' && userDepartment === '線材設計課') {
+                      const newDesign = wc['新線材設計'] || 0;
+                      const revision = wc['設變/改版支援'] || 0;
+                      return `${newDesign} + ${revision} = ${calculatedValue}次`;
+                    }
+                    if (indicator.kpiField === 'newDesignProposal') {
+                      return `主動貢獻文字長度 ${initiative.length} 字 ${initiative.length >= 50 ? '≥' : '<'} 50字 → ${calculatedValue}項`;
+                    }
+                    
+                    // 電子設計課
+                    if (indicator.kpiField === 'errorRate' && userDepartment === '電子設計課') {
+                      const hasError1 = q['是否有因設計造成異常'] === '有' ? 1 : 0;
+                      const hasError2 = q['是否有重工'] === '有' ? 1 : 0;
+                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
+                      return `(${hasError1} + ${hasError2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'developmentShortenRate') {
+                      const firmwareCount = wc['韌體功能完成'] || 0;
+                      return `韌體完成 ${firmwareCount} 件 ${firmwareCount >= 3 ? '≥' : '<'} 3件 → ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'improvementCase') {
+                      return `主動貢獻文字長度 ${initiative.length} 字 ${initiative.length >= 50 ? '≥' : '<'} 50字 → ${calculatedValue}項`;
+                    }
+                    
+                    // 工程中心
+                    if (indicator.kpiField === 'erpAccuracyRate') {
+                      const hasError = q['是否有資料錯誤'] === '有' ? 1 : 0;
+                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
+                      return `(${totalWork} - ${hasError}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'ecoCompletionRate') {
+                      const bomCount = wc['BOM/設變處理'] || 0;
+                      const hasError = q['是否有漏改/誤改'] === '有' ? 1 : 0;
+                      return `(${bomCount} - ${hasError}) ÷ ${bomCount} × 100 = ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'namingStandardRate') {
+                      const hasError = q['是否有資料錯誤'] === '有';
+                      return `${hasError ? '有' : '無'}資料錯誤 → ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'backupRate') {
+                      const docCount = wc['文件/圖面歸檔'] || 0;
+                      return `文件歸檔 ${docCount} 件 ${docCount > 0 ? '>' : '='} 0 → ${calculatedValue}%`;
+                    }
+                    
+                    // 多媒體設計課
+                    if (indicator.kpiField === 'customerSatisfaction') {
+                      const hasDelay = q['是否延誤交付'] === '有';
+                      const hasRevision = q['是否重大修改'] === '有';
+                      return `${hasDelay || hasRevision ? '有' : '無'}延誤或重大修改 → ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'onTimeDeliveryRate') {
+                      const hasDelay = q['是否延誤交付'] === '有' ? 1 : 0;
+                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
+                      return `(${totalWork} - ${hasDelay}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                    }
+                    if (indicator.kpiField === 'newStylePerQuarter') {
+                      return `主動貢獻文字長度 ${initiative.length} 字 ${initiative.length >= 50 ? '≥' : '<'} 50字 → ${calculatedValue}項`;
+                    }
+                    
+                    return '自動計算';
+                  };
+                  
+                  return (
+                    <div key={idx} className={`p-4 rounded-lg border-2 ${
+                      targetMet === true ? 'bg-green-50 border-green-300' : 
+                      targetMet === false ? 'bg-red-50 border-red-300' : 
+                      'bg-indigo-50 border-indigo-200'
+                    }`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-2 py-1 text-xs rounded font-medium ${
+                              targetMet === true ? 'bg-green-600 text-white' :
+                              targetMet === false ? 'bg-red-600 text-white' :
+                              'bg-indigo-600 text-white'
+                            }`}>
+                              {indicator.category}
+                            </span>
+                            <span className="font-medium text-slate-800">{indicator.name}</span>
+                          </div>
+                          <div className="text-xs text-slate-600 mt-1">
+                            目標: <span className="font-medium text-indigo-600">{indicator.target}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-2xl font-bold ${
+                            targetMet === true ? 'text-green-600' :
+                            targetMet === false ? 'text-red-600' :
+                            'text-indigo-600'
+                          }`}>
+                            {calculatedValue}
+                          </div>
+                          <div className="text-xs text-slate-500">{indicator.unit}</div>
+                        </div>
+                      </div>
+                      
+                      {/* 計算公式說明 */}
+                      <div className="mt-3 p-2 bg-white/70 rounded border border-slate-200">
+                        <div className="text-xs text-slate-600 mb-1">
+                          <span className="font-semibold text-slate-700">📐 計算公式:</span>
+                        </div>
+                        <div className="text-xs font-mono text-slate-800 bg-slate-100 px-2 py-1 rounded">
+                          {getFormulaExplanation()}
+                        </div>
+                      </div>
+                      
+                      {targetMet !== null && (
+                        <div className={`mt-2 text-xs font-medium ${
+                          targetMet ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {targetMet ? '✓ 已達成目標' : '✗ 未達成目標'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                <p className="text-sm text-indigo-700">
+                  🤖 <strong>自動計算:</strong> 這些指標會根據您填寫的工作完成度、品質狀況、主動貢獻自動計算,無需手動輸入
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 模組二：品質與穩定度 */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                <AlertCircle className="w-6 h-6 text-orange-600"/>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">模組二：品質與穩定度 (30%)</h2>
+                <p className="text-sm text-slate-500">這個月有沒有造成不必要的問題？</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {template.quality.map((item, idx) => {
+                const count = formData.quality[item.name] || 0;
+                const totalPenalty = count * item.penalty;
+                
+                return (
+                  <div key={idx} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-slate-700">
+                        {item.name}
+                      </label>
+                      <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border">
+                        {item.desc}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="0"
+                        max={item.max}
+                        value={count}
+                        onChange={(e) => handleQualityChange(item.name, e.target.value)}
+                        className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-center text-lg font-bold focus:ring-2 focus:ring-orange-500 outline-none"
+                      />
+                      <span className="text-slate-600">{item.unit}</span>
+                      {count > 0 && (
+                        <span className="ml-auto text-sm font-medium text-red-600">
+                          扣 {totalPenalty} 分
+                        </span>
+                      )}
+                    </div>
+                    {count > item.max && (
+                      <div className="mt-2 text-xs text-red-600">
+                        ⚠️ 超過建議上限 ({item.max}{item.unit})
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
+              <p className="text-sm text-orange-700">
+                ⚠️ <strong>評分說明:</strong> 品質基礎分100分,根據問題次數累計扣分,最低0分
+              </p>
+            </div>
+          </div>
+
+          {/* 模組三：主動貢獻 */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Plus className="w-6 h-6 text-purple-600"/>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">模組三：主動貢獻與責任感 (20%)</h2>
+                <p className="text-sm text-slate-500">這個月你有沒有多做一點？最高{template.initiative.maxScore}分</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                {template.initiative.label}
+                <span className="text-xs text-purple-600 ml-2">
+                  (字數≥20字得滿分,≥10字得7成,其餘得5成)
+                </span>
+              </label>
+              <textarea
+                value={formData.initiative}
+                onChange={(e) => setFormData(prev => ({ ...prev, initiative: e.target.value }))}
+                placeholder={template.initiative.placeholder}
+                rows="3"
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+              <div className="mt-2 text-xs text-slate-500 text-right">
+                已輸入 {formData.initiative.length} 字
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-100">
+              <p className="text-sm text-purple-700">
+                💡 <strong>評分標準:</strong> 內容豐富詳細可獲得較高分數,建議至少20字以上
+              </p>
+            </div>
+          </div>
+
+          {/* 提交按鈕 */}
+          <div className="flex gap-4">
+            <button
+              type="submit"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+            >
+              <Save className="w-5 h-5"/>
+              提交 {currentMonth} KPI 資料
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const initialWork = {};
+                template.workCompletion.forEach(item => {
+                  initialWork[item.name] = 0;
+                });
+                const initialQuality = {};
+                template.quality.forEach(item => {
+                  initialQuality[item.name] = 0; // 改為0
+                });
+                const initialIndicators = {};
+                if (template.indicators) {
+                  template.indicators.forEach(item => {
+                    initialIndicators[item.kpiField] = '';
+                  });
+                }
+                setFormData({
+                  workCompletion: initialWork,
+                  quality: initialQuality,
+                  initiative: '',
+                  indicators: initialIndicators
+                });
+              }}
+              className="px-6 py-4 border-2 border-slate-300 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition-all"
+            >
+              重置
+            </button>
+          </div>
+
+          {/* 說明區 */}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border-2 border-blue-100">
+            <h3 className="font-bold text-slate-800 mb-3">📋 填寫說明</h3>
+            <ul className="space-y-2 text-sm text-slate-700">
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span><strong>工程師只填數量和狀態</strong> - 不需要計算百分比、效率、達成率</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span><strong>系統自動計算分數</strong> - 加權、評分、趨勢都在後台處理</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span><strong>主管看到完整分析</strong> - 管理 KPI 儀表板會顯示部門整體表現</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">ℹ</span>
+                <span><strong>每月5分鐘完成</strong> - 設計目標就是讓工程師快速填寫</span>
+              </li>
+            </ul>
+          </div>
+        </form>
+      </main>
+    </div>
   );
 };
 
@@ -3541,16 +4607,1528 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   );
 };
 
+// --- KPI Report System (整合專案與KPI報告) ---
+const KPIReportSystem = ({ onBackToMenu, user }) => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [tqmRecords, setTqmRecords] = useState([]);
+  const [kpiData, setKpiData] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(`${new Date().getMonth() + 1}月`);
+  const [selectedDept, setSelectedDept] = useState('研發部');
+  const [viewMode, setViewMode] = useState('current'); // current, history, analysis
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  
+  // 歷史評分記錄 (模擬數據,實際應從資料庫讀取)
+  const [historyScores, setHistoryScores] = useState([
+    { month: '1月', year: 2024, tqm: 85, kpi: 78, project: 82, budget: 90, cost: 88, total: 84.1, grade: 'B' },
+    { month: '2月', year: 2024, tqm: 88, kpi: 82, project: 85, budget: 92, cost: 90, total: 86.8, grade: 'B' },
+    { month: '3月', year: 2024, tqm: 90, kpi: 85, project: 88, budget: 95, cost: 92, total: 89.2, grade: 'B' },
+    { month: '4月', year: 2024, tqm: 82, kpi: 80, project: 78, budget: 88, cost: 85, total: 82.1, grade: 'B' },
+    { month: '5月', year: 2024, tqm: 86, kpi: 83, project: 84, budget: 91, cost: 89, total: 85.9, grade: 'B' },
+    { month: '6月', year: 2024, tqm: 89, kpi: 86, project: 87, budget: 94, cost: 91, total: 88.5, grade: 'B' },
+    { month: '7月', year: 2024, tqm: 75, kpi: 72, project: 70, budget: 85, cost: 80, total: 75.3, grade: 'C' },
+    { month: '8月', year: 2024, tqm: 78, kpi: 75, project: 73, budget: 87, cost: 82, total: 77.8, grade: 'C' },
+    { month: '9月', year: 2024, tqm: 83, kpi: 79, project: 81, budget: 89, cost: 86, total: 83.2, grade: 'B' },
+    { month: '10月', year: 2024, tqm: 87, kpi: 84, project: 86, budget: 93, cost: 90, total: 87.4, grade: 'B' },
+    { month: '11月', year: 2024, tqm: 91, kpi: 88, project: 90, budget: 96, cost: 94, total: 91.1, grade: 'A' },
+    { month: '12月', year: 2024, tqm: 60, kpi: 0, project: 0, budget: 100, cost: 67, total: 37.0, grade: 'F' },
+  ]);
+  
+  // 新增：每月預算記錄 (存入資料庫)
+  const [monthlyBudgets, setMonthlyBudgets] = useState([]);
+  
+  // 新增：每月成本記錄 (存入資料庫)
+  const [monthlyCosts, setMonthlyCosts] = useState([]);
+  
+  // 預設年度預算 (用於新增月份時的參考值)
+  const [defaultYearlyBudget, setDefaultYearlyBudget] = useState(10000000);
+
+  const [showAddBudget, setShowAddBudget] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [newProduct, setNewProduct] = useState({ productName: '', salesPrice: '', cost: '' });
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [editingCost, setEditingCost] = useState(false);
+
+  // 訂閱數據
+  useEffect(() => {
+    const unsubProjects = db.subscribe('rd_projects', setProjects);
+    const unsubTasks = db.subscribe('rd_tasks', setTasks);
+    const unsubTqm = db.subscribe('tqm_records', setTqmRecords);
+    // 直接從 KPI 績效系統資料庫抓取
+    const unsubKpi = db.subscribe('kpi_performance', (data) => {
+      // KPI 系統的數據格式: { name, department, month, metrics: [{name, target, actual, status}] }
+      setKpiData(data || []);
+    });
+    // 訂閱每月預算記錄
+    const unsubBudget = db.subscribe('monthly_budgets', setMonthlyBudgets);
+    // 訂閱每月成本記錄
+    const unsubCost = db.subscribe('monthly_costs', setMonthlyCosts);
+    
+    return () => { 
+      unsubProjects(); 
+      unsubTasks(); 
+      unsubTqm(); 
+      unsubKpi(); 
+      unsubBudget();
+      unsubCost();
+    };
+  }, []);
+
+  // 根據選擇的月份篩選數據
+  const filteredTqmRecords = useMemo(() => {
+    if (!selectedMonth) return tqmRecords;
+    const month = parseInt(selectedMonth.replace('月', ''));
+    return tqmRecords.filter(record => {
+      if (!record.createdAt) return false;
+      const recordDate = new Date(record.createdAt);
+      const recordYear = recordDate.getFullYear();
+      const recordMonth = recordDate.getMonth() + 1;
+      return recordYear === selectedYear && recordMonth === month;
+    });
+  }, [tqmRecords, selectedMonth, selectedYear]);
+
+  const filteredKpiData = useMemo(() => {
+    if (!selectedMonth) return kpiData;
+    const month = parseInt(selectedMonth.replace('月', ''));
+    
+    // Debug: 列印所有 KPI 數據
+    console.log('所有 KPI 數據:', kpiData);
+    console.log('篩選條件 - 月份:', month, '年份:', selectedYear);
+    
+    const filtered = kpiData.filter(record => {
+      // KPI 系統使用 month 字段 (e.g., "11月")
+      if (record.month) {
+        const recordMonth = parseInt(record.month.replace('月', ''));
+        console.log('KPI 記錄:', record.name, 'Month:', record.month, '解析後:', recordMonth);
+        // KPI 系統通常沒有年份欄位,所以只比對月份即可
+        return recordMonth === month;
+      }
+      // 如果有 date 字段則使用 date
+      if (record.date) {
+        const recordDate = new Date(record.date);
+        const recordYear = recordDate.getFullYear();
+        const recordMonth = recordDate.getMonth() + 1;
+        return recordYear === selectedYear && recordMonth === month;
+      }
+      return false;
+    });
+    
+    console.log('篩選後的 KPI 數據:', filtered);
+    return filtered;
+  }, [kpiData, selectedMonth, selectedYear]);
+
+  const filteredProjects = useMemo(() => {
+    if (!selectedMonth) return projects;
+    const month = parseInt(selectedMonth.replace('月', ''));
+    return projects.filter(project => {
+      if (!project.createdAt) return false;
+      const projectDate = new Date(project.createdAt);
+      const projectYear = projectDate.getFullYear();
+      const projectMonth = projectDate.getMonth() + 1;
+      // 包含該月份創建的或正在進行中的專案
+      return (projectYear === selectedYear && projectMonth === month) || 
+             (project.status === 'In Progress' && projectYear <= selectedYear && projectMonth <= month);
+    });
+  }, [projects, selectedMonth, selectedYear]);
+
+  // 過濾每月預算數據
+  const filteredMonthlyBudgets = useMemo(() => {
+    if (!selectedMonth) return monthlyBudgets;
+    const month = parseInt(selectedMonth.replace('月', ''));
+    return monthlyBudgets.filter(budget => {
+      return budget.year === selectedYear && budget.month === month;
+    });
+  }, [monthlyBudgets, selectedMonth, selectedYear]);
+
+  // 過濾每月成本數據
+  const filteredMonthlyCosts = useMemo(() => {
+    if (!selectedMonth) return monthlyCosts;
+    const month = parseInt(selectedMonth.replace('月', ''));
+    return monthlyCosts.filter(cost => {
+      return cost.year === selectedYear && cost.month === month;
+    });
+  }, [monthlyCosts, selectedMonth, selectedYear]);
+
+  // 計算 TQM 品質分數 (20%)
+  const calculateTQMScore = useMemo(() => {
+    if (filteredTqmRecords.length === 0) return { score: 0, weight: 20, weightedScore: 0, details: { total: 0, improved: 0, improveRate: 0, pending: 0, notStarted: 0 } };
+    // 根據改善狀態計分
+    const improvedRecords = filteredTqmRecords.filter(r => r.status === '已改善').length;
+    const totalRecords = filteredTqmRecords.length;
+    const improveRate = (improvedRecords / totalRecords) * 100;
+    
+    // 分數計算：改善率越高分數越高
+    let score = 100;
+    if (improveRate < 60) score = 60;
+    else if (improveRate < 70) score = 70;
+    else if (improveRate < 80) score = 80;
+    else if (improveRate < 90) score = 90;
+    else score = 100;
+    
+    return {
+      score,
+      weight: 20,
+      weightedScore: (score * 0.2).toFixed(1),
+      details: {
+        total: totalRecords,
+        improved: improvedRecords,
+        improveRate: improveRate.toFixed(1),
+        pending: filteredTqmRecords.filter(r => r.status === '處理中').length,
+        notStarted: filteredTqmRecords.filter(r => r.status === '未處理').length
+      }
+    };
+  }, [filteredTqmRecords]);
+
+  // 計算 KPI 績效分數 (20%)
+  const calculateKPIScore = useMemo(() => {
+    if (filteredKpiData.length === 0) return { score: 0, weight: 20, weightedScore: 0, details: { total: 0, achieved: 0, achieveRate: 0, missed: 0 } };
+    
+    // 計算所有 KPI 指標達成率
+    const allMetrics = filteredKpiData.flatMap(d => d.metrics || []);
+    if (allMetrics.length === 0) return { score: 0, weight: 20, weightedScore: 0, details: { total: 0, achieved: 0, achieveRate: 0, missed: 0 } };
+    
+    const achievedMetrics = allMetrics.filter(m => m.status === 'Achieved').length;
+    const achieveRate = (achievedMetrics / allMetrics.length) * 100;
+    
+    // 分數對應
+    let score = Math.round(achieveRate);
+    
+    return {
+      score,
+      weight: 20,
+      weightedScore: (score * 0.2).toFixed(1),
+      details: {
+        total: allMetrics.length,
+        achieved: achievedMetrics,
+        achieveRate: achieveRate.toFixed(1),
+        missed: allMetrics.filter(m => m.status === 'Missed').length
+      }
+    };
+  }, [filteredKpiData]);
+
+  // 計算專案進度分數 (30%)
+  const calculateProjectScore = useMemo(() => {
+    if (filteredProjects.length === 0) return { score: 0, weight: 30, weightedScore: 0, details: {} };
+    
+    const completedProjects = filteredProjects.filter(p => p.status === 'Completed');
+    const onTimeProjects = completedProjects.filter(p => {
+      if (!p.deadline || !p.completedAt) return false;
+      return new Date(p.completedAt) <= new Date(p.deadline);
+    });
+    
+    const avgProgress = filteredProjects.reduce((sum, p) => sum + (p.progress || 0), 0) / filteredProjects.length;
+    const onTimeRate = completedProjects.length > 0 
+      ? (onTimeProjects.length / completedProjects.length) * 100 
+      : 0;
+    
+    // 綜合評分：平均進度70% + 準時率30%
+    const score = Math.round(avgProgress * 0.7 + onTimeRate * 0.3);
+    
+    return {
+      score,
+      weight: 30,
+      weightedScore: (score * 0.3).toFixed(1),
+      details: {
+        total: projects.length,
+        completed: completedProjects.length,
+        onTime: onTimeProjects.length,
+        avgProgress: avgProgress.toFixed(1),
+        onTimeRate: onTimeRate.toFixed(1),
+        inProgress: projects.filter(p => p.status === 'In Progress').length
+      }
+    };
+  }, [projects]);
+
+  // 計算預算控制分數 (15%)
+  const calculateBudgetScore = useMemo(() => {
+    // 使用當月預算記錄或預設值
+    const currentBudget = filteredMonthlyBudgets.length > 0 
+      ? filteredMonthlyBudgets[0] 
+      : { yearlyBudget: defaultYearlyBudget, actualSpending: 0 };
+    
+    const { yearlyBudget, actualSpending } = currentBudget;
+    const usageRate = yearlyBudget > 0 ? (actualSpending / yearlyBudget) * 100 : 0;
+    
+    // 評分標準：使用率在80-90%為最佳
+    let score = 100;
+    if (usageRate > 95) score = 70; // 超支風險
+    else if (usageRate > 90) score = 85;
+    else if (usageRate >= 80 && usageRate <= 90) score = 100; // 最佳範圍
+    else if (usageRate >= 70) score = 90;
+    else if (usageRate >= 60) score = 80;
+    else score = 70; // 使用率太低可能執行不力
+    
+    return {
+      score,
+      weight: 15,
+      weightedScore: (score * 0.15).toFixed(1),
+      details: {
+        yearlyBudget: (yearlyBudget / 10000).toFixed(0),
+        actualSpending: (actualSpending / 10000).toFixed(0),
+        remaining: ((yearlyBudget - actualSpending) / 10000).toFixed(0),
+        usageRate: usageRate.toFixed(1),
+        hasMonthlyData: filteredMonthlyBudgets.length > 0
+      }
+    };
+  }, [filteredMonthlyBudgets, defaultYearlyBudget]);
+
+  // 計算成本管控分數 (15%)
+  const calculateCostScore = useMemo(() => {
+    // 使用當月成本數據
+    const currentCostData = filteredMonthlyCosts.length > 0 
+      ? filteredMonthlyCosts[0].products || []
+      : [];
+    
+    if (currentCostData.length === 0) return { 
+      score: 0, 
+      weight: 15, 
+      weightedScore: 0, 
+      details: { 
+        total: 0, 
+        qualified: 0, 
+        qualifyRate: 0, 
+        avgCostRate: 0, 
+        overBudget: 0,
+        hasMonthlyData: false
+      } 
+    };
+    
+    // 計算符合標準的產品數（成本率≤65%）
+    const qualifiedProducts = currentCostData.filter(p => p.costRate <= 65).length;
+    const qualifyRate = (qualifiedProducts / currentCostData.length) * 100;
+    
+    // 平均成本率
+    const avgCostRate = currentCostData.reduce((sum, p) => sum + p.costRate, 0) / currentCostData.length;
+    
+    // 評分：符合率100%得100分，每少10%扣10分
+    let score = Math.round(qualifyRate);
+    if (avgCostRate > 65) {
+      score = Math.max(60, score - (avgCostRate - 65) * 2); // 超標扣分
+    }
+    
+    return {
+      score,
+      weight: 15,
+      weightedScore: (score * 0.15).toFixed(1),
+      details: {
+        total: currentCostData.length,
+        qualified: qualifiedProducts,
+        qualifyRate: qualifyRate.toFixed(1),
+        avgCostRate: avgCostRate.toFixed(1),
+        overBudget: currentCostData.filter(p => p.costRate > 65).length,
+        hasMonthlyData: filteredMonthlyCosts.length > 0
+      }
+    };
+  }, [filteredMonthlyCosts]);
+
+  // 總分計算
+  const totalScore = useMemo(() => {
+    const weighted = 
+      parseFloat(calculateTQMScore.weightedScore) +
+      parseFloat(calculateKPIScore.weightedScore) +
+      parseFloat(calculateProjectScore.weightedScore) +
+      parseFloat(calculateBudgetScore.weightedScore) +
+      parseFloat(calculateCostScore.weightedScore);
+    
+    return {
+      total: weighted.toFixed(1),
+      grade: weighted >= 90 ? 'A' : weighted >= 80 ? 'B' : weighted >= 70 ? 'C' : weighted >= 60 ? 'D' : 'F',
+      level: weighted >= 90 ? '優秀' : weighted >= 80 ? '良好' : weighted >= 70 ? '合格' : weighted >= 60 ? '待改進' : '不合格'
+    };
+  }, [calculateTQMScore, calculateKPIScore, calculateProjectScore, calculateBudgetScore, calculateCostScore]);
+
+  // 新增產品成本資料
+  const handleAddProduct = () => {
+    if (!newProduct.productName || !newProduct.salesPrice || !newProduct.cost) {
+      alert('請填寫完整資料');
+      return;
+    }
+    const costRate = (parseFloat(newProduct.cost) / parseFloat(newProduct.salesPrice)) * 100;
+    setCostControlData([...costControlData, {
+      productName: newProduct.productName,
+      salesPrice: parseFloat(newProduct.salesPrice),
+      cost: parseFloat(newProduct.cost),
+      costRate: parseFloat(costRate.toFixed(2))
+    }]);
+    setNewProduct({ productName: '', salesPrice: '', cost: '' });
+    setShowAddProduct(false);
+  };
+
+  // 生成綜合報告
+  const generateComprehensiveReport = () => {
+    const report = `
+==================================================
+研發部門 KPI 綜合評分報告
+==================================================
+報告期間：${selectedMonth}
+生成時間：${new Date().toLocaleString('zh-TW')}
+評分人員：${user.displayName}
+
+【總體評分】
+────────────────────────────────────────
+總分：${totalScore.total} 分
+等級：${totalScore.grade} (${totalScore.level})
+
+【各項目詳細評分】
+────────────────────────────────────────
+
+一、TQM 品質管理 (佔比 20%)
+   原始分數：${calculateTQMScore.score} 分
+   加權分數：${calculateTQMScore.weightedScore} 分
+   ├─ 總異常數：${calculateTQMScore.details.total}
+   ├─ 已改善數：${calculateTQMScore.details.improved}
+   ├─ 改善率：${calculateTQMScore.details.improveRate}%
+   ├─ 處理中：${calculateTQMScore.details.pending}
+   └─ 未處理：${calculateTQMScore.details.notStarted}
+
+二、KPI 績效表現 (佔比 20%)
+   原始分數：${calculateKPIScore.score} 分
+   加權分數：${calculateKPIScore.weightedScore} 分
+   ├─ 總指標數：${calculateKPIScore.details.total}
+   ├─ 達成數：${calculateKPIScore.details.achieved}
+   ├─ 達成率：${calculateKPIScore.details.achieveRate}%
+   └─ 未達成：${calculateKPIScore.details.missed}
+
+三、研發專案進度 (佔比 30%)
+   原始分數：${calculateProjectScore.score} 分
+   加權分數：${calculateProjectScore.weightedScore} 分
+   ├─ 總專案數：${calculateProjectScore.details.total}
+   ├─ 已完成：${calculateProjectScore.details.completed}
+   ├─ 準時完成：${calculateProjectScore.details.onTime}
+   ├─ 平均進度：${calculateProjectScore.details.avgProgress}%
+   ├─ 準時率：${calculateProjectScore.details.onTimeRate}%
+   └─ 進行中：${calculateProjectScore.details.inProgress}
+
+四、年度預算控制 (佔比 15%)
+   原始分數：${calculateBudgetScore.score} 分
+   加權分數：${calculateBudgetScore.weightedScore} 分
+   ├─ 年度預算：${calculateBudgetScore.details.yearlyBudget} 萬元
+   ├─ 實際支出：${calculateBudgetScore.details.actualSpending} 萬元
+   ├─ 剩餘預算：${calculateBudgetScore.details.remaining} 萬元
+   └─ 使用率：${calculateBudgetScore.details.usageRate}%
+
+五、新機成本管控 (佔比 15%)
+   原始分數：${calculateCostScore.score} 分
+   加權分數：${calculateCostScore.weightedScore} 分
+   ├─ 總產品數：${calculateCostScore.details.total}
+   ├─ 符合標準：${calculateCostScore.details.qualified} (成本率≤65%)
+   ├─ 符合率：${calculateCostScore.details.qualifyRate}%
+   ├─ 平均成本率：${calculateCostScore.details.avgCostRate}%
+   └─ 超標產品：${calculateCostScore.details.overBudget}
+
+【產品成本明細】
+────────────────────────────────────────
+${filteredMonthlyCosts.length > 0 && filteredMonthlyCosts[0].products ? 
+  filteredMonthlyCosts[0].products.map((p, i) => 
+    `${i+1}. ${p.productName}
+   售價：${p.salesPrice.toLocaleString()} 元
+   成本：${p.cost.toLocaleString()} 元
+   成本率：${p.costRate}% ${p.costRate <= 65 ? '✓ 合格' : '✗ 超標'}`
+  ).join('\n')
+  : '本月尚無成本數據'}
+
+【綜合建議】
+────────────────────────────────────────
+${totalScore.total >= 90 ? '✓ 各項指標表現優異，請繼續保持！' : ''}
+${calculateTQMScore.score < 80 ? '• 建議加強 TQM 品質改善，提升異常處理效率' : ''}
+${calculateKPIScore.score < 80 ? '• 建議檢討 KPI 執行策略，提升達成率' : ''}
+${calculateProjectScore.score < 80 ? '• 建議優化專案管理流程，提升準時完成率' : ''}
+${calculateBudgetScore.details.usageRate > 90 ? '• 預算使用率偏高，建議加強成本控管' : ''}
+${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.details.overBudget} 項產品成本超標，需立即改善` : ''}
+
+==================================================
+`;
+    
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `研發部門KPI綜合報告_${selectedMonth}_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* 導航列 */}
+      <nav className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-lg sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-white/20 rounded-lg backdrop-blur">
+              <BarChart3 className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="font-bold text-xl">研發部門 KPI 綜合評分系統</span>
+              <p className="text-xs text-blue-100">整合 TQM、績效、專案、預算、成本五大指標</p>
+            </div>
+          </div>
+          <div className="flex space-x-2">
+            <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'dashboard' ? 'bg-white/20 backdrop-blur' : 'hover:bg-white/10'}`}>
+              <LayoutDashboard className="w-4 h-4 inline mr-2"/>總覽
+            </button>
+            <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'history' ? 'bg-white/20 backdrop-blur' : 'hover:bg-white/10'}`}>
+              <Calendar className="w-4 h-4 inline mr-2"/>歷史記錄
+            </button>
+            <button onClick={() => setActiveTab('analysis')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'analysis' ? 'bg-white/20 backdrop-blur' : 'hover:bg-white/10'}`}>
+              <TrendingUp className="w-4 h-4 inline mr-2"/>趨勢分析
+            </button>
+            <button onClick={() => setActiveTab('details')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'details' ? 'bg-white/20 backdrop-blur' : 'hover:bg-white/10'}`}>
+              <ListTodo className="w-4 h-4 inline mr-2"/>詳細分析
+            </button>
+            <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'settings' ? 'bg-white/20 backdrop-blur' : 'hover:bg-white/10'}`}>
+              <Settings className="w-4 h-4 inline mr-2"/>數據設定
+            </button>
+            <button onClick={onBackToMenu} className="ml-4 px-4 py-2 rounded-lg text-sm font-medium bg-red-500/80 hover:bg-red-600 transition-all">
+              <ArrowLeft className="w-4 h-4 inline mr-2"/>返回
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* 總覽儀表板 */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6 animate-fade-in">
+            {/* 月份選擇器 */}
+            <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Calendar className="w-5 h-5 text-blue-600"/>
+                <span className="font-medium text-slate-700">選擇月份:</span>
+                <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="px-4 py-2 border border-slate-300 rounded-lg bg-white hover:border-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                  {['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="px-4 py-2 border border-slate-300 rounded-lg bg-white hover:border-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                  <option value={2024}>2024年</option>
+                  <option value={2025}>2025年</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-slate-500">
+                  即時數據更新於 {new Date().toLocaleString('zh-TW')}
+                </div>
+              </div>
+            </div>
+
+            {/* 數據來源說明 */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Activity className="w-5 h-5 text-blue-600"/>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-blue-900 mb-2">📊 即時數據整合</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
+                    <div className="bg-white p-2 rounded border border-blue-100">
+                      <p className="font-medium text-blue-700">TQM 品質</p>
+                      <p className="text-slate-600 mt-1">{selectedYear}年{selectedMonth}</p>
+                      <p className="text-blue-600 font-bold">{filteredTqmRecords.length} 筆記錄</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-purple-100">
+                      <p className="font-medium text-purple-700">KPI 績效</p>
+                      <p className="text-slate-600 mt-1">{selectedYear}年{selectedMonth}</p>
+                      <p className="text-purple-600 font-bold">{filteredKpiData.length} 筆記錄</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-cyan-100">
+                      <p className="font-medium text-cyan-700">專案進度</p>
+                      <p className="text-slate-600 mt-1">{selectedYear}年{selectedMonth}</p>
+                      <p className="text-cyan-600 font-bold">{filteredProjects.length} 個專案</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-green-100">
+                      <p className="font-medium text-green-700">預算控管</p>
+                      <p className="text-slate-600 mt-1">每月紀錄</p>
+                      <p className="text-green-600 font-bold">{monthlyBudgets.length} 筆預算</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-orange-100">
+                      <p className="font-medium text-orange-700">成本管控</p>
+                      <p className="text-slate-600 mt-1">每月紀錄</p>
+                      <p className="text-orange-600 font-bold">{monthlyCosts.length} 筆成本</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-blue-700 mt-2">✓ 所有數據來自 Firebase 即時資料庫,依所選月份自動篩選計算</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 總分卡片 */}
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl shadow-2xl p-8 text-white">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-4xl font-bold mb-2">{totalScore.total} <span className="text-2xl">分</span></h2>
+                  <p className="text-blue-100 text-lg">研發部門綜合評分</p>
+                  <div className="mt-4 flex items-center gap-4">
+                    <span className={`px-4 py-2 rounded-full text-2xl font-bold ${
+                      totalScore.grade === 'A' ? 'bg-green-500' :
+                      totalScore.grade === 'B' ? 'bg-blue-500' :
+                      totalScore.grade === 'C' ? 'bg-yellow-500' :
+                      'bg-red-500'
+                    }`}>{totalScore.grade}</span>
+                    <span className="text-xl">{totalScore.level}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <button onClick={generateComprehensiveReport} className="px-6 py-3 bg-white text-blue-600 rounded-lg hover:bg-blue-50 font-bold flex items-center gap-2">
+                    <Download className="w-5 h-5"/>匯出綜合報告
+                  </button>
+                  <p className="text-blue-100 text-sm mt-2">{selectedMonth} 評分結果</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 五大評分項目 */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              {/* TQM 品質 */}
+              <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 bg-blue-100 rounded-lg">
+                    <CheckCircle2 className="w-6 h-6 text-blue-600"/>
+                  </div>
+                  <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold">20%</span>
+                </div>
+                <h3 className="text-sm text-slate-500 mb-1">TQM 品質</h3>
+                <p className="text-3xl font-bold text-slate-800">{calculateTQMScore.weightedScore}</p>
+                <p className="text-xs text-slate-400 mt-1">原始: {calculateTQMScore.score}分</p>
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-600">改善率 {calculateTQMScore.details.improveRate}%</p>
+                </div>
+              </div>
+
+              {/* KPI 績效 */}
+              <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 bg-purple-100 rounded-lg">
+                    <Target className="w-6 h-6 text-purple-600"/>
+                  </div>
+                  <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded font-bold">20%</span>
+                </div>
+                <h3 className="text-sm text-slate-500 mb-1">KPI 績效</h3>
+                <p className="text-3xl font-bold text-slate-800">{calculateKPIScore.weightedScore}</p>
+                <p className="text-xs text-slate-400 mt-1">原始: {calculateKPIScore.score}分</p>
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-600">達成率 {calculateKPIScore.details.achieveRate}%</p>
+                </div>
+              </div>
+
+              {/* 專案進度 */}
+              <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-indigo-500">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 bg-indigo-100 rounded-lg">
+                    <Activity className="w-6 h-6 text-indigo-600"/>
+                  </div>
+                  <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">30%</span>
+                </div>
+                <h3 className="text-sm text-slate-500 mb-1">專案進度</h3>
+                <p className="text-3xl font-bold text-slate-800">{calculateProjectScore.weightedScore}</p>
+                <p className="text-xs text-slate-400 mt-1">原始: {calculateProjectScore.score}分</p>
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-600">準時率 {calculateProjectScore.details.onTimeRate}%</p>
+                </div>
+              </div>
+
+              {/* 預算控制 */}
+              <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 bg-green-100 rounded-lg">
+                    <TrendingUp className="w-6 h-6 text-green-600"/>
+                  </div>
+                  <span className="text-xs bg-green-50 text-green-600 px-2 py-1 rounded font-bold">15%</span>
+                </div>
+                <h3 className="text-sm text-slate-500 mb-1">預算控制</h3>
+                <p className="text-3xl font-bold text-slate-800">{calculateBudgetScore.weightedScore}</p>
+                <p className="text-xs text-slate-400 mt-1">原始: {calculateBudgetScore.score}分</p>
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-600">使用率 {calculateBudgetScore.details.usageRate}%</p>
+                </div>
+              </div>
+
+              {/* 成本管控 */}
+              <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-orange-500">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 bg-orange-100 rounded-lg">
+                    <PieChartIcon className="w-6 h-6 text-orange-600"/>
+                  </div>
+                  <span className="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded font-bold">15%</span>
+                </div>
+                <h3 className="text-sm text-slate-500 mb-1">成本管控</h3>
+                <p className="text-3xl font-bold text-slate-800">{calculateCostScore.weightedScore}</p>
+                <p className="text-xs text-slate-400 mt-1">原始: {calculateCostScore.score}分</p>
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-600">符合率 {calculateCostScore.details.qualifyRate}%</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 評分佔比圓餅圖 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-4">評分項目佔比</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'TQM品質', value: 20, fill: '#3b82f6' },
+                          { name: 'KPI績效', value: 20, fill: '#a855f7' },
+                          { name: '專案進度', value: 30, fill: '#6366f1' },
+                          { name: '預算控制', value: 15, fill: '#22c55e' },
+                          { name: '成本管控', value: 15, fill: '#f97316' }
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) => `${name} ${value}%`}
+                        outerRadius={80}
+                        dataKey="value"
+                      >
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-4">各項目得分對比</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[
+                      { name: 'TQM', score: calculateTQMScore.score, target: 100 },
+                      { name: 'KPI', score: calculateKPIScore.score, target: 100 },
+                      { name: '專案', score: calculateProjectScore.score, target: 100 },
+                      { name: '預算', score: calculateBudgetScore.score, target: 100 },
+                      { name: '成本', score: calculateCostScore.score, target: 100 }
+                    ]}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="score" fill="#6366f1" name="實際得分" />
+                      <Bar dataKey="target" fill="#cbd5e1" name="滿分" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 詳細分析頁面 */}
+        {activeTab === 'details' && (
+          <div className="space-y-6 animate-fade-in">
+            <h1 className="text-3xl font-bold text-slate-800">詳細分析報告</h1>
+            
+            {/* 計分說明 */}
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl shadow-lg p-6 border border-indigo-200">
+              <h3 className="text-xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                <Activity className="w-6 h-6"/>📘 評分計算說明
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* TQM 計分說明 */}
+                <div className="bg-white rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <CheckCircle2 className="w-5 h-5 text-blue-600"/>
+                    </div>
+                    <h4 className="font-bold text-blue-900">TQM 品質 (20%)</h4>
+                  </div>
+                  <div className="text-xs space-y-2 text-slate-700">
+                    <p className="font-medium text-blue-700">計算公式:</p>
+                    <p>改善率 = 已改善數 ÷ 總異常數 × 100%</p>
+                    <div className="bg-blue-50 p-2 rounded mt-2">
+                      <p className="font-medium">評分標準:</p>
+                      <p>• ≥90%: 100分</p>
+                      <p>• 80-89%: 90分</p>
+                      <p>• 70-79%: 80分</p>
+                      <p>• 60-69%: 70分</p>
+                      <p>• &lt;60%: 60分</p>
+                    </div>
+                    <p className="text-indigo-600 font-medium mt-2">
+                      當月數據: {calculateTQMScore.details.total} 筆
+                    </p>
+                  </div>
+                </div>
+
+                {/* KPI 計分說明 */}
+                <div className="bg-white rounded-lg p-4 border border-purple-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <Target className="w-5 h-5 text-purple-600"/>
+                    </div>
+                    <h4 className="font-bold text-purple-900">KPI 績效 (20%)</h4>
+                  </div>
+                  <div className="text-xs space-y-2 text-slate-700">
+                    <p className="font-medium text-purple-700">計算公式:</p>
+                    <p>達成率 = 達成指標數 ÷ 總指標數 × 100%</p>
+                    <div className="bg-purple-50 p-2 rounded mt-2">
+                      <p className="font-medium">評分標準:</p>
+                      <p>• 直接使用達成率作為分數</p>
+                      <p>• 範圍: 0-100分</p>
+                      <p>• 每個 KPI 指標狀態:</p>
+                      <p className="ml-2">- Achieved = 達成</p>
+                      <p className="ml-2">- Missed = 未達成</p>
+                    </div>
+                    <p className="text-indigo-600 font-medium mt-2">
+                      當月數據: {calculateKPIScore.details.total} 個指標
+                    </p>
+                  </div>
+                </div>
+
+                {/* 專案計分說明 */}
+                <div className="bg-white rounded-lg p-4 border border-cyan-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center">
+                      <Activity className="w-5 h-5 text-cyan-600"/>
+                    </div>
+                    <h4 className="font-bold text-cyan-900">專案進度 (30%)</h4>
+                  </div>
+                  <div className="text-xs space-y-2 text-slate-700">
+                    <p className="font-medium text-cyan-700">計算公式:</p>
+                    <p>綜合分數 = 平均進度×70% + 準時率×30%</p>
+                    <div className="bg-cyan-50 p-2 rounded mt-2">
+                      <p className="font-medium">計算方式:</p>
+                      <p>• 平均進度: 所有專案進度平均</p>
+                      <p>• 準時率: 準時完成數 ÷ 已完成數</p>
+                      <p className="mt-1 text-cyan-700">權重分配:</p>
+                      <p>- 進度完成度占 70%</p>
+                      <p>- 時程控制占 30%</p>
+                    </div>
+                    <p className="text-indigo-600 font-medium mt-2">
+                      當月數據: {calculateProjectScore.details.total} 個專案
+                    </p>
+                  </div>
+                </div>
+
+                {/* 預算計分說明 */}
+                <div className="bg-white rounded-lg p-4 border border-green-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                      <TrendingUp className="w-5 h-5 text-green-600"/>
+                    </div>
+                    <h4 className="font-bold text-green-900">預算控管 (15%)</h4>
+                  </div>
+                  <div className="text-xs space-y-2 text-slate-700">
+                    <p className="font-medium text-green-700">計算公式:</p>
+                    <p>使用率 = 實際支出 ÷ 年度預算 × 100%</p>
+                    <div className="bg-green-50 p-2 rounded mt-2">
+                      <p className="font-medium">評分標準:</p>
+                      <p>• 80-90%: 100分 (理想區間)</p>
+                      <p>• 90-95%: 95分</p>
+                      <p>• 70-80%: 90分</p>
+                      <p>• 95-100%: 85分</p>
+                      <p>• &gt;100% 或 &lt;70%: 70分</p>
+                    </div>
+                    <p className="text-indigo-600 font-medium mt-2">
+                      年度預算制
+                    </p>
+                  </div>
+                </div>
+
+                {/* 成本計分說明 */}
+                <div className="bg-white rounded-lg p-4 border border-orange-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <PieChartIcon className="w-5 h-5 text-orange-600"/>
+                    </div>
+                    <h4 className="font-bold text-orange-900">成本管控 (15%)</h4>
+                  </div>
+                  <div className="text-xs space-y-2 text-slate-700">
+                    <p className="font-medium text-orange-700">計算公式:</p>
+                    <p>平均成本率 = Σ(成本÷售價) ÷ 產品數</p>
+                    <div className="bg-orange-50 p-2 rounded mt-2">
+                      <p className="font-medium">評分標準:</p>
+                      <p>• ≤60%: 100分 (優秀)</p>
+                      <p>• 60-65%: 90分 (良好)</p>
+                      <p>• 65-70%: 80分 (合格)</p>
+                      <p>• 70-75%: 70分 (待改善)</p>
+                      <p>• &gt;75%: 60分 (需檢討)</p>
+                      <p className="text-orange-700 mt-1">目標: ≤65%</p>
+                    </div>
+                    <p className="text-indigo-600 font-medium mt-2">
+                      本月產品: {calculateCostScore.details.total} 項
+                    </p>
+                  </div>
+                </div>
+
+                {/* 總分計算說明 */}
+                <div className="bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg p-4 border-2 border-indigo-300">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                      <BarChart3 className="w-5 h-5 text-white"/>
+                    </div>
+                    <h4 className="font-bold text-indigo-900">總分計算</h4>
+                  </div>
+                  <div className="text-xs space-y-2 text-slate-800">
+                    <p className="font-bold text-indigo-800">加權總分公式:</p>
+                    <div className="bg-white p-2 rounded font-mono text-xs">
+                      總分 = TQM×20% + KPI×20% + 專案×30% + 預算×15% + 成本×15%
+                    </div>
+                    <div className="bg-white p-2 rounded mt-2">
+                      <p className="font-medium">等級評定:</p>
+                      <p>• A級: ≥90分 (優秀)</p>
+                      <p>• B級: 80-89分 (良好)</p>
+                      <p>• C級: 70-79分 (合格)</p>
+                      <p>• D級: 60-69分 (待改善)</p>
+                      <p>• F級: &lt;60分 (不合格)</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* TQM 詳細 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-blue-600 mb-4 flex items-center gap-2">
+                <CheckCircle2 className="w-6 h-6"/>TQM 品質管理詳細
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-slate-600">總異常數</p>
+                  <p className="text-2xl font-bold text-slate-800">{calculateTQMScore.details.total}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-slate-600">已改善</p>
+                  <p className="text-2xl font-bold text-green-600">{calculateTQMScore.details.improved}</p>
+                </div>
+                <div className="p-4 bg-yellow-50 rounded-lg">
+                  <p className="text-sm text-slate-600">處理中</p>
+                  <p className="text-2xl font-bold text-yellow-600">{calculateTQMScore.details.pending}</p>
+                </div>
+                <div className="p-4 bg-red-50 rounded-lg">
+                  <p className="text-sm text-slate-600">未處理</p>
+                  <p className="text-2xl font-bold text-red-600">{calculateTQMScore.details.notStarted}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI 詳細 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-purple-600 mb-4 flex items-center gap-2">
+                <Target className="w-6 h-6"/>KPI 績效詳細
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-purple-50 rounded-lg">
+                  <p className="text-sm text-slate-600">總指標數</p>
+                  <p className="text-2xl font-bold text-slate-800">{calculateKPIScore.details.total}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-slate-600">已達成</p>
+                  <p className="text-2xl font-bold text-green-600">{calculateKPIScore.details.achieved}</p>
+                </div>
+                <div className="p-4 bg-red-50 rounded-lg">
+                  <p className="text-sm text-slate-600">未達成</p>
+                  <p className="text-2xl font-bold text-red-600">{calculateKPIScore.details.missed}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 專案詳細 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-indigo-600 mb-4 flex items-center gap-2">
+                <Activity className="w-6 h-6"/>專案進度詳細
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-indigo-50 rounded-lg">
+                  <p className="text-sm text-slate-600">總專案數</p>
+                  <p className="text-2xl font-bold text-slate-800">{calculateProjectScore.details.total}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-slate-600">已完成</p>
+                  <p className="text-2xl font-bold text-green-600">{calculateProjectScore.details.completed}</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-slate-600">準時完成</p>
+                  <p className="text-2xl font-bold text-blue-600">{calculateProjectScore.details.onTime}</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg">
+                  <p className="text-sm text-slate-600">平均進度</p>
+                  <p className="text-2xl font-bold text-purple-600">{calculateProjectScore.details.avgProgress}%</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 產品成本明細表 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-orange-600 mb-4 flex items-center gap-2">
+                <PieChartIcon className="w-6 h-6"/>產品成本管控明細
+              </h3>
+              {filteredMonthlyCosts.length > 0 && filteredMonthlyCosts[0].products && filteredMonthlyCosts[0].products.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">產品名稱</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">銷售價格</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">成本</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">成本率</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">狀態</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredMonthlyCosts[0].products.map((product, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-800">{product.productName}</td>
+                          <td className="px-4 py-3 text-right text-slate-700">{product.salesPrice.toLocaleString()} 元</td>
+                          <td className="px-4 py-3 text-right text-slate-700">{product.cost.toLocaleString()} 元</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`font-bold ${product.costRate <= 65 ? 'text-green-600' : 'text-red-600'}`}>
+                              {product.costRate}%
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {product.costRate <= 65 ? 
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">✓ 合格</span> :
+                              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">✗ 超標</span>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-slate-500">
+                  <p>本月尚無成本數據</p>
+                  <p className="text-sm mt-2">請至「數據設定」頁面新增本月成本資料</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 數據設定頁面 */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6 animate-fade-in">
+            <h1 className="text-3xl font-bold text-slate-800">數據設定</h1>
+            
+            {/* 每月預算設定 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold text-green-600 mb-4 flex items-center gap-2">
+                <TrendingUp className="w-6 h-6"/>每月預算控制
+              </h3>
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-slate-600">當前月份: {selectedYear}年 {selectedMonth}</p>
+                {filteredMonthlyBudgets.length === 0 && (
+                  <p className="text-sm text-orange-600 mt-1">⚠️ 尚未設定本月預算</p>
+                )}
+              </div>
+              
+              {!editingBudget ? (
+                // 顯示模式
+                filteredMonthlyBudgets.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">年度預算（元）</label>
+                        <div className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <span className="text-lg font-bold text-slate-800">
+                            {filteredMonthlyBudgets[0].yearlyBudget.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">實際支出（元）</label>
+                        <div className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <span className="text-lg font-bold text-slate-800">
+                            {filteredMonthlyBudgets[0].actualSpending.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">使用率</label>
+                        <div className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <span className="text-lg font-bold text-slate-800">
+                            {((filteredMonthlyBudgets[0].actualSpending / filteredMonthlyBudgets[0].yearlyBudget) * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setEditingBudget(true)} 
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      編輯本月預算
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => setEditingBudget(true)} 
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4"/>新增本月預算
+                  </button>
+                )
+              ) : (
+                // 編輯模式
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">年度預算（元）</label>
+                      <input 
+                        type="number" 
+                        defaultValue={filteredMonthlyBudgets.length > 0 ? filteredMonthlyBudgets[0].yearlyBudget : defaultYearlyBudget}
+                        id="budget-yearly"
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">實際支出（元）</label>
+                      <input 
+                        type="number" 
+                        defaultValue={filteredMonthlyBudgets.length > 0 ? filteredMonthlyBudgets[0].actualSpending : 0}
+                        id="budget-spending"
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button 
+                        onClick={() => {
+                          const yearlyBudget = parseInt(document.getElementById('budget-yearly').value);
+                          const actualSpending = parseInt(document.getElementById('budget-spending').value);
+                          const month = parseInt(selectedMonth.replace('月', ''));
+                          
+                          if (filteredMonthlyBudgets.length > 0) {
+                            // 更新現有記錄
+                            db.updateDoc('monthly_budgets', filteredMonthlyBudgets[0].id, {
+                              yearlyBudget,
+                              actualSpending,
+                              updatedAt: new Date().toISOString()
+                            });
+                          } else {
+                            // 新增記錄
+                            db.addDoc('monthly_budgets', {
+                              year: selectedYear,
+                              month: month,
+                              yearlyBudget,
+                              actualSpending,
+                              createdAt: new Date().toISOString()
+                            });
+                          }
+                          setEditingBudget(false);
+                        }}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                      >
+                        儲存
+                      </button>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setEditingBudget(false)} 
+                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 每月產品成本設定 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-orange-600 flex items-center gap-2">
+                  <PieChartIcon className="w-6 h-6"/>每月新機成本管控
+                </h3>
+              </div>
+              
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-slate-600">當前月份: {selectedYear}年 {selectedMonth}</p>
+                {filteredMonthlyCosts.length === 0 && (
+                  <p className="text-sm text-orange-600 mt-1">⚠️ 尚未設定本月成本</p>
+                )}
+              </div>
+
+              {!editingCost ? (
+                // 顯示模式
+                filteredMonthlyCosts.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">產品名稱</th>
+                            <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">銷售價格</th>
+                            <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">成本</th>
+                            <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">成本率</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(filteredMonthlyCosts[0].products || []).map((product, idx) => (
+                            <tr key={idx}>
+                              <td className="px-4 py-3 font-medium text-slate-800">{product.productName}</td>
+                              <td className="px-4 py-3 text-right text-slate-700">{product.salesPrice.toLocaleString()} 元</td>
+                              <td className="px-4 py-3 text-right text-slate-700">{product.cost.toLocaleString()} 元</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`font-bold ${product.costRate <= 65 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {product.costRate}%
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button 
+                      onClick={() => setEditingCost(true)} 
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      編輯本月成本
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => setEditingCost(true)} 
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4"/>新增本月成本
+                  </button>
+                )
+              ) : (
+                // 編輯模式 - 這裡我們使用簡單的JSON編輯器
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      產品成本資料 (JSON格式)
+                    </label>
+                    <textarea 
+                      id="cost-products"
+                      rows="10"
+                      defaultValue={JSON.stringify(
+                        filteredMonthlyCosts.length > 0 
+                          ? filteredMonthlyCosts[0].products || []
+                          : [
+                              {productName: "產品A", salesPrice: 100000, cost: 60000, costRate: 60},
+                              {productName: "產品B", salesPrice: 150000, cost: 90000, costRate: 60}
+                            ],
+                        null,
+                        2
+                      )}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg font-mono text-sm"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      格式範例: [{"{"}productName: "產品A", salesPrice: 100000, cost: 60000, costRate: 60{"}"}]
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => {
+                        try {
+                          const products = JSON.parse(document.getElementById('cost-products').value);
+                          const month = parseInt(selectedMonth.replace('月', ''));
+                          
+                          if (filteredMonthlyCosts.length > 0) {
+                            // 更新現有記錄
+                            db.updateDoc('monthly_costs', filteredMonthlyCosts[0].id, {
+                              products,
+                              updatedAt: new Date().toISOString()
+                            });
+                          } else {
+                            // 新增記錄
+                            db.addDoc('monthly_costs', {
+                              year: selectedYear,
+                              month: month,
+                              products,
+                              createdAt: new Date().toISOString()
+                            });
+                          }
+                          setEditingCost(false);
+                        } catch (error) {
+                          alert('JSON 格式錯誤: ' + error.message);
+                        }
+                      }}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      儲存
+                    </button>
+                    <button 
+                      onClick={() => setEditingCost(false)} 
+                      className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 歷史記錄頁面 */}
+        {activeTab === 'history' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h1 className="text-3xl font-bold text-slate-800">歷史評分記錄</h1>
+              <div className="flex gap-3">
+                <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="px-4 py-2 border border-slate-300 rounded-lg bg-white">
+                  <option value={2024}>2024年</option>
+                  <option value={2025}>2025年</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 歷史記錄表格 */}
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                    <tr>
+                      <th className="px-6 py-4 text-left font-semibold">月份</th>
+                      <th className="px-6 py-4 text-center font-semibold">TQM品質<br/>(20%)</th>
+                      <th className="px-6 py-4 text-center font-semibold">KPI績效<br/>(20%)</th>
+                      <th className="px-6 py-4 text-center font-semibold">專案進度<br/>(30%)</th>
+                      <th className="px-6 py-4 text-center font-semibold">預算控管<br/>(15%)</th>
+                      <th className="px-6 py-4 text-center font-semibold">成本管控<br/>(15%)</th>
+                      <th className="px-6 py-4 text-center font-semibold">總分</th>
+                      <th className="px-6 py-4 text-center font-semibold">等級</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {historyScores.filter(h => h.year === selectedYear).map((record, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-slate-800">{record.year}年 {record.month}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${record.tqm >= 80 ? 'bg-green-100 text-green-700' : record.tqm >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {record.tqm}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${record.kpi >= 80 ? 'bg-green-100 text-green-700' : record.kpi >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {record.kpi}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${record.project >= 80 ? 'bg-green-100 text-green-700' : record.project >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {record.project}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${record.budget >= 80 ? 'bg-green-100 text-green-700' : record.budget >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {record.budget}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${record.cost >= 80 ? 'bg-green-100 text-green-700' : record.cost >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {record.cost}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="text-2xl font-bold text-blue-600">{record.total}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-block px-4 py-2 rounded-full text-lg font-bold ${
+                            record.grade === 'A' ? 'bg-green-500 text-white' :
+                            record.grade === 'B' ? 'bg-blue-500 text-white' :
+                            record.grade === 'C' ? 'bg-yellow-500 text-white' :
+                            record.grade === 'D' ? 'bg-orange-500 text-white' :
+                            'bg-red-500 text-white'
+                          }`}>{record.grade}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 統計摘要 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200">
+                <h3 className="text-sm font-medium text-green-800 mb-2">年度最高分</h3>
+                <p className="text-3xl font-bold text-green-700">
+                  {Math.max(...historyScores.filter(h => h.year === selectedYear).map(h => h.total))}
+                </p>
+                <p className="text-xs text-green-600 mt-1">
+                  {historyScores.filter(h => h.year === selectedYear).find(h => h.total === Math.max(...historyScores.filter(h2 => h2.year === selectedYear).map(h2 => h2.total)))?.month}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-xl border border-red-200">
+                <h3 className="text-sm font-medium text-red-800 mb-2">年度最低分</h3>
+                <p className="text-3xl font-bold text-red-700">
+                  {Math.min(...historyScores.filter(h => h.year === selectedYear).map(h => h.total))}
+                </p>
+                <p className="text-xs text-red-600 mt-1">
+                  {historyScores.filter(h => h.year === selectedYear).find(h => h.total === Math.min(...historyScores.filter(h2 => h2.year === selectedYear).map(h2 => h2.total)))?.month}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200">
+                <h3 className="text-sm font-medium text-blue-800 mb-2">年度平均分</h3>
+                <p className="text-3xl font-bold text-blue-700">
+                  {(historyScores.filter(h => h.year === selectedYear).reduce((sum, h) => sum + h.total, 0) / historyScores.filter(h => h.year === selectedYear).length).toFixed(1)}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">12個月平均</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200">
+                <h3 className="text-sm font-medium text-purple-800 mb-2">優良月份</h3>
+                <p className="text-3xl font-bold text-purple-700">
+                  {historyScores.filter(h => h.year === selectedYear && h.grade === 'A').length}
+                </p>
+                <p className="text-xs text-purple-600 mt-1">A級評分月份數</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 趨勢分析頁面 */}
+        {activeTab === 'analysis' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h1 className="text-3xl font-bold text-slate-800">KPI 趨勢分析</h1>
+              <div className="flex gap-3">
+                <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="px-4 py-2 border border-slate-300 rounded-lg bg-white">
+                  <option value={2024}>2024年</option>
+                  <option value={2025}>2025年</option>
+                </select>
+                <select value={selectedQuarter} onChange={e => setSelectedQuarter(e.target.value)} className="px-4 py-2 border border-slate-300 rounded-lg bg-white">
+                  <option value="Q1">第一季 (1-3月)</option>
+                  <option value="Q2">第二季 (4-6月)</option>
+                  <option value="Q3">第三季 (7-9月)</option>
+                  <option value="Q4">第四季 (10-12月)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 年度趨勢圖 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold text-slate-800 mb-6">年度總分趨勢</h2>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={historyScores.filter(h => h.year === selectedYear)}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"/>
+                    <XAxis dataKey="month" stroke="#64748b"/>
+                    <YAxis domain={[0, 100]} stroke="#64748b"/>
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}/>
+                    <Legend />
+                    <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={3} name="總分" dot={{ fill: '#3b82f6', r: 6 }}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 五大指標趨勢圖 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold text-slate-800 mb-6">五大指標趨勢對比</h2>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={historyScores.filter(h => h.year === selectedYear)}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"/>
+                    <XAxis dataKey="month" stroke="#64748b"/>
+                    <YAxis domain={[0, 100]} stroke="#64748b"/>
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}/>
+                    <Legend />
+                    <Line type="monotone" dataKey="tqm" stroke="#3b82f6" strokeWidth={2} name="TQM品質" />
+                    <Line type="monotone" dataKey="kpi" stroke="#8b5cf6" strokeWidth={2} name="KPI績效" />
+                    <Line type="monotone" dataKey="project" stroke="#06b6d4" strokeWidth={2} name="專案進度" />
+                    <Line type="monotone" dataKey="budget" stroke="#10b981" strokeWidth={2} name="預算控管" />
+                    <Line type="monotone" dataKey="cost" stroke="#f59e0b" strokeWidth={2} name="成本管控" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 季度對比分析 */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold text-slate-800 mb-6">季度平均分數對比</h2>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { 
+                      quarter: 'Q1', 
+                      average: (historyScores.filter(h => h.year === selectedYear && ['1月','2月','3月'].includes(h.month)).reduce((sum, h) => sum + h.total, 0) / 3).toFixed(1)
+                    },
+                    { 
+                      quarter: 'Q2', 
+                      average: (historyScores.filter(h => h.year === selectedYear && ['4月','5月','6月'].includes(h.month)).reduce((sum, h) => sum + h.total, 0) / 3).toFixed(1)
+                    },
+                    { 
+                      quarter: 'Q3', 
+                      average: (historyScores.filter(h => h.year === selectedYear && ['7月','8月','9月'].includes(h.month)).reduce((sum, h) => sum + h.total, 0) / 3).toFixed(1)
+                    },
+                    { 
+                      quarter: 'Q4', 
+                      average: (historyScores.filter(h => h.year === selectedYear && ['10月','11月','12月'].includes(h.month)).reduce((sum, h) => sum + h.total, 0) / 3).toFixed(1)
+                    }
+                  ]}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"/>
+                    <XAxis dataKey="quarter" stroke="#64748b"/>
+                    <YAxis domain={[0, 100]} stroke="#64748b"/>
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}/>
+                    <Bar dataKey="average" fill="#8b5cf6" name="季度平均分" radius={[8, 8, 0, 0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 績效分析洞察 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5"/>表現最佳指標
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const yearData = historyScores.filter(h => h.year === selectedYear);
+                    const avgScores = {
+                      TQM: (yearData.reduce((sum, h) => sum + h.tqm, 0) / yearData.length).toFixed(1),
+                      KPI: (yearData.reduce((sum, h) => sum + h.kpi, 0) / yearData.length).toFixed(1),
+                      專案: (yearData.reduce((sum, h) => sum + h.project, 0) / yearData.length).toFixed(1),
+                      預算: (yearData.reduce((sum, h) => sum + h.budget, 0) / yearData.length).toFixed(1),
+                      成本: (yearData.reduce((sum, h) => sum + h.cost, 0) / yearData.length).toFixed(1)
+                    };
+                    const maxMetric = Object.entries(avgScores).sort((a, b) => b[1] - a[1])[0];
+                    return (
+                      <div className="bg-white p-4 rounded-lg">
+                        <p className="text-3xl font-bold text-blue-600">{maxMetric[0]}</p>
+                        <p className="text-sm text-slate-600 mt-1">年度平均: {maxMetric[1]} 分</p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-6 border border-orange-200">
+                <h3 className="text-lg font-bold text-orange-900 mb-4 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5"/>需要改善指標
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const yearData = historyScores.filter(h => h.year === selectedYear);
+                    const avgScores = {
+                      TQM: (yearData.reduce((sum, h) => sum + h.tqm, 0) / yearData.length).toFixed(1),
+                      KPI: (yearData.reduce((sum, h) => sum + h.kpi, 0) / yearData.length).toFixed(1),
+                      專案: (yearData.reduce((sum, h) => sum + h.project, 0) / yearData.length).toFixed(1),
+                      預算: (yearData.reduce((sum, h) => sum + h.budget, 0) / yearData.length).toFixed(1),
+                      成本: (yearData.reduce((sum, h) => sum + h.cost, 0) / yearData.length).toFixed(1)
+                    };
+                    const minMetric = Object.entries(avgScores).sort((a, b) => a[1] - b[1])[0];
+                    return (
+                      <div className="bg-white p-4 rounded-lg">
+                        <p className="text-3xl font-bold text-orange-600">{minMetric[0]}</p>
+                        <p className="text-sm text-slate-600 mt-1">年度平均: {minMetric[1]} 分</p>
+                        <p className="text-xs text-orange-600 mt-2">建議優先關注此項指標表現</p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </main>
+    </div>
+  );
+};
+
 // --- System Selector Component ---
 const SystemSelector = ({ onSelect, onLogout, user }) => {
   const isAdmin = user?.role === 'admin';
-  const gridClass = `grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-8`;
+  const gridClass = `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`;
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-4xl w-full">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+      <div className="max-w-6xl w-full">
         <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">歡迎回來，{user.displayName}</h1>
-          <p className="text-slate-500">請選擇您要進入的系統</p>
+          <h1 className="text-4xl font-bold text-slate-800 mb-2">歡迎回來，{user.displayName}</h1>
+          <p className="text-slate-500 text-lg">請選擇您要進入的系統</p>
         </div>
         
         <div className={gridClass}>
@@ -3561,8 +6139,20 @@ const SystemSelector = ({ onSelect, onLogout, user }) => {
             <div className="bg-blue-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors">
               <CheckCircle2 className="w-8 h-8 text-blue-600 group-hover:text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">TQM 品質管理系統</h2>
-            <p className="text-slate-500">管理異常紀錄、追蹤改善進度、統計分析報表。</p>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">TQM 品質管理</h2>
+            <p className="text-slate-500 text-sm">管理異常紀錄、追蹤改善進度、統計分析報表。</p>
+          </button>
+
+          <button 
+            onClick={() => onSelect('KPI_PERSONAL')}
+            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-blue-200 group text-left relative overflow-hidden"
+          >
+            <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">簡化版</div>
+            <div className="bg-gradient-to-br from-blue-100 to-indigo-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-blue-600 group-hover:to-indigo-600 transition-all">
+              <User className="w-8 h-8 text-blue-600 group-hover:text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 個人填寫</h2>
+            <p className="text-slate-500 text-sm">5分鐘快速填寫,只記錄工作內容,不用算分數。</p>
           </button>
 
           <button 
@@ -3572,8 +6162,8 @@ const SystemSelector = ({ onSelect, onLogout, user }) => {
             <div className="bg-purple-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-purple-600 transition-colors">
               <Target className="w-8 h-8 text-purple-600 group-hover:text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">KPI 績效系統</h2>
-            <p className="text-slate-500">設定績效指標、評核員工表現、年度趨勢分析。</p>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 管理儀表板</h2>
+            <p className="text-slate-500 text-sm">主管專用:評核員工表現、年度趨勢分析。</p>
           </button>
 
           <button 
@@ -3583,8 +6173,20 @@ const SystemSelector = ({ onSelect, onLogout, user }) => {
             <div className="bg-indigo-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-indigo-600 transition-colors">
               <Activity className="w-8 h-8 text-indigo-600 group-hover:text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">R&D Nexus</h2>
-            <p className="text-slate-500">研發專案進度追蹤、甘特圖管理、資源負載分析。</p>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">R&D Nexus</h2>
+            <p className="text-slate-500 text-sm">研發專案進度追蹤、甘特圖管理、資源負載分析。</p>
+          </button>
+
+          <button 
+            onClick={() => onSelect('KPI_REPORT')}
+            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-green-200 group text-left relative overflow-hidden"
+          >
+            <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold">NEW</div>
+            <div className="bg-gradient-to-br from-green-100 to-emerald-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-green-600 group-hover:to-emerald-600 transition-all">
+              <BarChart3 className="w-8 h-8 text-green-600 group-hover:text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 整合報告</h2>
+            <p className="text-slate-500 text-sm">研發部門綜合評分、五大指標整合分析。</p>
           </button>
 
           {isAdmin && (
@@ -3595,10 +6197,10 @@ const SystemSelector = ({ onSelect, onLogout, user }) => {
               <div className="bg-amber-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-600 transition-colors">
                 <Shield className="w-8 h-8 text-amber-600 group-hover:text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Appraisal 儀表板</h2>
-              <p className="text-slate-500">管理者可以上傳 Excel 考核檔並快速生成分析儀表板。</p>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Appraisal 儀表板</h2>
+              <p className="text-slate-500 text-sm">上傳 Excel 考核檔並快速生成分析儀表板。</p>
               <div className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-amber-500 uppercase tracking-wide">
-                管理員限定
+                <Shield className="w-3 h-3"/>管理員限定
               </div>
             </button>
           )}
@@ -4226,12 +6828,20 @@ export default function App() {
     return <TQMApp appUser={user} onLogout={handleLogout} onBackToMenu={() => setSystem(null)} />;
   }
 
+  if (system === 'KPI_PERSONAL') {
+    return <KPIPersonalEntryApp user={user} onBackToMenu={() => setSystem(null)} />;
+  }
+
   if (system === 'KPI') {
     return <KPIApp onBackToMenu={() => setSystem(null)} />;
   }
 
   if (system === 'PROJECT') {
     return <RDNexusSystem user={user} onBackToMenu={() => setSystem(null)} />;
+  }
+
+  if (system === 'KPI_REPORT') {
+    return <KPIReportSystem user={user} onBackToMenu={() => setSystem(null)} />;
   }
 
   if (system === 'APPRAISAL') {
