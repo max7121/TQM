@@ -583,7 +583,7 @@ const NavButton = ({ active, onClick, icon: Icon, label }) => (
 );
 
 // --- Login Screen Component (Updated with Import) ---
-const LoginScreen = ({ onLogin, loading, onImportDB }) => {
+const LoginScreen = ({ onLogin, loading, onImportDB, onExportDB }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -653,14 +653,23 @@ const LoginScreen = ({ onLogin, loading, onImportDB }) => {
           </button>
         </form>
         
-        <div className="mt-6 pt-6 border-t border-gray-100">
-          <label className="flex items-center justify-center gap-2 w-full p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors text-sm border border-dashed border-gray-300">
-             <Database size={16} />
-             <span>載入資料庫檔案 (Load DB)</span>
-             <input type="file" accept=".json" onChange={onImportDB} className="hidden" />
-          </label>
-          <p className="text-center text-xs text-gray-400 mt-2">
-            如果您有備份的資料檔 (.json)，可在此載入
+        <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center justify-center gap-2 w-full p-2.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors text-sm border border-dashed border-gray-300">
+               <Database size={16} />
+               <span>載入資料庫</span>
+               <input type="file" accept=".json" onChange={onImportDB} className="hidden" />
+            </label>
+            <button 
+              onClick={onExportDB}
+              className="flex items-center justify-center gap-2 w-full p-2.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors text-sm border border-dashed border-green-300"
+            >
+              <FileJson size={16} />
+              <span>匯出資料庫</span>
+            </button>
+          </div>
+          <p className="text-center text-xs text-gray-400">
+            💾 備份您的資料檔 (.json) 或載入先前備份
           </p>
         </div>
 
@@ -2836,10 +2845,91 @@ const MachineForm = ({ initialData, onSubmit, onCancel }) => {
     image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80',
     members: ''
   });
+  const [uploadError, setUploadError] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 檢查文件大小 (5MB = 5 * 1024 * 1024 bytes)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setUploadError('圖片大小超過 5MB，請選擇較小的圖片');
+      e.target.value = '';
+      return;
+    }
+
+    // 檢查文件類型
+    if (!file.type.startsWith('image/')) {
+      setUploadError('請選擇圖片檔案 (JPG, PNG, GIF 等)');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadError('正在處理圖片...');
+
+    // 讀取並壓縮圖片
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const img = new Image();
+      img.onload = () => {
+        // 壓縮圖片至最大寬度 1200px
+        const maxWidth = 1200;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // 轉換為 Base64，調整品質直到符合 Firestore 限制
+        let quality = 0.8;
+        let base64 = canvas.toDataURL('image/jpeg', quality);
+        
+        // Firestore 欄位限制約 1MB，我們設定安全值為 800KB
+        const maxBase64Size = 800 * 1024;
+        
+        while (base64.length > maxBase64Size && quality > 0.1) {
+          quality -= 0.1;
+          base64 = canvas.toDataURL('image/jpeg', quality);
+        }
+
+        if (base64.length > maxBase64Size) {
+          setUploadError('圖片壓縮後仍超過儲存限制，請選擇更小的圖片或使用圖片網址');
+          e.target.value = '';
+          return;
+        }
+
+        setUploadError('');
+        setFormData(prev => ({ ...prev, image: base64 }));
+      };
+      
+      img.onerror = () => {
+        setUploadError('圖片載入失敗，請重試');
+        e.target.value = '';
+      };
+      
+      img.src = reader.result;
+    };
+    
+    reader.onerror = () => {
+      setUploadError('讀取檔案失敗，請重試');
+      e.target.value = '';
+    };
+    
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -2872,11 +2962,45 @@ const MachineForm = ({ initialData, onSubmit, onCancel }) => {
         <p className="text-xs text-slate-500 mt-1">例如：張三, 李四, 王五</p>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">圖片連結 (Image URL)</label>
-        <input name="image" value={formData.image} onChange={handleChange} className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://..." />
+        <label className="block text-sm font-medium text-slate-700 mb-1">專案圖片</label>
+        <div className="space-y-2">
+          <input 
+            type="file" 
+            accept="image/*" 
+            onChange={handleImageUpload}
+            className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 file:cursor-pointer"
+          />
+          <p className="text-xs text-slate-500">支援 JPG, PNG, GIF 等圖片格式，檔案大小限制 5MB (系統會自動壓縮至適合儲存的大小)</p>
+          {uploadError && (
+            <p className={`text-xs px-3 py-2 rounded-lg border ${
+              uploadError.includes('處理中') || uploadError.includes('正在') 
+                ? 'text-blue-600 bg-blue-50 border-blue-200' 
+                : 'text-red-600 bg-red-50 border-red-200'
+            }`}>
+              {uploadError.includes('處理中') || uploadError.includes('正在') ? '⏳' : '⚠️'} {uploadError}
+            </p>
+          )}
+          <div className="text-xs text-slate-600">或輸入圖片網址:</div>
+          <input 
+            name="image" 
+            value={formData.image} 
+            onChange={handleChange} 
+            className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+            placeholder="https://..." 
+          />
+        </div>
         {formData.image && (
-            <div className="mt-2 h-32 w-full bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
-                <img src={formData.image} alt="Preview" className="w-full h-full object-cover" onError={(e) => e.target.src = 'https://via.placeholder.com/300?text=Image+Error'} />
+            <div className="mt-3 h-40 w-full bg-slate-100 rounded-lg overflow-hidden border-2 border-slate-200">
+                <img 
+                  src={formData.image} 
+                  alt="Preview" 
+                  className="w-full h-full object-cover" 
+                  onError={(e) => {
+                    // 使用 Unsplash 的可靠備用圖片
+                    e.target.src = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80';
+                    e.target.onerror = null; // 防止無限循環
+                  }} 
+                />
             </div>
         )}
       </div>
@@ -3699,7 +3823,10 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
         {activeTab === 'history' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-slate-800">產品設計履歷 (Design History)</h3>
+              <div>
+                <h3 className="font-bold text-slate-800">產品設計履歷 (Design History)</h3>
+                <p className="text-xs text-slate-500 mt-1">包含手動新增與任務異動自動記錄</p>
+              </div>
               <button onClick={() => setIsHistoryModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
                 <Plus size={16} /> 新增紀錄
               </button>
@@ -3707,12 +3834,21 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
             <div className="relative border-l-2 border-slate-200 ml-3 space-y-8">
               {history.map((item) => (
                 <div key={item.id} className="relative pl-8">
-                  <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-blue-500"></div>
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                  <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 ${
+                    item.autoGenerated ? 'border-purple-500' : 'border-blue-500'
+                  }`}></div>
+                  <div className={`p-4 rounded-lg border ${
+                    item.autoGenerated ? 'bg-purple-50 border-purple-100' : 'bg-slate-50 border-slate-100'
+                  }`}>
                     <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <span className="font-bold text-blue-600 mr-2">{item.version}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-blue-600">{item.version}</span>
                         <span className="text-sm text-slate-500">{item.date}</span>
+                        {item.autoGenerated && (
+                          <span className="px-2 py-0.5 bg-purple-200 text-purple-700 rounded text-xs font-medium">
+                            🤖 自動記錄
+                          </span>
+                        )}
                       </div>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         item.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 
@@ -3723,6 +3859,21 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
                     </div>
                     <h4 className="font-bold text-slate-800 mb-1">{item.action}</h4>
                     <p className="text-sm text-slate-600 mb-3">{item.desc}</p>
+                    {item.changes && item.changes.length > 0 && (
+                      <div className="mb-3 p-3 bg-white rounded border border-slate-200">
+                        <p className="text-xs font-medium text-slate-700 mb-2">變更詳情：</p>
+                        <div className="space-y-1">
+                          {item.changes.map((change, idx) => (
+                            <div key={idx} className="text-xs text-slate-600 flex items-center gap-2">
+                              <span className="font-medium text-slate-700">{change.field}:</span>
+                              <span className="line-through text-rose-600">{change.from}</span>
+                              <span>→</span>
+                              <span className="text-emerald-600 font-medium">{change.to}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {item.attachment && (
                       <div className="mb-3">
                         <a href={item.attachment} download={item.fileName || 'download'} className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors">
@@ -4430,11 +4581,105 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   };
 
   const handleAddProject = async (newProject) => {
-    await db.addDoc('rd_projects', { ...newProject, machineId: machine.id });
+    const projectId = await db.addDoc('rd_projects', { ...newProject, machineId: machine.id });
+    
+    // 🆕 自動記錄專案新增到產品履歷
+    const timestamp = new Date().toISOString().split('T')[0];
+    const author = user?.displayName || '系統';
+    
+    const historyEntry = {
+      version: 'Auto',
+      date: timestamp,
+      action: `新增專案：${newProject.name}`,
+      desc: `負責人: ${newProject.owner}；類別: ${newProject.category}；狀態: ${newProject.status}；進度: ${newProject.progress}%`,
+      status: 'Pending',
+      author: author,
+      projectId: projectId,
+      autoGenerated: true
+    };
+    
+    await db.addDoc('rd_history', historyEntry);
+    console.log('✅ 自動記錄新增專案:', historyEntry);
   };
 
   const handleUpdateProject = async (updatedProject) => {
+    // 先獲取原始專案資料以便比對變更
+    const originalProject = projects.find(p => p.id === updatedProject.id);
+    
+    // 更新專案
     await db.updateDoc('rd_projects', updatedProject.id, updatedProject);
+    
+    // 🆕 自動記錄專案異動到產品履歷
+    if (originalProject) {
+      const changes = [];
+      const timestamp = new Date().toISOString().split('T')[0];
+      const author = user?.displayName || '系統';
+      
+      // 檢測狀態變更
+      if (originalProject.status !== updatedProject.status) {
+        changes.push({
+          field: '狀態',
+          from: originalProject.status,
+          to: updatedProject.status
+        });
+      }
+      
+      // 檢測負責人變更
+      if (originalProject.owner !== updatedProject.owner) {
+        changes.push({
+          field: '負責人',
+          from: originalProject.owner,
+          to: updatedProject.owner
+        });
+      }
+      
+      // 檢測進度變更（變化超過5%才記錄）
+      if (Math.abs((originalProject.progress || 0) - (updatedProject.progress || 0)) >= 5) {
+        changes.push({
+          field: '進度',
+          from: `${originalProject.progress || 0}%`,
+          to: `${updatedProject.progress || 0}%`
+        });
+      }
+      
+      // 檢測階段變更
+      if (originalProject.stage !== updatedProject.stage) {
+        changes.push({
+          field: '階段',
+          from: originalProject.stage,
+          to: updatedProject.stage
+        });
+      }
+      
+      // 檢測名稱變更
+      if (originalProject.name !== updatedProject.name) {
+        changes.push({
+          field: '專案名稱',
+          from: originalProject.name,
+          to: updatedProject.name
+        });
+      }
+      
+      // 如果有變更，自動新增履歷記錄
+      if (changes.length > 0) {
+        const changeDesc = changes.map(c => `${c.field}: ${c.from} → ${c.to}`).join('；');
+        
+        const historyEntry = {
+          version: 'Auto',
+          date: timestamp,
+          action: `專案更新：${updatedProject.name}`,
+          desc: changeDesc,
+          status: 'Pending',
+          author: author,
+          projectId: updatedProject.id,
+          autoGenerated: true,
+          changes: changes
+        };
+        
+        await db.addDoc('rd_history', historyEntry);
+        console.log('✅ 自動記錄專案異動:', historyEntry);
+      }
+    }
   };
 
   const handleDeleteProject = async (projectId) => {
@@ -4448,11 +4693,99 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   };
 
   const handleAddTask = async (newTask) => {
-    await db.addDoc('rd_tasks', newTask);
+    const taskId = await db.addDoc('rd_tasks', newTask);
+    
+    // 🆕 自動記錄任務新增到產品履歷
+    const timestamp = new Date().toISOString().split('T')[0];
+    const author = user?.displayName || '系統';
+    
+    const historyEntry = {
+      version: 'Auto',
+      date: timestamp,
+      action: `新增任務：${newTask.title}`,
+      desc: `負責人: ${newTask.owner}；優先級: ${newTask.priority}；狀態: ${newTask.status}`,
+      status: 'Pending',
+      author: author,
+      projectId: newTask.projectId,
+      taskId: taskId,
+      autoGenerated: true
+    };
+    
+    await db.addDoc('rd_history', historyEntry);
+    console.log('✅ 自動記錄新增任務:', historyEntry);
   };
 
   const handleUpdateTask = async (updatedTask) => {
+    // 先獲取原始任務資料以便比對變更
+    const originalTask = tasks.find(t => t.id === updatedTask.id);
+    
+    // 更新任務
     await db.updateDoc('rd_tasks', updatedTask.id, updatedTask);
+    
+    // 🆕 自動記錄任務異動到產品履歷
+    if (originalTask) {
+      const changes = [];
+      const timestamp = new Date().toISOString().split('T')[0];
+      const author = user?.displayName || '系統';
+      
+      // 檢測狀態變更
+      if (originalTask.status !== updatedTask.status) {
+        changes.push({
+          field: '狀態',
+          from: originalTask.status,
+          to: updatedTask.status
+        });
+      }
+      
+      // 檢測負責人變更
+      if (originalTask.owner !== updatedTask.owner) {
+        changes.push({
+          field: '負責人',
+          from: originalTask.owner,
+          to: updatedTask.owner
+        });
+      }
+      
+      // 檢測優先級變更
+      if (originalTask.priority !== updatedTask.priority) {
+        changes.push({
+          field: '優先級',
+          from: originalTask.priority,
+          to: updatedTask.priority
+        });
+      }
+      
+      // 檢測標題變更
+      if (originalTask.title !== updatedTask.title) {
+        changes.push({
+          field: '任務名稱',
+          from: originalTask.title,
+          to: updatedTask.title
+        });
+      }
+      
+      // 如果有變更，自動新增履歷記錄
+      if (changes.length > 0) {
+        const changeDesc = changes.map(c => `${c.field}: ${c.from} → ${c.to}`).join('；');
+        const taskName = updatedTask.title || originalTask.title;
+        
+        const historyEntry = {
+          version: 'Auto',
+          date: timestamp,
+          action: `任務更新：${taskName}`,
+          desc: changeDesc,
+          status: 'Pending',
+          author: author,
+          projectId: updatedTask.projectId,
+          taskId: updatedTask.id,
+          autoGenerated: true,
+          changes: changes
+        };
+        
+        await db.addDoc('rd_history', historyEntry);
+        console.log('✅ 自動記錄任務異動:', historyEntry);
+      }
+    }
   };
 
   const handleAddChange = async (newChange) => {
@@ -4653,12 +4986,16 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
 
   // 訂閱數據
   useEffect(() => {
-    const unsubProjects = db.subscribe('rd_projects', setProjects);
+    const unsubProjects = db.subscribe('rd_projects', (data) => {
+      console.log('🔍 KPI Report: 載入 rd_projects 資料', data);
+      setProjects(data);
+    });
     const unsubTasks = db.subscribe('rd_tasks', setTasks);
     const unsubTqm = db.subscribe('tqm_records', setTqmRecords);
     // 直接從 KPI 績效系統資料庫抓取
     const unsubKpi = db.subscribe('kpi_performance', (data) => {
       // KPI 系統的數據格式: { name, department, month, metrics: [{name, target, actual, status}] }
+      console.log('🔍 KPI Report: 載入 kpi_performance 資料', data);
       setKpiData(data || []);
     });
     // 訂閱每月預算記錄
@@ -4722,15 +5059,83 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
   const filteredProjects = useMemo(() => {
     if (!selectedMonth) return projects;
     const month = parseInt(selectedMonth.replace('月', ''));
-    return projects.filter(project => {
-      if (!project.createdAt) return false;
-      const projectDate = new Date(project.createdAt);
-      const projectYear = projectDate.getFullYear();
-      const projectMonth = projectDate.getMonth() + 1;
-      // 包含該月份創建的或正在進行中的專案
-      return (projectYear === selectedYear && projectMonth === month) || 
-             (project.status === 'In Progress' && projectYear <= selectedYear && projectMonth <= month);
+    
+    console.log('篩選專案 - 月份:', month, '年份:', selectedYear);
+    console.log('所有專案:', projects);
+    console.log('專案詳細資料:', JSON.stringify(projects, null, 2));
+    
+    const filtered = projects.filter(project => {
+      console.log('檢查專案:', project.name || project.id, {
+        createdAt: project.createdAt,
+        deadline: project.deadline,
+        status: project.status,
+        completedAt: project.completedAt
+      });
+      
+      // 如果專案有截止日期，檢查截止日期是否在選定月份或之後
+      if (project.deadline) {
+        const deadlineDate = new Date(project.deadline);
+        const deadlineYear = deadlineDate.getFullYear();
+        const deadlineMonth = deadlineDate.getMonth() + 1;
+        
+        // 截止日期在選定月份或之後的專案都應該顯示
+        const isDeadlineInOrAfterMonth = deadlineYear > selectedYear || 
+                                         (deadlineYear === selectedYear && deadlineMonth >= month);
+        
+        console.log('  → 截止日期檢查:', {
+          deadline: project.deadline,
+          deadlineMonth,
+          selectedMonth: month,
+          isDeadlineInOrAfterMonth
+        });
+        
+        if (isDeadlineInOrAfterMonth) {
+          // 如果有 createdAt，確保創建時間 <= 選定月份
+          if (project.createdAt) {
+            const createdDate = new Date(project.createdAt);
+            const createdYear = createdDate.getFullYear();
+            const createdMonth = createdDate.getMonth() + 1;
+            const isCreatedBeforeOrInMonth = createdYear < selectedYear || 
+                                            (createdYear === selectedYear && createdMonth <= month);
+            console.log('  → 有 createdAt，檢查是否在選定月份之前或當月:', isCreatedBeforeOrInMonth);
+            return isCreatedBeforeOrInMonth;
+          }
+          // 沒有 createdAt 就直接通過
+          console.log('  → 沒有 createdAt，直接顯示');
+          return true;
+        }
+        return false;
+      }
+      
+      // 如果有 createdAt 但沒有 deadline
+      if (project.createdAt) {
+        const createdDate = new Date(project.createdAt);
+        const createdYear = createdDate.getFullYear();
+        const createdMonth = createdDate.getMonth() + 1;
+        
+        // 已完成的專案：只顯示當月完成的
+        if (project.status === 'Completed' || project.status === 'completed') {
+          if (project.completedAt) {
+            const completedDate = new Date(project.completedAt);
+            const completedYear = completedDate.getFullYear();
+            const completedMonth = completedDate.getMonth() + 1;
+            return completedYear === selectedYear && completedMonth === month;
+          }
+          return false;
+        }
+        
+        // 進行中的專案：創建時間 <= 選定月份
+        return createdYear < selectedYear || (createdYear === selectedYear && createdMonth <= month);
+      }
+      
+      // 沒有 createdAt 也沒有 deadline 的專案：
+      // 只要不是已完成狀態就顯示
+      console.log('  → 沒有日期資訊，檢查狀態:', project.status);
+      return project.status !== 'Completed' && project.status !== 'completed';
     });
+    
+    console.log('篩選後的專案:', filtered);
+    return filtered;
   }, [projects, selectedMonth, selectedYear]);
 
   // 過濾每月預算數據
@@ -4753,30 +5158,44 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
 
   // 計算 TQM 品質分數 (20%)
   const calculateTQMScore = useMemo(() => {
-    if (filteredTqmRecords.length === 0) return { score: 0, weight: 20, weightedScore: 0, details: { total: 0, improved: 0, improveRate: 0, pending: 0, notStarted: 0 } };
+    if (filteredTqmRecords.length === 0) return { score: 0, weight: 20, weightedScore: 0, details: { total: 0, improved: 0, improveRate: 0, pending: 0, notStarted: 0, penalty: 0, finalScore: 0 } };
     // 根據改善狀態計分
     const improvedRecords = filteredTqmRecords.filter(r => r.status === '已改善').length;
     const totalRecords = filteredTqmRecords.length;
     const improveRate = (improvedRecords / totalRecords) * 100;
     
     // 分數計算：改善率越高分數越高
-    let score = 100;
-    if (improveRate < 60) score = 60;
-    else if (improveRate < 70) score = 70;
-    else if (improveRate < 80) score = 80;
-    else if (improveRate < 90) score = 90;
-    else score = 100;
+    let baseScore = 100;
+    if (improveRate < 60) baseScore = 60;
+    else if (improveRate < 70) baseScore = 70;
+    else if (improveRate < 80) baseScore = 80;
+    else if (improveRate < 90) baseScore = 90;
+    else baseScore = 100;
+    
+    // 🆕 異常數量懲罰機制：每月異常數超過6件，每多1件扣2分，最多扣20分
+    const abnormalThreshold = 6;
+    let penalty = 0;
+    if (totalRecords > abnormalThreshold) {
+      const excessCount = totalRecords - abnormalThreshold;
+      penalty = Math.min(excessCount * 2, 20); // 每件扣2分，最多扣20分
+    }
+    
+    // 最終分數 = 基礎分數 - 異常數量懲罰
+    const finalScore = Math.max(baseScore - penalty, 0);
     
     return {
-      score,
+      score: finalScore,
       weight: 20,
-      weightedScore: (score * 0.2).toFixed(1),
+      weightedScore: (finalScore * 0.2).toFixed(1),
       details: {
         total: totalRecords,
         improved: improvedRecords,
         improveRate: improveRate.toFixed(1),
         pending: filteredTqmRecords.filter(r => r.status === '處理中').length,
-        notStarted: filteredTqmRecords.filter(r => r.status === '未處理').length
+        notStarted: filteredTqmRecords.filter(r => r.status === '未處理').length,
+        baseScore: baseScore,
+        penalty: penalty,
+        finalScore: finalScore
       }
     };
   }, [filteredTqmRecords]);
@@ -4810,7 +5229,7 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
 
   // 計算專案進度分數 (30%)
   const calculateProjectScore = useMemo(() => {
-    if (filteredProjects.length === 0) return { score: 0, weight: 30, weightedScore: 0, details: {} };
+    if (filteredProjects.length === 0) return { score: 0, weight: 30, weightedScore: 0, details: { total: 0, completed: 0, onTime: 0, avgProgress: 0, onTimeRate: 0, inProgress: 0 } };
     
     const completedProjects = filteredProjects.filter(p => p.status === 'Completed');
     const onTimeProjects = completedProjects.filter(p => {
@@ -4831,15 +5250,15 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
       weight: 30,
       weightedScore: (score * 0.3).toFixed(1),
       details: {
-        total: projects.length,
+        total: filteredProjects.length,
         completed: completedProjects.length,
         onTime: onTimeProjects.length,
         avgProgress: avgProgress.toFixed(1),
         onTimeRate: onTimeRate.toFixed(1),
-        inProgress: projects.filter(p => p.status === 'In Progress').length
+        inProgress: filteredProjects.filter(p => p.status === 'In Progress').length
       }
     };
-  }, [projects]);
+  }, [filteredProjects]);
 
   // 計算預算控制分數 (15%)
   const calculateBudgetScore = useMemo(() => {
@@ -4977,11 +5396,19 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
 一、TQM 品質管理 (佔比 20%)
    原始分數：${calculateTQMScore.score} 分
    加權分數：${calculateTQMScore.weightedScore} 分
-   ├─ 總異常數：${calculateTQMScore.details.total}
-   ├─ 已改善數：${calculateTQMScore.details.improved}
+   ├─ 總異常數：${calculateTQMScore.details.total} 件
+   ├─ 已改善數：${calculateTQMScore.details.improved} 件
    ├─ 改善率：${calculateTQMScore.details.improveRate}%
-   ├─ 處理中：${calculateTQMScore.details.pending}
-   └─ 未處理：${calculateTQMScore.details.notStarted}
+   ├─ 處理中：${calculateTQMScore.details.pending} 件
+   ├─ 未處理：${calculateTQMScore.details.notStarted} 件
+   │
+   ├─ 改善率基礎分：${calculateTQMScore.details.baseScore} 分
+   ├─ 異常數量懲罰：-${calculateTQMScore.details.penalty} 分 (目標≤6件，超過每件扣2分)
+   └─ 最終得分：${calculateTQMScore.details.finalScore} 分
+   
+   評分標準：
+   • 改善率 ≥90%: 100分 | 80-89%: 90分 | 70-79%: 80分 | 60-69%: 70分 | <60%: 60分
+   • 異常數量控制：目標每月≤6件，超過每多1件扣2分 (最多扣20分)
 
 二、KPI 績效表現 (佔比 20%)
    原始分數：${calculateKPIScore.score} 分
@@ -5336,16 +5763,28 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
                   <div className="text-xs space-y-2 text-slate-700">
                     <p className="font-medium text-blue-700">計算公式:</p>
                     <p>改善率 = 已改善數 ÷ 總異常數 × 100%</p>
+                    <p className="mt-1">最終分數 = 改善率基礎分 - 異常數量懲罰</p>
                     <div className="bg-blue-50 p-2 rounded mt-2">
-                      <p className="font-medium">評分標準:</p>
+                      <p className="font-medium">評分標準 (改善率基礎分):</p>
                       <p>• ≥90%: 100分</p>
                       <p>• 80-89%: 90分</p>
                       <p>• 70-79%: 80分</p>
                       <p>• 60-69%: 70分</p>
                       <p>• &lt;60%: 60分</p>
                     </div>
+                    <div className="bg-orange-50 p-2 rounded mt-2 border border-orange-200">
+                      <p className="font-medium text-orange-800">異常數量控制:</p>
+                      <p>• 目標: 每月 ≤ 6件</p>
+                      <p>• 超過6件，每多1件扣2分</p>
+                      <p>• 最多扣20分</p>
+                      {calculateTQMScore.details.total > 6 && (
+                        <p className="text-red-600 font-medium mt-1">
+                          ⚠️ 本月異常數 {calculateTQMScore.details.total} 件，扣 {calculateTQMScore.details.penalty} 分
+                        </p>
+                      )}
+                    </div>
                     <p className="text-indigo-600 font-medium mt-2">
-                      當月數據: {calculateTQMScore.details.total} 筆
+                      當月數據: {calculateTQMScore.details.total} 件 | 改善率: {calculateTQMScore.details.improveRate}%
                     </p>
                   </div>
                 </div>
@@ -6120,7 +6559,7 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
 };
 
 // --- System Selector Component ---
-const SystemSelector = ({ onSelect, onLogout, user }) => {
+const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   const isAdmin = user?.role === 'admin';
   const gridClass = `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`;
   return (
@@ -6206,10 +6645,22 @@ const SystemSelector = ({ onSelect, onLogout, user }) => {
           )}
         </div>
 
-        <div className="mt-12 text-center">
-          <button onClick={onLogout} className="text-slate-400 hover:text-slate-600 flex items-center justify-center mx-auto gap-2">
-            <LogOut size={16} /> 登出帳號
-          </button>
+        <div className="mt-12 flex flex-col items-center gap-4">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={onExportDB}
+              className="flex items-center gap-2 px-4 py-2 text-green-600 hover:text-white hover:bg-green-600 rounded-lg transition-all border border-green-300 hover:border-green-600 shadow-sm hover:shadow-md"
+            >
+              <FileJson size={16} /> 匯出資料庫備份
+            </button>
+            <button 
+              onClick={onLogout} 
+              className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-600 rounded-lg transition-all border border-slate-300 hover:border-slate-600 shadow-sm hover:shadow-md"
+            >
+              <LogOut size={16} /> 登出帳號
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">💾 定期備份資料庫以保護您的資料安全</p>
         </div>
       </div>
     </div>
@@ -6814,14 +7265,34 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  const handleExportDB = () => {
+    try {
+      const data = db.exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().split('T')[0];
+      a.download = `TQM_Database_Backup_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      alert('資料庫匯出成功！');
+    } catch (err) {
+      console.error('匯出失敗:', err);
+      alert('匯出失敗：' + err.message);
+    }
+  };
+
   if (loading) return <div className="h-screen flex items-center justify-center text-slate-500">系統載入中...</div>;
 
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} loading={false} onImportDB={handleImportDB} />;
+    return <LoginScreen onLogin={handleLogin} loading={false} onImportDB={handleImportDB} onExportDB={handleExportDB} />;
   }
 
   if (!system) {
-    return <SystemSelector onSelect={setSystem} onLogout={handleLogout} user={user} />;
+    return <SystemSelector onSelect={setSystem} onLogout={handleLogout} user={user} onExportDB={handleExportDB} />;
   }
 
   if (system === 'TQM') {
