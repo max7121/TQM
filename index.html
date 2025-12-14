@@ -454,7 +454,9 @@ class FirebaseDB {
 
   async addDoc(collectionName, data) {
     if (data.id) {
-        await window.firebase.setDoc(window.firebase.doc(this.db, collectionName, data.id), data);
+        // 確保 ID 是字串類型
+        const docId = String(data.id);
+        await window.firebase.setDoc(window.firebase.doc(this.db, collectionName, docId), data);
         return data;
     } else {
         const docRef = await window.firebase.addDoc(window.firebase.collection(this.db, collectionName), data);
@@ -464,11 +466,15 @@ class FirebaseDB {
   }
 
   async updateDoc(collectionName, id, data) {
-    await window.firebase.updateDoc(window.firebase.doc(this.db, collectionName, id), data);
+    // 確保 ID 是字串類型
+    const docId = String(id);
+    await window.firebase.updateDoc(window.firebase.doc(this.db, collectionName, docId), data);
   }
 
   async deleteDoc(collectionName, id) {
-    await window.firebase.deleteDoc(window.firebase.doc(this.db, collectionName, id));
+    // 確保 ID 是字串類型
+    const docId = String(id);
+    await window.firebase.deleteDoc(window.firebase.doc(this.db, collectionName, docId));
   }
 
   async getDocs(collectionName, queryFn) {
@@ -481,7 +487,7 @@ class FirebaseDB {
   // 為了相容你的匯入匯出功能
   async importData(data) {
     if (!confirm("確定匯入至雲端？")) return;
-    const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages'];
+    const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages', 'spec_discussion_urls'];
     for (const col of collections) {
         if (data[col]) {
             for (const item of data[col]) await this.addDoc(col, item);
@@ -492,7 +498,7 @@ class FirebaseDB {
   
   async exportData() {
      const exportObj = { version: '3.0', exportedAt: new Date().toISOString() };
-     const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages'];
+     const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages', 'spec_discussion_urls'];
      for (const col of collections) exportObj[col] = await this.getDocs(col);
      return exportObj;
   }
@@ -4557,54 +4563,71 @@ const HistoryForm = ({ onSubmit, onCancel }) => {
 };
 
 // --- 專案規格討論歷程視圖 ---
-const SpecDiscussionView = () => {
-  const [urls, setUrls] = useState(() => {
-    const saved = localStorage.getItem('spec_discussion_urls');
-    return saved ? JSON.parse(saved) : [
-      { id: 1, name: '主要討論區', url: 'https://example.com/discussion', createdAt: new Date().toISOString() }
-    ];
-  });
+const SpecDiscussionView = ({ machine }) => {
+  const [urls, setUrls] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editingUrl, setEditingUrl] = useState(null);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
 
-  // 儲存到 localStorage
+  // 從資料庫訂閱資料
   useEffect(() => {
-    localStorage.setItem('spec_discussion_urls', JSON.stringify(urls));
-  }, [urls]);
+    const unsubscribe = db.subscribe('spec_discussion_urls', (data) => {
+      setUrls(data.filter(u => u.machineId === machine.id));
+    });
+    return () => unsubscribe();
+  }, [machine.id]);
 
-  const handleAddUrl = () => {
+  const handleAddUrl = async () => {
     if (!newName.trim() || !newUrl.trim()) {
       alert('請填寫名稱和網址');
       return;
     }
-    const newEntry = {
-      id: Date.now(),
-      name: newName,
-      url: newUrl,
-      createdAt: new Date().toISOString()
-    };
-    setUrls([...urls, newEntry]);
-    setNewName('');
-    setNewUrl('');
-    setIsEditing(false);
+    try {
+      const newEntry = {
+        id: Date.now(),
+        name: newName,
+        url: newUrl,
+        machineId: machine.id,
+        createdAt: new Date().toISOString()
+      };
+      await db.addDoc('spec_discussion_urls', newEntry);
+      setNewName('');
+      setNewUrl('');
+      setIsEditing(false);
+    } catch (error) {
+      console.error('新增連結失敗:', error);
+      alert('新增失敗，請稍後再試');
+    }
   };
 
-  const handleUpdateUrl = (id) => {
+  const handleUpdateUrl = async (id) => {
     if (!newName.trim() || !newUrl.trim()) {
       alert('請填寫名稱和網址');
       return;
     }
-    setUrls(urls.map(u => u.id === id ? { ...u, name: newName, url: newUrl } : u));
-    setEditingUrl(null);
-    setNewName('');
-    setNewUrl('');
+    try {
+      await db.updateDoc('spec_discussion_urls', id, {
+        name: newName,
+        url: newUrl
+      });
+      setEditingUrl(null);
+      setNewName('');
+      setNewUrl('');
+    } catch (error) {
+      console.error('更新連結失敗:', error);
+      alert('更新失敗，請稍後再試');
+    }
   };
 
-  const handleDeleteUrl = (id) => {
+  const handleDeleteUrl = async (id) => {
     if (confirm('確定要刪除此連結嗎?')) {
-      setUrls(urls.filter(u => u.id !== id));
+      try {
+        await db.deleteDoc('spec_discussion_urls', id);
+      } catch (error) {
+        console.error('刪除連結失敗:', error);
+        alert('刪除失敗，請稍後再試');
+      }
     }
   };
 
@@ -5054,7 +5077,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       case 'analytics':
         return <AnalyticsView projects={projects} tasks={tasks} changes={changes} />;
       case 'spec-discussion':
-        return <SpecDiscussionView />;
+        return <SpecDiscussionView machine={machine} />;
       case 'engineer':
         return <EngineerDashboardView tasks={tasks} onUpdateTask={handleUpdateTask} user={user} />;
       default:
