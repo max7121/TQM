@@ -125,7 +125,14 @@ import {
   Paperclip,
   PieChart as PieChartIcon,
   Building,
-  CheckCircle
+  CheckCircle,
+  Table as TableIcon,
+  Cpu,
+  Printer,
+  Layers,
+  FileBarChart,
+  FileSpreadsheet,
+  Presentation
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -6559,6 +6566,693 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
 };
 
 // --- System Selector Component ---
+// --- Product War Room Component ---
+const ProductWarRoom = ({ onBackToMenu }) => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [data, setData] = useState([
+    { id: 1, docType: 'D1131231-1', requestType: 'H', partNo: 'H32H00A0023A', name: 'SMART桃紅色6吋彩票圈(WINNER版)-100 (機器人娃娃機 SMART ROBOT)', spec: '燒錄RFID標籤', confirmDate: '2025-01-06', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 2, docType: 'D1131231-1', requestType: 'H', partNo: 'H32H00A0024A', name: 'SMART橘色6吋彩票圈(WINNER版)-150 (機器人娃娃機 SMART ROBOT)', spec: '燒錄RFID標籤', confirmDate: '2025-01-06', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 3, docType: 'D1131231-1', requestType: 'H', partNo: 'H32H00A0025A', name: 'SMART藍色6吋彩票圈(WINNER版)-200 (機器人娃娃機 SMART ROBOT)', spec: '燒錄RFID標籤', confirmDate: '2025-01-06', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 180, docType: '原頡需求新設', requestType: 'F', partNo: 'F30C11SEV03', name: '中型兌幣機', spec: '110V MHP-1100SA退幣器 慧展投幣器 含底座 門框組(SEV版) 儲幣槽右移 前門壓克力(減寬)', confirmDate: '2025-11-10', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 181, docType: '企劃書', requestType: 'F', partNo: 'F58B11WYC01', name: '雙享樂娃娃機', spec: '110V 白色 控箱組(加高版)/FEI控箱(搖桿在左) LED燈板 滑道(鐵製)', confirmDate: '2025-11-14', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 182, docType: 'D1141211-1', requestType: 'H', partNo: 'H32H00C0015A', name: '控箱總成(禮品版) (機器人娃娃機 SMART ROBOT)', spec: '含軟條燈、線材、基板、鈑金、壓克力', confirmDate: '2025-11-14', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 183, docType: '昕霖需求新設', requestType: 'H', partNo: 'H57P00A0023A', name: '4片點陣板模組 (多重組合式娃娃機)', spec: '640*143.3*376.6mm', confirmDate: '2025-11-15', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 184, docType: '需求新設', requestType: 'S', partNo: 'S11A00K001', name: '標準螺絲套件包', spec: 'M4*10, M5*12', confirmDate: '2025-11-20', orderType: '組立製令', attr: 'M:自製件' },
+    { id: 185, docType: 'D1241105-2', requestType: 'H', partNo: 'H12B00A001', name: '新款馬達固定座', spec: 'SUS304 2.0t', confirmDate: '2025-11-21', orderType: '加工製令', attr: 'M:自製件' },
+  ]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const fileInputRef = React.useRef(null);
+  const [excelLibLoaded, setExcelLibLoaded] = useState(false);
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ef4444', '#6366f1'];
+  const CAT_COLORS = {
+    '機台 (F)': '#2563eb',
+    '物料 (H)': '#16a34a',
+    '套件 (S)': '#f97316',
+    '其他': '#94a3b8'
+  };
+
+  useEffect(() => {
+    if (window.XLSX) {
+      setExcelLibLoaded(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => setExcelLibLoaded(true);
+    document.body.appendChild(script);
+  }, []);
+
+  const [formData, setFormData] = useState({
+    docType: '',
+    partNo: '',
+    name: '',
+    spec: '',
+    confirmDate: new Date().toISOString().split('T')[0],
+    orderType: '組立製令',
+    attr: 'M:自製件'
+  });
+
+  const parseCSVLine = (text) => {
+    const result = [];
+    let cell = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(cell.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        cell = '';
+      } else {
+        cell += char;
+      }
+    }
+    result.push(cell.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+    return result;
+  };
+
+  const extractProductSeries = (name) => {
+    if (!name) return '其他';
+    const matches = name.match(/\(([^)]+)\)/g);
+    if (matches && matches.length > 0) {
+      let series = matches[matches.length - 1].replace(/[()]/g, '');
+      if (series.includes('機器人')) return '機器人娃娃機';
+      if (series.includes('WINNER')) return 'Winner系列';
+      return series;
+    }
+    if (name.includes('兌幣機')) return '兌幣機系列';
+    if (name.includes('娃娃機')) return '一般娃娃機';
+    return '通用/其他';
+  };
+
+  const getPartCategory = (partNo) => {
+    if (!partNo) return '其他';
+    const prefix = partNo.charAt(0).toUpperCase();
+    if (prefix === 'F') return '機台 (F)';
+    if (prefix === 'H') return '物料 (H)';
+    if (prefix === 'S') return '套件 (S)';
+    return '其他';
+  };
+
+  const normalizeDocType = (docType) => {
+    if (!docType) return '未知';
+    const type = docType.toUpperCase();
+    if (type.startsWith('D11')) return 'D11 (電子設變)';
+    if (type.startsWith('D12')) return 'D12 (機構設變)';
+    if (type.startsWith('D13')) return 'D13 (軟體設變)';
+    if (type.includes('企劃')) return '新產品企劃';
+    if (type.includes('需求') || type.includes('新設')) return '業務/客戶需求';
+    return type;
+  };
+
+  const stats = useMemo(() => {
+    const monthCounts = {};
+    const productSeriesCounts = {};
+    const partCategoryCounts = { '機台 (F)': 0, '物料 (H)': 0, '套件 (S)': 0, '其他': 0 };
+    const docTypeDetailedCounts = {};
+    let totalItems = 0;
+    
+    data.forEach(item => {
+      totalItems++;
+      if (item.confirmDate) {
+        let dateStr = String(item.confirmDate).replace(/\//g, '-');
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+          if (parts[1].length === 1) parts[1] = '0' + parts[1];
+          if (parts[2].length === 1) parts[2] = '0' + parts[2];
+          dateStr = parts.join('-');
+        }
+        const month = dateStr.substring(0, 7);
+        if (month.length === 7) {
+           monthCounts[month] = (monthCounts[month] || 0) + 1;
+        }
+      }
+      const series = extractProductSeries(item.name);
+      productSeriesCounts[series] = (productSeriesCounts[series] || 0) + 1;
+      const category = getPartCategory(item.partNo);
+      partCategoryCounts[category] = (partCategoryCounts[category] || 0) + 1;
+      const detailedType = normalizeDocType(item.docType);
+      docTypeDetailedCounts[detailedType] = (docTypeDetailedCounts[detailedType] || 0) + 1;
+    });
+    
+    const barChartData = Object.keys(monthCounts).sort().map(key => ({
+      name: key,
+      count: monthCounts[key]
+    }));
+
+    const docTypeData = Object.keys(docTypeDetailedCounts)
+      .map(key => ({ name: key, count: docTypeDetailedCounts[key] }))
+      .sort((a, b) => b.count - a.count);
+
+    const partCategoryData = Object.keys(partCategoryCounts)
+      .filter(k => partCategoryCounts[k] > 0)
+      .map(k => ({ name: k, value: partCategoryCounts[k] }));
+
+    const productSeriesData = Object.keys(productSeriesCounts)
+      .map(key => ({ name: key, count: productSeriesCounts[key] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const busyMonth = barChartData.length > 0 ? barChartData.reduce((prev, current) => (prev.count > current.count) ? prev : current).name : '無';
+    const topSeries = productSeriesData.length > 0 ? productSeriesData[0].name : '無';
+    const topCategory = partCategoryData.length > 0 ? partCategoryData.reduce((prev, current) => (prev.value > current.value) ? prev : current).name : '無';
+    const topDocType = docTypeData.length > 0 ? docTypeData[0].name : '無';
+    const currentMonth = "2025-11";
+    const newThisMonth = data.filter(d => String(d.confirmDate || '').includes(currentMonth)).length;
+
+    return { 
+      barChartData, 
+      docTypeData, 
+      partCategoryData, 
+      productSeriesData, 
+      totalItems, 
+      newThisMonth, 
+      busyMonth, 
+      topSeries,
+      topCategory,
+      topDocType
+    };
+  }, [data]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const fileName = file.name.toLowerCase();
+    if (fileName.endsWith('.csv')) processCSV(file);
+    else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) processExcel(file);
+    else alert('不支援的檔案格式，請上傳 .csv 或 .xlsx 檔案');
+    event.target.value = ''; 
+  };
+
+  const processCSV = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const rows = text.split(/\r\n|\n/);
+      const newItems = [];
+      let successCount = 0;
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i].trim();
+        if (!row) continue;
+        const cols = parseCSVLine(row);
+        if (cols.length < 3) continue;
+        let newItem = mapColumnsToData(cols, i);
+        if (newItem) { newItems.push(newItem); successCount++; }
+      }
+      finalizeImport(newItems, successCount);
+    };
+    reader.readAsText(file);
+  };
+
+  const processExcel = (file) => {
+    if (!excelLibLoaded) { alert("Excel 解析元件尚未載入完成，請稍後再試。"); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target.result);
+      const workbook = window.XLSX.read(data, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      const newItems = [];
+      let successCount = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+        if (String(row[1]).includes('單據類型') || String(row[0]).includes('單據類型')) continue;
+        if (!row[1] && !row[4]) continue;
+        let newItem = mapColumnsToData(row, i);
+        if (newItem) { newItems.push(newItem); successCount++; }
+      }
+      finalizeImport(newItems, successCount);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const mapColumnsToData = (cols, index) => {
+    if (cols.length > 8) {
+       if (!cols[1] && !cols[4]) return null;
+       let dateVal = cols[7];
+       if (typeof dateVal === 'number') {
+          const date = new Date(Math.round((dateVal - 25569)*86400*1000));
+          dateVal = date.toISOString().split('T')[0];
+       }
+       return {
+        id: Date.now() + index,
+        docType: String(cols[1] || '').trim(),
+        partNo: String(cols[4] || '').trim(),
+        name: String(cols[5] || '').trim(),
+        spec: String(cols[6] || '').trim(),
+        confirmDate: String(dateVal || '').trim(),
+        orderType: String(cols[9] || '組立製令').trim(),
+        attr: String(cols[10] || 'M:自製件').trim()
+      };
+    } else if (cols.length >= 5) {
+      return {
+        id: Date.now() + index,
+        docType: String(cols[0] || '').trim(),
+        partNo: String(cols[1] || '').trim(),
+        name: String(cols[2] || '').trim(),
+        spec: String(cols[3] || '').trim(),
+        confirmDate: String(cols[4] || '').trim(),
+        orderType: String(cols[5] || '').trim(),
+        attr: String(cols[6] || '').trim()
+      };
+    }
+    return null;
+  };
+
+  const finalizeImport = (newItems, count) => {
+    if (newItems.length > 0) {
+      setData(prev => [...newItems, ...prev]);
+      alert(`匯入成功！共新增 ${count} 筆資料。`);
+    } else { alert('匯入失敗：找不到有效資料，請確認檔案格式。'); }
+  };
+
+  const handleExport = () => {
+    const BOM = "\uFEFF"; 
+    const headers = "單據類型,新設料號,品名,規格,確認日,製令單別,屬性\n";
+    const csvContent = data.map(row => {
+      const safe = (val) => {
+        if (!val) return "";
+        const str = String(val);
+        return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+      return `${safe(row.docType)},${safe(row.partNo)},${safe(row.name)},${safe(row.spec)},${safe(row.confirmDate)},${safe(row.orderType)},${safe(row.attr)}`;
+    }).join("\n");
+    const blob = new Blob([BOM + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `戰情分析資料_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newItem = { id: Date.now(), ...formData };
+    setData([newItem, ...data]);
+    setIsModalOpen(false);
+    setFormData({ docType: '', partNo: '', name: '', spec: '', confirmDate: new Date().toISOString().split('T')[0], orderType: '組立製令', attr: 'M:自製件' });
+  };
+
+  const handleDelete = (id) => {
+    if(window.confirm('確定要刪除這筆資料嗎？')) { setData(data.filter(item => item.id !== id)); }
+  };
+
+  const filteredData = data.filter(item => 
+    (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.partNo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.docType || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className={`min-h-screen font-sans ${isPresentationMode ? 'bg-white text-slate-900' : 'bg-slate-50 text-slate-900'}`}>
+      <style>{`
+        @media print {
+          @page { margin: 1cm; size: A4; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white !important; }
+          .no-print { display: none !important; }
+          .print-full-width { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+          .print-break-inside { break-inside: avoid; }
+          .shadow-sm, .shadow-lg { box-shadow: none !important; border: 1px solid #ddd !important; }
+        }
+      `}</style>
+
+      {!isPresentationMode && (
+        <header className="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-50 no-print">
+          <div className="max-w-7xl mx-auto flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <Cpu className="w-8 h-8 text-blue-400" />
+              <div>
+                <h1 className="text-xl font-bold tracking-wide">2025 產品開發戰情室</h1>
+                <p className="text-xs text-slate-400">R&D Management Dashboard</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setIsPresentationMode(true)} className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700 transition-all shadow-md border border-purple-500">
+                <Presentation size={18} /> 戰情匯報模式
+              </button>
+              <div className="h-8 w-px bg-slate-700 mx-2"></div>
+              <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                <LayoutDashboard size={18} /> 戰情總覽
+              </button>
+              <button onClick={() => setActiveTab('data')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'data' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                <TableIcon size={18} /> 資料管理
+              </button>
+              <button onClick={onBackToMenu} className="px-4 py-2 bg-slate-700 text-white rounded-lg flex items-center gap-2 hover:bg-slate-600 transition-all">
+                <ArrowLeft size={18} /> 返回主選單
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
+
+      {isPresentationMode && (
+        <div className="bg-slate-900 text-white p-4 flex justify-between items-center no-print">
+           <h2 className="text-lg font-bold flex items-center gap-2"><Presentation size={20}/> 2025 年度研發專案執行報告</h2>
+           <div className="flex gap-3">
+             <button onClick={handlePrint} className="px-4 py-1.5 bg-slate-700 rounded hover:bg-slate-600 flex items-center gap-2 text-sm">
+               <Printer size={16}/> 列印報告 (Ctrl+P)
+             </button>
+             <button onClick={() => setIsPresentationMode(false)} className="px-4 py-1.5 bg-red-600 rounded hover:bg-red-700 text-sm">
+               <X size={16}/> 退出模式
+             </button>
+           </div>
+        </div>
+      )}
+
+      <div className="hidden print:block p-4 border-b-2 border-slate-900 mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">2025 年度產品開發戰情分析報告</h1>
+        <p className="text-sm text-slate-500">列印日期: {new Date().toLocaleDateString()}</p>
+      </div>
+
+      <main className={`max-w-7xl mx-auto p-4 md:p-6 print-full-width ${isPresentationMode ? 'bg-white max-w-5xl' : ''}`}>
+        
+        {activeTab === 'dashboard' && (
+          <div className="space-y-8 animate-fade-in">
+            
+            <div className={`p-6 rounded-xl border-l-4 print-break-inside ${isPresentationMode ? 'bg-slate-50 border-slate-900 shadow-none' : 'bg-white border-blue-600 shadow-sm'}`}>
+              <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-slate-800">
+                <FileText className="text-blue-600" /> 主管分析摘要 (Executive Summary)
+              </h3>
+              <p className="text-slate-700 leading-relaxed text-base">
+                2025年度共執行 <span className="font-bold text-blue-700">{stats.totalItems}</span> 個開發項目。
+                開發資源主要集中於 <span className="font-bold text-red-600">{stats.topSeries}</span> 系列，
+                並在 <span className="font-bold text-blue-700">{stats.busyMonth}</span> 達到開發高峰。
+                <br className="my-2 block" />
+                在單據來源分析中，<span className="font-bold text-indigo-600">{stats.topDocType}</span> 為最主要的案源，
+                這反映了研發單位目前投入最多心力於此類型的案件處理。
+                同時，本年度料號結構偏向 <span className="font-bold text-orange-600">{stats.topCategory}</span> 開發。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print-break-inside">
+              <div className={`p-4 rounded-xl border ${isPresentationMode ? 'bg-slate-50 border-slate-200' : 'bg-white shadow-sm border-slate-100'}`}>
+                <p className="text-sm text-slate-500 mb-1">年度總案量</p>
+                <p className="text-3xl font-bold text-slate-800">{stats.totalItems}</p>
+                <div className="h-1 w-full bg-blue-100 mt-2 rounded-full overflow-hidden"><div className="h-full bg-blue-500 w-full"></div></div>
+              </div>
+              <div className={`p-4 rounded-xl border ${isPresentationMode ? 'bg-slate-50 border-slate-200' : 'bg-white shadow-sm border-slate-100'}`}>
+                <p className="text-sm text-slate-500 mb-1">主力單據類型</p>
+                <p className="text-lg font-bold text-slate-800 truncate" title={stats.topDocType}>{stats.topDocType}</p>
+                 <div className="h-1 w-full bg-indigo-100 mt-2 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 w-[70%]"></div></div>
+              </div>
+              <div className={`p-4 rounded-xl border ${isPresentationMode ? 'bg-slate-50 border-slate-200' : 'bg-white shadow-sm border-slate-100'}`}>
+                 <p className="text-sm text-slate-500 mb-1">開發高峰月份</p>
+                <p className="text-3xl font-bold text-slate-800">{stats.busyMonth}</p>
+                 <div className="h-1 w-full bg-orange-100 mt-2 rounded-full overflow-hidden"><div className="h-full bg-orange-500 w-[85%]"></div></div>
+              </div>
+              <div className={`p-4 rounded-xl border ${isPresentationMode ? 'bg-slate-50 border-slate-200' : 'bg-white shadow-sm border-slate-100'}`}>
+                <p className="text-sm text-slate-500 mb-1">重點產品線</p>
+                <p className="text-lg font-bold text-slate-800 truncate" title={stats.topSeries}>{stats.topSeries}</p>
+                <div className="h-1 w-full bg-green-100 mt-2 rounded-full overflow-hidden"><div className="h-full bg-green-500 w-full"></div></div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-white shadow-sm border-slate-200'}`}>
+                <h3 className="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+                  <span className="w-1 h-6 bg-indigo-600 rounded"></span> 
+                  <Layers size={20} className="text-indigo-600"/>
+                  料號結構總類分析 (F/H/S)
+                </h3>
+                <div className="h-64 flex items-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={stats.partCategoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={5}
+                        dataKey="value"
+                        labelLine={false}
+                        label={({name, percent}) => `${(percent * 100).toFixed(0)}%`}
+                      >
+                        {stats.partCategoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={CAT_COLORS[entry.name] || '#94a3b8'} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="w-1/3 text-sm text-slate-600 space-y-3">
+                    {stats.partCategoryData.map((entry, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: CAT_COLORS[entry.name] || '#94a3b8'}}></div>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-slate-800">{entry.name}</span>
+                          <span className="text-xs text-slate-500">{entry.value} 筆</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-white shadow-sm border-slate-200'}`}>
+                <h3 className="text-lg font-bold mb-6 text-slate-800 flex items-center gap-2">
+                  <span className="w-1 h-6 bg-rose-500 rounded"></span> 
+                  <FileBarChart size={20} className="text-rose-500"/>
+                  單據字首/來源詳細分析
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart layout="vertical" data={stats.docTypeData.slice(0, 6)} margin={{ top: 0, right: 30, left: 60, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                      <XAxis type="number" hide />
+                      <YAxis dataKey="name" type="category" width={120} tick={{fontSize: 11}} />
+                      <Tooltip cursor={{fill: 'transparent'}} />
+                      <Bar dataKey="count" name="案件數" fill="#f43f5e" radius={[0, 4, 4, 0]} barSize={20}>
+                         {stats.docTypeData.slice(0, 6).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={['#f43f5e', '#fb7185', '#fda4af', '#a78bfa', '#818cf8', '#60a5fa'][index % 6]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="text-xs text-slate-500 mt-2 text-center">* 依據 D11/D12/企劃 等關鍵字分類</p>
+              </div>
+
+              <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-white shadow-sm border-slate-200'}`}>
+                <h3 className="text-lg font-bold mb-6 text-slate-800 flex items-center gap-2">
+                  <span className="w-1 h-6 bg-purple-600 rounded"></span> 
+                  產品系列資源投入 (Top 5)
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart layout="vertical" data={stats.productSeriesData} margin={{ top: 0, right: 30, left: 40, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                      <XAxis type="number" hide />
+                      <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
+                      <Tooltip cursor={{fill: 'transparent'}} />
+                      <Bar dataKey="count" name="案件數" fill="#8884d8" radius={[0, 4, 4, 0]} barSize={24}>
+                        {stats.productSeriesData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+               <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-white shadow-sm border-slate-200'}`}>
+                <h3 className="text-lg font-bold mb-6 text-slate-800 flex items-center gap-2">
+                   <span className="w-1 h-6 bg-blue-600 rounded"></span> 
+                   年度開發案件量趨勢
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.barChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{fontSize: 12}} />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="count" name="案件總數" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={30} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'data' && !isPresentationMode && (
+          <div className="space-y-4 animate-fade-in no-print">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="relative w-full md:w-96">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="搜尋品名、料號或單據..." 
+                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              
+              <div className="flex gap-2 w-full md:w-auto">
+                <button 
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                >
+                  <Plus size={18} /> 新增
+                </button>
+                <button 
+                  onClick={handleExport}
+                  className="flex-1 md:flex-none px-4 py-2 bg-slate-100 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-200 flex items-center justify-center gap-2"
+                >
+                  <Download size={18} /> 匯出
+                </button>
+                <div className="relative">
+                  <input 
+                    type="file" 
+                    accept=".csv, .xlsx, .xls"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button 
+                    onClick={() => fileInputRef.current.click()}
+                    className="w-full md:w-auto px-4 py-2 bg-green-600 text-white border border-green-600 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <FileSpreadsheet size={18} /> 匯入 Excel/CSV
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600 text-sm border-b border-slate-200">
+                      <th className="p-4 font-semibold whitespace-nowrap">單據類型</th>
+                      <th className="p-4 font-semibold whitespace-nowrap">料號</th>
+                      <th className="p-4 font-semibold">品名</th>
+                      <th className="p-4 font-semibold">規格</th>
+                      <th className="p-4 font-semibold whitespace-nowrap">確認日</th>
+                      <th className="p-4 font-semibold whitespace-nowrap text-center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-sm">
+                    {filteredData.length > 0 ? (
+                      filteredData.map((item) => (
+                        <tr key={item.id} className="border-b border-slate-100 hover:bg-blue-50 transition-colors">
+                          <td className="p-4 text-slate-500 whitespace-nowrap">{item.docType}</td>
+                          <td className="p-4 font-mono font-medium text-blue-700 whitespace-nowrap">{item.partNo}</td>
+                          <td className="p-4 font-medium text-slate-800">{item.name}</td>
+                          <td className="p-4 text-slate-500 max-w-xs truncate" title={item.spec}>{item.spec}</td>
+                          <td className="p-4 text-slate-600 whitespace-nowrap">
+                            <span className="bg-slate-100 px-2 py-1 rounded text-xs border border-slate-200">
+                              {item.confirmDate}
+                            </span>
+                          </td>
+                          <td className="p-4 text-center">
+                            <button 
+                              onClick={() => handleDelete(item.id)}
+                              className="text-red-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50"
+                              title="刪除"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="6" className="p-8 text-center text-slate-400">
+                          沒有找到相符的資料
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="p-3 border-t border-slate-200 bg-slate-50 text-xs text-slate-500 flex justify-between items-center">
+                <span>共 {filteredData.length} 筆資料</span>
+                <span>系統版本 v1.5 (列印修復+詳細單據分析)</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 no-print">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Plus className="text-blue-600" /> 新增產品資料
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">單據類型</label>
+                  <input required type="text" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.docType} onChange={e => setFormData({...formData, docType: e.target.value})} placeholder="例：D1141211-1" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">新設料號</label>
+                  <input required type="text" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} placeholder="F... / H... / S..." />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">品名</label>
+                <input required type="text" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">規格</label>
+                <textarea className="w-full p-2 border border-slate-300 rounded-lg" rows="3" value={formData.spec} onChange={e => setFormData({...formData, spec: e.target.value})}></textarea>
+              </div>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">確認日</label>
+                  <input required type="date" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.confirmDate} onChange={e => setFormData({...formData, confirmDate: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">製令單別</label>
+                  <select className="w-full p-2 border border-slate-300 rounded-lg" value={formData.orderType} onChange={e => setFormData({...formData, orderType: e.target.value})}>
+                    <option value="組立製令">組立製令</option>
+                    <option value="加工製令">加工製令</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">屬性</label>
+                  <select className="w-full p-2 border border-slate-300 rounded-lg" value={formData.attr} onChange={e => setFormData({...formData, attr: e.target.value})}>
+                    <option value="M:自製件">M:自製件</option>
+                    <option value="P:採購件">P:採購件</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg">取消</button>
+                <button type="submit" className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2"><Save size={18} /> 儲存資料</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   const isAdmin = user?.role === 'admin';
   const gridClass = `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`;
@@ -6626,6 +7320,18 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             </div>
             <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 整合報告</h2>
             <p className="text-slate-500 text-sm">研發部門綜合評分、五大指標整合分析。</p>
+          </button>
+
+          <button 
+            onClick={() => onSelect('PRODUCT_WAR_ROOM')}
+            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-cyan-200 group text-left relative overflow-hidden"
+          >
+            <div className="absolute top-2 right-2 bg-cyan-500 text-white text-xs px-2 py-1 rounded-full font-bold">戰情</div>
+            <div className="bg-gradient-to-br from-cyan-100 to-blue-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-cyan-600 group-hover:to-blue-600 transition-all">
+              <Cpu className="w-8 h-8 text-cyan-600 group-hover:text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">產品開發戰情室</h2>
+            <p className="text-slate-500 text-sm">料號分析、開發趨勢、單據追蹤、戰情匯報。</p>
           </button>
 
           {isAdmin && (
@@ -7317,6 +8023,10 @@ export default function App() {
 
   if (system === 'APPRAISAL') {
     return <AppraisalWithDashboard user={user} onBackToMenu={() => setSystem(null)} />;
+  }
+
+  if (system === 'PRODUCT_WAR_ROOM') {
+    return <ProductWarRoom onBackToMenu={() => setSystem(null)} />;
   }
 
   return null;
