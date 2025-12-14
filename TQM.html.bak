@@ -1,0 +1,1044 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken,
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  deleteDoc, 
+  doc, 
+  updateDoc,
+  writeBatch,
+  where,
+  getDocs,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { 
+  LayoutDashboard, 
+  PlusCircle, 
+  List, 
+  BarChart3, 
+  Download, 
+  Trash2, 
+  CheckCircle2, 
+  AlertCircle, 
+  Search,
+  Filter,
+  Image as ImageIcon,
+  X,
+  Upload,
+  Edit,
+  Save,
+  Import,
+  LogOut,
+  Users,
+  Shield,
+  User,
+  Lock
+} from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell,
+  LineChart,
+  Line
+} from 'recharts';
+
+// --- Firebase Configuration ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- Constants ---
+const DEPARTMENTS = ["機構設計", "多媒體設計", "電子設計", "工程中心"];
+const ISSUE_TYPES = [
+  "設計疏失", "資料疏失", "公差問題", "組裝異常", 
+  "程式異常", "配線異常", "供應商來料", "客戶因素", "其他"
+];
+const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c'];
+
+// --- Helper Functions ---
+const parseCSV = (text) => {
+  const result = [];
+  let row = [];
+  let inQuote = false;
+  let currentToken = '';
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (inQuote && nextChar === '"') {
+        currentToken += '"';
+        i++;
+      } else {
+        inQuote = !inQuote;
+      }
+    } else if (char === ',' && !inQuote) {
+      row.push(currentToken.trim());
+      currentToken = '';
+    } else if ((char === '\r' || char === '\n') && !inQuote) {
+      if (currentToken || row.length > 0) row.push(currentToken.trim());
+      if (row.length > 0) result.push(row);
+      row = [];
+      currentToken = '';
+      if (char === '\r' && nextChar === '\n') i++;
+    } else {
+      currentToken += char;
+    }
+  }
+  if (currentToken || row.length > 0) row.push(currentToken.trim());
+  if (row.length > 0) result.push(row);
+  return result;
+};
+
+// --- Helper Components ---
+
+const StatCard = ({ title, value, subtext, icon: Icon, colorClass }) => (
+  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
+    <div className={`p-4 rounded-full ${colorClass} bg-opacity-10`}>
+      <Icon className={`w-8 h-8 ${colorClass.replace('bg-', 'text-')}`} />
+    </div>
+    <div>
+      <p className="text-gray-500 text-sm font-medium">{title}</p>
+      <h3 className="text-2xl font-bold text-gray-800">{value}</h3>
+      {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+    </div>
+  </div>
+);
+
+const ImageModal = ({ src, onClose }) => {
+  if (!src) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-80 p-4" onClick={onClose}>
+      <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+        <button onClick={onClose} className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"><X size={32} /></button>
+        <img src={src} alt="Evidence" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl bg-white" onClick={(e) => e.stopPropagation()} />
+      </div>
+    </div>
+  );
+};
+
+// --- Missing Component: NavButton ---
+const NavButton = ({ active, onClick, icon: Icon, label }) => (
+  <button 
+    onClick={onClick}
+    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+      active ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+    }`}
+  >
+    <Icon size={20} />
+    <span className="font-medium">{label}</span>
+  </button>
+);
+
+// --- Login Screen Component ---
+const LoginScreen = ({ onLogin, loading }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!username || !password) {
+      setError('請輸入帳號與密碼');
+      return;
+    }
+    onLogin(username, password, setError);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-xl">
+        <div className="text-center mb-8">
+          <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <CheckCircle2 className="text-white w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800">TQM 品質管理系統</h1>
+          <p className="text-slate-500 mt-2">請登入以繼續操作</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2">
+              <AlertCircle size={16} /> {error}
+            </div>
+          )}
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">帳號</label>
+            <div className="relative">
+              <User className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              <input 
+                type="text" 
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                placeholder="請輸入使用者帳號"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              <input 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                placeholder="請輸入密碼"
+              />
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg shadow-md transition-all flex items-center justify-center"
+          >
+            {loading ? '驗證中...' : '登入系統'}
+          </button>
+        </form>
+        
+        <div className="mt-6 text-center text-xs text-gray-400">
+          預設管理員帳號: admin / admin123
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- User Management Component ---
+const UserManagement = ({ currentUser }) => {
+  const [users, setUsers] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    username: '', password: '', displayName: '', department: DEPARTMENTS[0], role: 'user'
+  });
+  const [editId, setEditId] = useState(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'tqm_users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editId) {
+        // Update existing
+        const updateData = { ...formData };
+        if (!updateData.password) delete updateData.password; // Don't overwrite if empty
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tqm_users', editId), updateData);
+        alert('帳號更新成功');
+      } else {
+        // Create new
+        // Check username existence
+        const existing = users.find(u => u.username === formData.username);
+        if (existing) return alert('帳號已存在，請使用其他帳號');
+        
+        if (!formData.password) return alert('請設定密碼');
+
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tqm_users'), {
+          ...formData,
+          createdAt: serverTimestamp()
+        });
+        alert('帳號建立成功');
+      }
+      setIsModalOpen(false);
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      alert('操作失敗');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('確定要刪除此帳號嗎？')) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tqm_users', id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const startEdit = (user) => {
+    setEditId(user.id);
+    setFormData({
+      username: user.username,
+      password: '', // Keep empty for security
+      displayName: user.displayName,
+      department: user.department,
+      role: user.role
+    });
+    setIsModalOpen(true);
+  };
+
+  const resetForm = () => {
+    setEditId(null);
+    setFormData({ username: '', password: '', displayName: '', department: DEPARTMENTS[0], role: 'user' });
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <Users className="text-blue-600"/> 帳號管理
+        </h2>
+        <button 
+          onClick={() => { resetForm(); setIsModalOpen(true); }}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"
+        >
+          <PlusCircle size={16} /> 新增帳號
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-sm text-left text-gray-600">
+          <thead className="bg-gray-50 text-gray-700 uppercase text-xs">
+            <tr>
+              <th className="px-6 py-3">帳號</th>
+              <th className="px-6 py-3">姓名</th>
+              <th className="px-6 py-3">部門</th>
+              <th className="px-6 py-3">權限角色</th>
+              <th className="px-6 py-3 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className="border-b hover:bg-gray-50">
+                <td className="px-6 py-4 font-medium">{u.username}</td>
+                <td className="px-6 py-4">{u.displayName}</td>
+                <td className="px-6 py-4">{u.department}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {u.role === 'admin' ? '管理員' : '一般使用者'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <div className="flex justify-center gap-2">
+                    <button onClick={() => startEdit(u)} className="text-blue-500 hover:text-blue-700"><Edit size={16}/></button>
+                    {u.username !== 'admin' && ( // Protect default admin
+                       <button onClick={() => handleDelete(u.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+             <h3 className="text-xl font-bold mb-4">{editId ? '編輯帳號' : '新增帳號'}</h3>
+             <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1">帳號 (登入用)</label>
+                   <input 
+                      type="text" 
+                      value={formData.username}
+                      onChange={e => setFormData({...formData, username: e.target.value})}
+                      disabled={!!editId} // Cannot change username once created
+                      className="w-full p-2 border rounded text-sm disabled:bg-gray-100"
+                      required
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1">密碼 {editId && '(不修改請留空)'}</label>
+                   <input 
+                      type="password" 
+                      value={formData.password}
+                      onChange={e => setFormData({...formData, password: e.target.value})}
+                      className="w-full p-2 border rounded text-sm"
+                      required={!editId}
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1">姓名 (顯示用)</label>
+                   <input 
+                      type="text" 
+                      value={formData.displayName}
+                      onChange={e => setFormData({...formData, displayName: e.target.value})}
+                      className="w-full p-2 border rounded text-sm"
+                      required
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1">所屬部門</label>
+                   <select 
+                      value={formData.department}
+                      onChange={e => setFormData({...formData, department: e.target.value})}
+                      className="w-full p-2 border rounded text-sm"
+                   >
+                      {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                   </select>
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1">權限角色</label>
+                   <select 
+                      value={formData.role}
+                      onChange={e => setFormData({...formData, role: e.target.value})}
+                      className="w-full p-2 border rounded text-sm"
+                   >
+                      <option value="user">一般使用者</option>
+                      <option value="admin">系統管理員</option>
+                   </select>
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                   <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">取消</button>
+                   <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">儲存</button>
+                </div>
+             </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Entry Form Component (Modified for Auth) ---
+const EntryForm = ({ onSubmit, currentUser }) => {
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    department: currentUser.department || DEPARTMENTS[0], // Auto-fill dept
+    personName: currentUser.displayName || '', // Auto-fill name
+    issueType: ISSUE_TYPES[0],
+    description: '',
+    isRepeat: false,
+    status: '未改善',
+    improvementMethod: '', 
+    note: '', 
+    attachment: null 
+  });
+  const [fileName, setFileName] = useState('');
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 800 * 1024) { 
+        alert("圖片過大！建議上傳 800KB 以下的照片，以免超過資料庫限制。");
+        e.target.value = null; 
+        return;
+      }
+
+      setFileName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, attachment: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setFileName('');
+    setFormData(prev => ({ ...prev, attachment: null }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.personName || !formData.description) return alert("請填寫完整資料");
+    onSubmit(formData);
+    setFormData(prev => ({
+      ...prev,
+      description: '',
+      isRepeat: false,
+      status: '未改善',
+      improvementMethod: '',
+      note: '',
+      attachment: null
+    }));
+    setFileName('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">發生日期</label>
+          <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">歸屬部門</label>
+          <select name="department" value={formData.department} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">回報人員姓名</label>
+          <input 
+            type="text" 
+            name="personName" 
+            value={formData.personName} 
+            onChange={handleChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+            // We allow editing, but it defaults to current user
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">回報類型</label>
+          <select name="issueType" value={formData.issueType} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            {ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">問題/異常描述</label>
+        <textarea name="description" rows="4" value={formData.description} onChange={handleChange} placeholder="請詳細描述異常情況..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">佐證照片/附件</label>
+        <div className="flex items-center space-x-4">
+          <label className="flex items-center gap-2 cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg transition-colors border border-slate-300">
+            <Upload size={18} />
+            <span>選擇檔案</span>
+            <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+          </label>
+          {fileName && (
+            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
+               <span>{fileName}</span>
+               <button type="button" onClick={handleRemoveFile} className="hover:text-red-500"><X size={14}/></button>
+            </div>
+          )}
+        </div>
+        {formData.attachment && <div className="mt-3"><img src={formData.attachment} alt="Preview" className="h-32 w-auto object-cover rounded-md border border-gray-200" /></div>}
+      </div>
+
+      <div className="flex items-center space-x-6 p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center">
+          <input type="checkbox" id="isRepeat" name="isRepeat" checked={formData.isRepeat} onChange={handleChange} className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+          <label htmlFor="isRepeat" className="ml-2 text-sm font-medium text-gray-700">是否為重複發生？</label>
+        </div>
+        <div className="flex items-center space-x-3">
+          <label className="text-sm font-medium text-gray-700">目前狀態：</label>
+          <div className="flex space-x-2">
+            {['未改善', '已改善'].map(status => (
+              <button key={status} type="button" onClick={() => setFormData(prev => ({ ...prev, status }))} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${formData.status === status ? (status === '已改善' ? 'bg-green-100 text-green-800 ring-2 ring-green-500' : 'bg-red-100 text-red-800 ring-2 ring-red-500') : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>{status}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-gray-100 flex justify-end">
+        <button type="submit" className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md">提交紀錄</button>
+      </div>
+    </form>
+  );
+};
+
+// --- Edit Record Modal (Same as before) ---
+const EditRecordModal = ({ record, onClose, onUpdate }) => {
+  const [formData, setFormData] = useState({
+    ...record,
+    improvementMethod: record.improvementMethod || '',
+    note: record.note || ''
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onUpdate(record.id, formData);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black bg-opacity-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Edit size={20} className="text-blue-600"/> 編輯/更新案件紀錄
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+             <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wider mb-2">原始問題資訊</h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="block text-xs font-semibold text-gray-500 mb-1">發生日期</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full text-sm p-2 border rounded" /></div>
+                <div><label className="block text-xs font-semibold text-gray-500 mb-1">部門</label><select name="department" value={formData.department} onChange={handleChange} className="w-full text-sm p-2 border rounded">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                <div><label className="block text-xs font-semibold text-gray-500 mb-1">人員</label><input type="text" name="personName" value={formData.personName} onChange={handleChange} className="w-full text-sm p-2 border rounded" /></div>
+                <div><label className="block text-xs font-semibold text-gray-500 mb-1">類型</label><select name="issueType" value={formData.issueType} onChange={handleChange} className="w-full text-sm p-2 border rounded">{ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+             </div>
+             <div><label className="block text-xs font-semibold text-gray-500 mb-1">問題描述</label><textarea name="description" rows="2" value={formData.description} onChange={handleChange} className="w-full text-sm p-2 border rounded"></textarea></div>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg space-y-4 border border-green-100">
+             <h3 className="text-sm font-bold text-green-800 uppercase tracking-wider mb-2 flex items-center gap-2"><CheckCircle2 size={16}/> 改善對策與追蹤</h3>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-1">改善對策 (Countermeasure)</label><textarea name="improvementMethod" rows="4" value={formData.improvementMethod} onChange={handleChange} placeholder="請填寫具體的改善方法、預防再發措施..." className="w-full p-3 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 text-sm"></textarea></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-1">備註/訊息</label><input type="text" name="note" value={formData.note} onChange={handleChange} placeholder="例如：已通知相關廠商、待主管確認..." className="w-full p-2 border border-green-200 rounded-lg text-sm" /></div>
+             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center pt-2">
+                <div className="flex items-center space-x-2">
+                   <label className="text-sm font-bold text-gray-700">目前狀態：</label>
+                   <select name="status" value={formData.status} onChange={handleChange} className={`text-sm font-bold py-1 px-3 rounded-full border-none ring-2 ${formData.status === '已改善' ? 'bg-green-100 text-green-800 ring-green-400' : 'bg-red-100 text-red-800 ring-red-400'}`}><option value="未改善">未改善</option><option value="已改善">已改善</option></select>
+                </div>
+                <div className="flex items-center">
+                  <input type="checkbox" id="editIsRepeat" name="isRepeat" checked={formData.isRepeat} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                  <label htmlFor="editIsRepeat" className="ml-2 text-sm text-gray-600">標記為重複發生</label>
+                </div>
+             </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">取消</button>
+            <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-md flex items-center gap-2"><Save size={16} /> 儲存更新</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// --- Main App Component ---
+
+export default function App() {
+  const [sysUser, setSysUser] = useState(null); // Firebase auth user
+  const [appUser, setAppUser] = useState(null); // App level logged in user
+  const [records, setRecords] = useState([]);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
+  const [viewImage, setViewImage] = useState(null); 
+  const [editingRecord, setEditingRecord] = useState(null);
+
+  // 1. Initialize Firebase Auth (Anonymous layer)
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setSysUser(currentUser);
+      setLoading(false);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // 2. Initialize Default Admin Account if Users Collection is Empty
+  useEffect(() => {
+    if (!sysUser) return;
+    const checkAndInitAdmin = async () => {
+      const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'tqm_users'));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tqm_users'), {
+          username: 'admin',
+          password: 'admin123', // In production, hash this!
+          displayName: '系統管理員',
+          department: '工程中心',
+          role: 'admin',
+          createdAt: serverTimestamp()
+        });
+        console.log("Default admin initialized");
+      }
+    };
+    checkAndInitAdmin();
+  }, [sysUser]);
+
+  // 3. Fetch Data (Only when appUser is logged in)
+  useEffect(() => {
+    if (!sysUser || !appUser) return;
+
+    const q = query(
+      collection(db, 'artifacts', appId, 'public', 'data', 'tqm_records'), 
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribeDocs = onSnapshot(q, 
+      (snapshot) => {
+        setRecords(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+      },
+      (error) => console.error("Error fetching records:", error)
+    );
+
+    return () => unsubscribeDocs();
+  }, [sysUser, appUser]);
+
+  // --- Handlers ---
+
+  const handleLogin = async (username, password, setError) => {
+    if (!sysUser) return;
+    try {
+      const q = query(
+        collection(db, 'artifacts', appId, 'public', 'data', 'tqm_users'),
+        where('username', '==', username)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        setError('帳號不存在');
+        return;
+      }
+
+      const userData = querySnapshot.docs[0].data();
+      // Simple password check (In prod, use bcrypt or similar)
+      if (userData.password === password) {
+        setAppUser({ id: querySnapshot.docs[0].id, ...userData });
+        setActiveTab('dashboard'); // Reset tab on login
+      } else {
+        setError('密碼錯誤');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('登入系統發生錯誤');
+    }
+  };
+
+  const handleLogout = () => {
+    setAppUser(null);
+    setRecords([]); // Clear data for security
+  };
+
+  // --- (Existing Handlers: Add, Update, Delete, Import, Export) ---
+  const handleAddRecord = async (formData) => {
+    if (!sysUser) return;
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tqm_records'), {
+        ...formData,
+        createdAt: serverTimestamp(),
+        userId: sysUser.uid,
+        createdByUser: appUser.username // Track who created it
+      });
+      alert('TQM紀錄已新增！');
+      setActiveTab('list');
+    } catch (e) {
+      console.error("Error adding document: ", e);
+      alert('新增失敗: ' + (e.toString().includes("exceeds") ? "檔案過大" : "請重試"));
+    }
+  };
+
+  const handleUpdateRecord = async (id, updatedData) => {
+    if (!sysUser) return;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tqm_records', id), {
+        ...updatedData,
+        updatedAt: serverTimestamp(),
+        updatedByUser: appUser.username
+      });
+      setEditingRecord(null); 
+    } catch (e) {
+      console.error("Error updating document: ", e);
+      alert('更新失敗，請重試。');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('確定要刪除此筆紀錄嗎？')) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tqm_records', id));
+    } catch (e) {
+      console.error("Error deleting: ", e);
+    }
+  };
+
+  // Re-use existing Import/Export/Stats logic
+  const handleImportCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file || !sysUser) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const cleanText = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+        const rows = parseCSV(cleanText);
+        if (rows.length < 2) return alert("CSV 格式錯誤");
+
+        const header = rows[0].map(h => h.trim());
+        const dataRows = rows.slice(1);
+        const getColIndex = (names) => header.findIndex(h => names.some(n => h.includes(n)));
+        const colMap = {
+          date: getColIndex(['日期']), legacyMonth: getColIndex(['月份']), dept: getColIndex(['部門', '課別']),
+          person: getColIndex(['人員', '姓名']), type: getColIndex(['回報類型', 'TQM回報類型']), desc: getColIndex(['問題描述', '異常描述', 'TQM回報問題/異常描述']),
+          repeat: getColIndex(['重複']), status: getColIndex(['狀態', '改善狀態']), method: getColIndex(['改善對策', '永久改善措施']), note: getColIndex(['備註', '訊息'])
+        };
+
+        if (colMap.dept === -1 || colMap.desc === -1) return alert("無法辨識 CSV 格式，請確認標題列是否正確。");
+
+        const batch = writeBatch(db);
+        let count = 0;
+        const currentYear = new Date().getFullYear();
+
+        dataRows.forEach(row => {
+          if (row.length < 2) return;
+          let recordDate = new Date().toISOString().split('T')[0];
+          if (colMap.date !== -1 && row[colMap.date]) recordDate = row[colMap.date];
+          else if (colMap.legacyMonth !== -1 && row[colMap.legacyMonth]) {
+            const m = row[colMap.legacyMonth].match(/(\d+)/)?.[1].padStart(2, '0');
+            if(m) recordDate = `${currentYear}-${m}-01`;
+          }
+          const dept = DEPARTMENTS.find(d => (row[colMap.dept]||'').includes(d)) || (row[colMap.dept]||'其他');
+          const isRepeat = (colMap.repeat !== -1 ? row[colMap.repeat] : '').includes('是');
+          const status = (colMap.status !== -1 ? row[colMap.status] : '').includes('已改善') ? '已改善' : '未改善';
+
+          const newDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'tqm_records'));
+          batch.set(newDocRef, {
+            date: recordDate, department: dept, personName: (colMap.person !== -1 ? row[colMap.person] : '匯入資料').trim(),
+            issueType: (colMap.type !== -1 ? row[colMap.type] : '其他').trim(), description: (colMap.desc !== -1 ? row[colMap.desc] : '').trim(),
+            isRepeat: isRepeat, status: status, improvementMethod: colMap.method !== -1 ? row[colMap.method] : '',
+            note: colMap.note !== -1 ? row[colMap.note] : '批量匯入',
+            createdAt: serverTimestamp(), userId: sysUser.uid, createdByUser: appUser.username
+          });
+          count++;
+        });
+        await batch.commit();
+        alert(`成功匯入 ${count} 筆資料！`);
+        e.target.value = null;
+      } catch (error) { alert("匯入失敗：" + error.message); }
+    };
+    reader.readAsText(file);
+  };
+
+  // Re-use existing Stats logic
+  const stats = useMemo(() => {
+    const total = records.length;
+    const resolved = records.filter(r => r.status === '已改善').length;
+    const unresolved = total - resolved;
+    const repeats = records.filter(r => r.isRepeat).length;
+    return { total, resolved, unresolved, repeats, 
+      improvementRate: total > 0 ? ((resolved / total) * 100).toFixed(1) : 0,
+      repeatRate: total > 0 ? ((repeats / total) * 100).toFixed(1) : 0 
+    };
+  }, [records]);
+
+  const chartData = useMemo(() => {
+    const trendMap = {}; MONTHS.forEach(m => trendMap[m] = { name: m, 案件數: 0, 重複: 0 });
+    const deptMap = {}; DEPARTMENTS.forEach(d => deptMap[d] = { name: d, value: 0 });
+    const typeMap = {};
+    records.forEach(r => {
+      const m = MONTHS[new Date(r.date).getMonth()];
+      if (trendMap[m]) { trendMap[m].案件數++; if(r.isRepeat) trendMap[m].重複++; }
+      if (deptMap[r.department]) deptMap[r.department].value++;
+      if (!typeMap[r.issueType]) typeMap[r.issueType] = { name: r.issueType, value: 0 };
+      typeMap[r.issueType].value++;
+    });
+    return { trendData: Object.values(trendMap), deptData: Object.values(deptMap).filter(d => d.value > 0), typeData: Object.values(typeMap) };
+  }, [records]);
+
+  const handleExportCSV = () => {
+    if (records.length === 0) return alert("無資料可匯出");
+    const headers = ["日期", "部門", "人員", "TQM回報類型", "重複發生", "改善狀態", "問題描述", "改善對策", "備註/訊息", "有無附件"];
+    const csvString = '\uFEFF' + [headers.join(','), ...records.map(r => [
+      r.date, r.department, r.personName, r.issueType, r.isRepeat?"是":"否", r.status,
+      `"${(r.description||'').replace(/"/g,'""')}"`, `"${(r.improvementMethod||'').replace(/"/g,'""')}"`,
+      `"${(r.note||'').replace(/"/g,'""')}"`, r.attachment?"有":"無"
+    ].join(','))].join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csvString], {type:'text/csv'}));
+    a.download = `TQM_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+  };
+
+  // --- Views ---
+
+  if (loading) return <div className="h-screen flex items-center justify-center text-slate-500">系統載入中...</div>;
+
+  // 4. Show Login if not authenticated at App Level
+  if (!appUser) {
+    return <LoginScreen onLogin={handleLogin} loading={false} />;
+  }
+
+  // 5. Authenticated View
+  return (
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
+      {viewImage && <ImageModal src={viewImage} onClose={() => setViewImage(null)} />}
+      {editingRecord && <EditRecordModal record={editingRecord} onClose={() => setEditingRecord(null)} onUpdate={handleUpdateRecord} />}
+
+      {/* Sidebar */}
+      <aside className="w-64 bg-slate-900 text-white flex-shrink-0 hidden md:flex flex-col">
+        <div className="p-6 border-b border-slate-700">
+          <h1 className="text-xl font-bold flex items-center gap-2"><CheckCircle2 className="text-blue-400" />TQM 管理系統</h1>
+          <div className="mt-4 flex items-center gap-3 bg-slate-800 p-3 rounded-lg">
+             <div className="bg-blue-600 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
+               {appUser.displayName[0]}
+             </div>
+             <div>
+               <p className="text-sm font-medium">{appUser.displayName}</p>
+               <p className="text-xs text-slate-400 flex items-center gap-1">
+                 {appUser.role === 'admin' ? <Shield size={10} className="text-purple-400"/> : <User size={10}/>}
+                 {appUser.role === 'admin' ? '系統管理員' : '一般使用者'}
+               </p>
+             </div>
+          </div>
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
+          <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={LayoutDashboard} label="總覽儀表板" />
+          <NavButton active={activeTab === 'entry'} onClick={() => setActiveTab('entry')} icon={PlusCircle} label="新增紀錄" />
+          <NavButton active={activeTab === 'list'} onClick={() => setActiveTab('list')} icon={List} label="紀錄清單" />
+          <NavButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={BarChart3} label="統計分析" />
+          
+          {appUser.role === 'admin' && (
+            <>
+              <div className="border-t border-slate-700 my-2 pt-2 text-xs text-slate-500 px-3">管理功能</div>
+              <NavButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="帳號管理" />
+            </>
+          )}
+        </nav>
+        <div className="p-4 border-t border-slate-800">
+          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-slate-400 hover:text-white transition-colors py-2">
+             <LogOut size={16} /> 登出系統
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile Header (Simplified) */}
+      <div className="md:hidden fixed top-0 w-full bg-slate-900 text-white z-50 p-4 flex justify-between items-center">
+        <span className="font-bold">TQM System</span>
+        <button onClick={handleLogout}><LogOut size={20} /></button>
+      </div>
+
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto mt-12 md:mt-0">
+        
+        {/* Render Tab Content */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6 max-w-7xl mx-auto">
+             <header className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-slate-800">年度 TQM 總覽</h2>
+              <button onClick={handleExportCSV} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"><Download size={16} /> 匯出報表</button>
+            </header>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard title="年度總回報件數" value={stats.total} subtext="累積案件" icon={List} colorClass="bg-blue-500 text-blue-600" />
+              <StatCard title="改善率" value={`${stats.improvementRate}%`} subtext={`已改善: ${stats.resolved} 件`} icon={CheckCircle2} colorClass="bg-green-500 text-green-600" />
+              <StatCard title="重複發生件數" value={stats.repeats} subtext={`重複率: ${stats.repeatRate}%`} icon={AlertCircle} colorClass="bg-red-500 text-red-600" />
+              <StatCard title="待處理案件" value={stats.unresolved} subtext="需追蹤進度" icon={Filter} colorClass="bg-orange-500 text-orange-600" />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80"><ResponsiveContainer><LineChart data={chartData.trendData}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name"/><YAxis/><Tooltip/><Legend/><Line type="monotone" dataKey="案件數" stroke="#3b82f6"/><Line type="monotone" dataKey="重複" stroke="#ef4444"/></LineChart></ResponsiveContainer></div>
+               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80"><ResponsiveContainer><PieChart><Pie data={chartData.typeData} cx="50%" cy="50%" outerRadius={80} fill="#8884d8" dataKey="value" label>{chartData.typeData.map((e,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer></div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'entry' && (
+          <div className="max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold text-slate-800 mb-6">新增 TQM 紀錄</h2>
+            <EntryForm onSubmit={handleAddRecord} currentUser={appUser} />
+          </div>
+        )}
+
+        {activeTab === 'list' && (
+          <div className="max-w-7xl mx-auto space-y-6">
+            <div className="flex justify-between items-end">
+              <h2 className="text-2xl font-bold text-slate-800">歷史紀錄清單</h2>
+              <div className="flex items-center gap-2">
+                 <label className="flex items-center gap-2 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm transition-colors border border-blue-200 shadow-sm">
+                    <Import size={16} /><span>匯入舊資料 (CSV)</span>
+                    <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
+                 </label>
+              </div>
+            </div>
+            <RecordTable records={records} onDelete={handleDelete} onViewImage={setViewImage} onEdit={setEditingRecord} currentUser={appUser} />
+          </div>
+        )}
+
+        {activeTab === 'analysis' && (
+           <div className="max-w-7xl mx-auto space-y-6">
+             <h2 className="text-2xl font-bold text-slate-800 mb-6">進階統計分析</h2>
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-96"><h3 className="mb-4 font-bold">部門案件統計</h3><ResponsiveContainer><BarChart data={chartData.deptData} layout="vertical"><CartesianGrid horizontal vertical={false}/><XAxis type="number"/><YAxis dataKey="name" type="category" width={80}/><Tooltip/><Bar dataKey="value" fill="#6366f1"/></BarChart></ResponsiveContainer></div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-96 overflow-y-auto"><h3 className="mb-4 font-bold">類型排行</h3>
+                   <table className="w-full text-sm text-left">
+                     <thead><tr className="bg-gray-50"><th className="p-2">類型</th><th className="p-2">數量</th></tr></thead>
+                     <tbody>{chartData.typeData.sort((a,b)=>b.value-a.value).map(d=><tr key={d.name} className="border-b"><td className="p-2">{d.name}</td><td className="p-2">{d.value}</td></tr>)}</tbody>
+                   </table>
+                </div>
+             </div>
+           </div>
+        )}
+
+        {/* User Management Tab (Admin Only) */}
+        {activeTab === 'users' && appUser.role === 'admin' && (
+          <UserManagement currentUser={appUser} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// --- Record Table (Modified to protect Delete button) ---
+const RecordTable = ({ records, onDelete, onViewImage, onEdit, currentUser }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDept, setFilterDept] = useState('All');
+  
+  const filteredRecords = records.filter(r => {
+    const matchesSearch = r.description?.toLowerCase().includes(searchTerm.toLowerCase()) || r.personName?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDept = filterDept === 'All' || r.department === filterDept;
+    return matchesSearch && matchesDept;
+  });
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      {/* Table Toolbar */}
+      <div className="p-4 border-b border-gray-100 flex gap-4 bg-gray-50/50">
+        <div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="text" placeholder="搜尋..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="All">所有部門</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left text-gray-600">
+          <thead className="text-xs text-gray-700 uppercase bg-gray-100"><tr><th className="px-6 py-3">日期</th><th className="px-6 py-3">部門</th><th className="px-6 py-3">人員</th><th className="px-6 py-3">描述</th><th className="px-6 py-3 text-center">附件</th><th className="px-6 py-3 text-center">狀態</th><th className="px-6 py-3 text-center">操作</th></tr></thead>
+          <tbody>
+            {filteredRecords.map((r) => (
+              <tr key={r.id} className="bg-white border-b hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">{r.date}</td>
+                <td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{r.department}</span></td>
+                <td className="px-6 py-4">{r.personName}</td>
+                <td className="px-6 py-4 max-w-xs truncate">{r.description}</td>
+                <td className="px-6 py-4 text-center">{r.attachment ? <button onClick={() => onViewImage(r.attachment)} className="text-blue-500"><ImageIcon size={18}/></button> : '-'}</td>
+                <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.status === '已改善' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span></td>
+                <td className="px-6 py-4 text-center flex justify-center gap-2">
+                   <button onClick={() => onEdit(r)} className="text-blue-400 hover:text-blue-600"><Edit size={16} /></button>
+                   {currentUser.role === 'admin' && (
+                     <button onClick={() => onDelete(r.id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>
+                   )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
