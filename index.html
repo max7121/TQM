@@ -132,7 +132,9 @@ import {
   Layers,
   FileBarChart,
   FileSpreadsheet,
-  Presentation
+  Presentation,
+  ExternalLink,
+  Link as LinkIcon
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -4554,6 +4556,213 @@ const HistoryForm = ({ onSubmit, onCancel }) => {
   );
 };
 
+// --- 專案規格討論歷程視圖 ---
+const SpecDiscussionView = () => {
+  const [urls, setUrls] = useState(() => {
+    const saved = localStorage.getItem('spec_discussion_urls');
+    return saved ? JSON.parse(saved) : [
+      { id: 1, name: '主要討論區', url: 'https://example.com/discussion', createdAt: new Date().toISOString() }
+    ];
+  });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingUrl, setEditingUrl] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newUrl, setNewUrl] = useState('');
+
+  // 儲存到 localStorage
+  useEffect(() => {
+    localStorage.setItem('spec_discussion_urls', JSON.stringify(urls));
+  }, [urls]);
+
+  const handleAddUrl = () => {
+    if (!newName.trim() || !newUrl.trim()) {
+      alert('請填寫名稱和網址');
+      return;
+    }
+    const newEntry = {
+      id: Date.now(),
+      name: newName,
+      url: newUrl,
+      createdAt: new Date().toISOString()
+    };
+    setUrls([...urls, newEntry]);
+    setNewName('');
+    setNewUrl('');
+    setIsEditing(false);
+  };
+
+  const handleUpdateUrl = (id) => {
+    if (!newName.trim() || !newUrl.trim()) {
+      alert('請填寫名稱和網址');
+      return;
+    }
+    setUrls(urls.map(u => u.id === id ? { ...u, name: newName, url: newUrl } : u));
+    setEditingUrl(null);
+    setNewName('');
+    setNewUrl('');
+  };
+
+  const handleDeleteUrl = (id) => {
+    if (confirm('確定要刪除此連結嗎?')) {
+      setUrls(urls.filter(u => u.id !== id));
+    }
+  };
+
+  const handleOpenUrl = (url) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const startEdit = (urlEntry) => {
+    setEditingUrl(urlEntry.id);
+    setNewName(urlEntry.name);
+    setNewUrl(urlEntry.url);
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+            <ExternalLink className="w-8 h-8 text-blue-600" />
+            專案規格討論歷程
+          </h1>
+          <p className="text-slate-500 mt-2">管理與訪問專案規格討論的外部連結</p>
+        </div>
+        <button
+          onClick={() => {
+            setIsEditing(!isEditing);
+            setEditingUrl(null);
+            setNewName('');
+            setNewUrl('');
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+        >
+          <Plus size={20} />
+          新增連結
+        </button>
+      </div>
+
+      {/* 新增/編輯表單 */}
+      {(isEditing || editingUrl) && (
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-800 mb-4">
+            {editingUrl ? '編輯連結' : '新增連結'}
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">連結名稱</label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="例如:主要討論區、技術規格文件等"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">網址 (URL)</label>
+              <input
+                type="url"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                placeholder="https://example.com"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditingUrl(null);
+                  setNewName('');
+                  setNewUrl('');
+                }}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => editingUrl ? handleUpdateUrl(editingUrl) : handleAddUrl()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {editingUrl ? '更新' : '新增'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 連結列表 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {urls.map((urlEntry) => (
+          <div
+            key={urlEntry.id}
+            className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <LinkIcon size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800">{urlEntry.name}</h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {new Date(urlEntry.createdAt).toLocaleDateString('zh-TW')}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <a
+                href={urlEntry.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:underline break-all"
+              >
+                {urlEntry.url}
+              </a>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleOpenUrl(urlEntry.url)}
+                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm"
+              >
+                <ExternalLink size={16} />
+                開啟連結
+              </button>
+              <button
+                onClick={() => startEdit(urlEntry)}
+                className="px-3 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                title="編輯"
+              >
+                <Edit size={16} />
+              </button>
+              <button
+                onClick={() => handleDeleteUrl(urlEntry.id)}
+                className="px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                title="刪除"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {urls.length === 0 && !isEditing && (
+        <div className="bg-white p-12 rounded-xl border border-slate-200 text-center">
+          <ExternalLink className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-slate-400 mb-2">尚無討論連結</h3>
+          <p className="text-slate-400 mb-4">點擊上方「新增連結」按鈕來添加第一個討論連結</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Main App (ProjectApp) ---
 
 const ProjectApp = ({ machine, onBackToMachines, user }) => {
@@ -4844,6 +5053,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         );
       case 'analytics':
         return <AnalyticsView projects={projects} tasks={tasks} changes={changes} />;
+      case 'spec-discussion':
+        return <SpecDiscussionView />;
       case 'engineer':
         return <EngineerDashboardView tasks={tasks} onUpdateTask={handleUpdateTask} user={user} />;
       default:
@@ -4894,6 +5105,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
             <NavItem id="dashboard" icon={LayoutDashboard} label="總覽儀表板" />
             <NavItem id="list" icon={ListTodo} label="專案列表" />
             <NavItem id="analytics" icon={BarChart3} label="分析報告" />
+            <NavItem id="spec-discussion" icon={ExternalLink} label="專案規格討論歷程" />
           </div>
           
           <div className="mb-6">
@@ -6596,6 +6808,21 @@ const ProductWarRoom = ({ onBackToMenu }) => {
     '其他': '#94a3b8'
   };
 
+  // 從資料庫加載資料
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const dbData = await db.getDocs('rd_projects');
+        if (dbData && dbData.length > 0) {
+          setData(dbData);
+        }
+      } catch (error) {
+        console.error('從資料庫加載資料時發生錯誤:', error);
+      }
+    };
+    loadData();
+  }, []);
+
   useEffect(() => {
     if (window.XLSX) {
       setExcelLibLoaded(true);
@@ -6829,10 +7056,19 @@ const ProductWarRoom = ({ onBackToMenu }) => {
     return null;
   };
 
-  const finalizeImport = (newItems, count) => {
+  const finalizeImport = async (newItems, count) => {
     if (newItems.length > 0) {
-      setData(prev => [...newItems, ...prev]);
-      alert(`匯入成功！共新增 ${count} 筆資料。`);
+      try {
+        // 將每一筆資料保存到資料庫
+        for (const item of newItems) {
+          await db.addDoc('rd_projects', item);
+        }
+        setData(prev => [...newItems, ...prev]);
+        alert(`匯入成功！共新增 ${count} 筆資料，已保存至資料庫。`);
+      } catch (error) {
+        console.error('匯入資料時發生錯誤:', error);
+        alert('匯入失敗：保存至資料庫時發生錯誤。');
+      }
     } else { alert('匯入失敗：找不到有效資料，請確認檔案格式。'); }
   };
 
@@ -6857,16 +7093,34 @@ const ProductWarRoom = ({ onBackToMenu }) => {
     document.body.removeChild(link);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const newItem = { id: Date.now(), ...formData };
-    setData([newItem, ...data]);
-    setIsModalOpen(false);
-    setFormData({ docType: '', partNo: '', name: '', spec: '', confirmDate: new Date().toISOString().split('T')[0], orderType: '組立製令', attr: 'M:自製件' });
+    try {
+      const newItem = { id: Date.now(), ...formData };
+      // 保存到資料庫
+      await db.addDoc('rd_projects', newItem);
+      setData([newItem, ...data]);
+      setIsModalOpen(false);
+      setFormData({ docType: '', partNo: '', name: '', spec: '', confirmDate: new Date().toISOString().split('T')[0], orderType: '組立製令', attr: 'M:自製件' });
+      alert('資料新增成功！已保存至資料庫。');
+    } catch (error) {
+      console.error('新增資料時發生錯誤:', error);
+      alert('新增失敗：保存至資料庫時發生錯誤。');
+    }
   };
 
-  const handleDelete = (id) => {
-    if(window.confirm('確定要刪除這筆資料嗎？')) { setData(data.filter(item => item.id !== id)); }
+  const handleDelete = async (id) => {
+    if(window.confirm('確定要刪除這筆資料嗎？')) {
+      try {
+        // 從資料庫刪除
+        await db.deleteDoc('rd_projects', id);
+        setData(data.filter(item => item.id !== id));
+        alert('刪除成功！');
+      } catch (error) {
+        console.error('刪除資料時發生錯誤:', error);
+        alert('刪除失敗：從資料庫刪除時發生錯誤。');
+      }
+    }
   };
 
   const filteredData = data.filter(item => 
