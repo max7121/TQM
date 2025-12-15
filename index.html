@@ -66,7 +66,7 @@
         }
     }
     </script>
-
+    <style>
         body { background-color: #f8fafc; }
     </style>
 </head>
@@ -105,7 +105,8 @@ import {
   Menu, 
   ChevronRight, 
   Target, 
-  RefreshCw, 
+  RefreshCw,
+  RefreshCcw,
   Calendar,
   LineChart as LineChartIcon,
   ListTodo, 
@@ -134,7 +135,8 @@ import {
   FileSpreadsheet,
   Presentation,
   ExternalLink,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Calculator
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -806,11 +808,66 @@ const EntryForm = ({ onSubmit, currentUser }) => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { alert("檔案過大！建議上傳 10MB 以下的檔案。"); e.target.value = null; return; }
-      setFileName(file.name);
-      const reader = new FileReader();
-      reader.onloadend = () => { setFormData(prev => ({ ...prev, attachment: reader.result })); };
-      reader.readAsDataURL(file);
+      // Firebase Firestore 單一文件限制約 1MB，設定檔案限制為 800KB
+      const maxSize = 800 * 1024; // 800KB
+      
+      if (file.type.startsWith('image/')) {
+        // 圖片檔案：進行壓縮
+        const img = new Image();
+        const canvas = document.createElement('canvas');
+        const reader = new FileReader();
+        
+        reader.onload = (event) => {
+          img.onload = () => {
+            // 計算壓縮後的尺寸，最大寬度 1200px
+            let width = img.width;
+            let height = img.height;
+            const maxWidth = 1200;
+            
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // 調整品質以控制大小
+            let quality = 0.7;
+            let compressedData = canvas.toDataURL('image/jpeg', quality);
+            
+            // 如果還是太大，繼續降低品質
+            while (compressedData.length > maxSize * 1.37 && quality > 0.1) {
+              quality -= 0.1;
+              compressedData = canvas.toDataURL('image/jpeg', quality);
+            }
+            
+            if (compressedData.length > maxSize * 1.37) {
+              alert('圖片太大，即使壓縮後仍超過限制，請選擇較小的圖片');
+              e.target.value = null;
+              return;
+            }
+            
+            setFileName(file.name);
+            setFormData(prev => ({ ...prev, attachment: compressedData }));
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // 非圖片檔案：檢查大小限制
+        if (file.size > maxSize) {
+          alert(`檔案過大！非圖片檔案請上傳 ${Math.round(maxSize/1024)}KB 以下的檔案。\n\n提示：建議使用雲端硬碟分享連結`);
+          e.target.value = null;
+          return;
+        }
+        setFileName(file.name);
+        const reader = new FileReader();
+        reader.onloadend = () => { setFormData(prev => ({ ...prev, attachment: reader.result })); };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -856,9 +913,34 @@ const EntryForm = ({ onSubmit, currentUser }) => {
 
 // --- Edit Record Modal ---
 const EditRecordModal = ({ record, onClose, onUpdate }) => {
-  const [formData, setFormData] = useState({ ...record, improvementMethod: record.improvementMethod || '', note: record.note || '' });
+  const [formData, setFormData] = useState({ 
+    ...record, 
+    improvementMethod: record.improvementMethod || '', 
+    note: record.note || '',
+    improvementAttachment: record.improvementAttachment || null,
+    improvementAttachmentName: record.improvementAttachmentName || ''
+  });
   const handleChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
   const handleSubmit = (e) => { e.preventDefault(); onUpdate(record.id, formData); };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 1024 * 1024) {
+        alert('檔案過大！請選擇小於 1MB 的檔案');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData(prev => ({
+          ...prev,
+          improvementAttachment: event.target.result,
+          improvementAttachmentName: file.name
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -878,6 +960,58 @@ const EditRecordModal = ({ record, onClose, onUpdate }) => {
           <div className="bg-green-50 p-4 rounded-lg space-y-4 border border-green-100">
              <h3 className="text-sm font-bold text-green-800 uppercase tracking-wider mb-2 flex items-center gap-2"><CheckCircle2 size={16}/> 改善對策與追蹤</h3>
              <div><label className="block text-sm font-semibold text-gray-700 mb-1">改善對策 (Countermeasure)</label><textarea name="improvementMethod" rows="4" value={formData.improvementMethod} onChange={handleChange} placeholder="請填寫具體的改善方法、預防再發措施..." className="w-full p-3 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 text-sm"></textarea></div>
+             
+             {/* 上傳檔案區塊 */}
+             <div>
+               <label className="block text-sm font-semibold text-gray-700 mb-2">改善輔助資料 (選填)</label>
+               <div className="flex items-center gap-3">
+                 <label className="flex-1 cursor-pointer">
+                   <div className="border-2 border-dashed border-green-300 rounded-lg p-3 hover:border-green-500 transition-colors bg-white">
+                     <div className="flex items-center justify-center gap-2">
+                       <Upload className="w-5 h-5 text-green-500" />
+                       <span className="text-sm text-gray-600">
+                         {formData.improvementAttachmentName || '點擊上傳檔案 (圖片/PDF/Excel)'}
+                       </span>
+                     </div>
+                   </div>
+                   <input
+                     type="file"
+                     className="hidden"
+                     accept="image/*,.pdf,.xlsx,.xls,.doc,.docx"
+                     onChange={handleFileUpload}
+                   />
+                 </label>
+                 {formData.improvementAttachmentName && (
+                   <button
+                     type="button"
+                     onClick={() => setFormData(prev => ({ ...prev, improvementAttachment: null, improvementAttachmentName: '' }))}
+                     className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                     title="移除檔案"
+                   >
+                     <X className="w-5 h-5" />
+                   </button>
+                 )}
+               </div>
+               {formData.improvementAttachmentName && (
+                 <p className="mt-2 text-sm text-green-600 flex items-center gap-1">
+                   <CheckCircle2 className="w-4 h-4" />
+                   已選擇: {formData.improvementAttachmentName}
+                 </p>
+               )}
+               {/* 顯示已有附件 */}
+               {record.improvementAttachment && !formData.improvementAttachmentName && (
+                 <div className="mt-2 p-2 bg-green-100 rounded-lg flex items-center gap-2">
+                   <Paperclip className="w-4 h-4 text-green-600" />
+                   <span className="text-sm text-green-700">已有附件: {record.improvementAttachmentName || '檔案'}</span>
+                   {record.improvementAttachment.startsWith('data:image') ? (
+                     <a href={record.improvementAttachment} target="_blank" className="text-blue-600 hover:underline text-sm ml-auto">查看</a>
+                   ) : (
+                     <a href={record.improvementAttachment} download={record.improvementAttachmentName} className="text-blue-600 hover:underline text-sm ml-auto">下載</a>
+                   )}
+                 </div>
+               )}
+             </div>
+             
              <div><label className="block text-sm font-semibold text-gray-700 mb-1">備註/訊息</label><input type="text" name="note" value={formData.note} onChange={handleChange} placeholder="例如：已通知相關廠商、待主管確認..." className="w-full p-2 border border-green-200 rounded-lg text-sm" /></div>
              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center pt-2">
                 <div className="flex items-center space-x-2"><label className="text-sm font-bold text-gray-700">目前狀態：</label><select name="status" value={formData.status} onChange={handleChange} className={`text-sm font-bold py-1 px-3 rounded-full border-none ring-2 ${formData.status === '已改善' ? 'bg-green-100 text-green-800 ring-green-400' : 'bg-red-100 text-red-800 ring-red-400'}`}><option value="未改善">未改善</option><option value="已改善">已改善</option></select></div>
@@ -914,9 +1048,25 @@ const RecordTable = ({ records, onDelete, onViewImage, onEdit, currentUser }) =>
             {filteredRecords.map((r) => (
               <tr key={r.id} className="bg-white border-b hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">{r.date}</td><td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{r.department}</span></td><td className="px-6 py-4">{r.personName}</td><td className="px-6 py-4 max-w-xs truncate">{r.description}</td>
-                <td className="px-6 py-4 text-center">{r.attachment ? (r.attachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.attachment)} className="text-blue-500 hover:text-blue-700" title="查看圖片"><ImageIcon size={18}/></button> : <a href={r.attachment} download className="text-green-500 hover:text-green-700" title="下載附件"><Paperclip size={18}/></a>) : '-'}</td>
+                <td className="px-6 py-4 text-center flex justify-center gap-2">
+                  {/* 原始問題附件 */}
+                  {r.attachment ? (r.attachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.attachment)} className="text-blue-500 hover:text-blue-700" title="查看原始附件"><ImageIcon size={18}/></button> : <a href={r.attachment} download className="text-green-500 hover:text-green-700" title="下載原始附件"><Paperclip size={18}/></a>) : null}
+                  {/* 改善對策附件 */}
+                  {r.improvementAttachment ? (r.improvementAttachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.improvementAttachment)} className="text-purple-500 hover:text-purple-700" title={`查看改善附件: ${r.improvementAttachmentName || '圖片'}`}><ImageIcon size={18}/></button> : <a href={r.improvementAttachment} download={r.improvementAttachmentName || '改善附件'} className="text-orange-500 hover:text-orange-700" title={`下載改善附件: ${r.improvementAttachmentName || '檔案'}`}><Paperclip size={18}/></a>) : null}
+                  {/* 都沒有附件時顯示 - */}
+                  {!r.attachment && !r.improvementAttachment && '-'}
+                </td>
                 <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.status === '已改善' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span></td>
-                <td className="px-6 py-4 text-center flex justify-center gap-2"><button onClick={() => onEdit(r)} className="text-blue-400 hover:text-blue-600"><Edit size={16} /></button>{currentUser.role === 'admin' && (<button onClick={() => onDelete(r.id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>)}</td>
+                <td className="px-6 py-4 text-center flex justify-center gap-2">
+                  {/* 編輯權限：管理員 或 新增該紀錄的人 */}
+                  {(currentUser.role === 'admin' || r.createdByUser === currentUser.username) && (
+                    <button onClick={() => onEdit(r)} className="text-blue-400 hover:text-blue-600" title="編輯"><Edit size={16} /></button>
+                  )}
+                  {/* 刪除權限：僅管理員 */}
+                  {currentUser.role === 'admin' && (
+                    <button onClick={() => onDelete(r.id)} className="text-gray-400 hover:text-red-600" title="刪除"><Trash2 size={16} /></button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1075,8 +1225,15 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
   const [formData, setFormData] = useState({
     workCompletion: {},
     quality: {},
-    initiative: ''
+    note: '',
+    attachment: null,
+    attachmentName: ''
   });
+  
+  // 自動取得的資料
+  const [tqmRecords, setTqmRecords] = useState([]);
+  const [rdTasks, setRdTasks] = useState([]);
+  const [autoFetchedData, setAutoFetchedData] = useState(null);
 
   // 部門名稱對應 (用戶資料的部門 → KPI模板鍵名)
   const DEPARTMENT_MAPPING = {
@@ -1099,359 +1256,377 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
   // 部門 KPI 模板 - 整合 KPI 績效系統的指標
   const DEPARTMENT_TEMPLATES = {
     '機構設計課': {
-      // KPI 指標計算規則 - 基於填寫的工作數據自動計算
+      // ========== KPI 指標 (品質50% + 效率50%) ==========
       indicators: [
         { 
-          category: '質量', 
-          name: '錯誤率', 
-          target: '≤ 3%', 
+          category: '品質', 
+          name: '設計正確率', 
+          target: '≥ 97%', 
           unit: '%', 
-          kpiField: 'errorRate',
+          weight: 25,
+          kpiField: 'designAccuracyRate',
           calculate: (formData) => {
-            // 錯誤率 = (重大設計疏失 + 重複發生問題) / 總完成件數 * 100
-            const hasError = (formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0) + 
-                           (formData.quality?.['是否有重複發生問題'] === '有' ? 1 : 0);
+            // 設計正確率 = (總件數 - 設計錯誤) / 總件數 × 100
             const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            return totalWork > 0 ? ((hasError / totalWork) * 100).toFixed(1) : '0';
+            const errors = (formData.quality?.['設計錯誤次數'] || 0) + (formData.quality?.['圖面錯誤次數'] || 0);
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - errors) / totalWork) * 100).toFixed(1);
           }
         },
         { 
-          category: '質量', 
+          category: '品質', 
           name: '一次通過率', 
           target: '≥ 90%', 
           unit: '%', 
+          weight: 25,
           kpiField: 'firstPassRate',
           calculate: (formData) => {
-            // 一次通過率 = (無重工件數 / 總完成件數) * 100
+            // 一次通過率 = (總件數 - 返工件數) / 總件數 × 100
             const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            const hasRework = formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0;
-            const passedWork = totalWork - hasRework;
-            return totalWork > 0 ? ((passedWork / totalWork) * 100).toFixed(1) : '100';
+            const rework = formData.quality?.['返工/修改次數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - rework) / totalWork) * 100).toFixed(1);
           }
         },
         { 
           category: '效率', 
-          name: '月交付次數', 
-          target: '≥ 2次', 
-          unit: '次', 
-          kpiField: 'monthlyDelivery',
+          name: '準時完成率', 
+          target: '≥ 95%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'onTimeRate',
           calculate: (formData) => {
-            // 月交付次數 = 新機構設計 + 設變支援
-            const newDesign = formData.workCompletion?.['新機構設計'] || 0;
-            const revisionSupport = formData.workCompletion?.['設變/改版支援'] || 0;
-            return (newDesign + revisionSupport).toString();
+            // 準時完成率 = (總件數 - 逾期件數) / 總件數 × 100
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const late = formData.quality?.['逾期完成件數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - late) / totalWork) * 100).toFixed(1);
           }
         },
         { 
-          category: '創新', 
-          name: '新設計提案', 
-          target: '1項', 
-          unit: '項', 
-          kpiField: 'newDesignProposal',
+          category: '效率', 
+          name: '月產出量達成率', 
+          target: '≥ 100%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'outputAchievementRate',
           calculate: (formData) => {
-            // 新設計提案 = 主動貢獻文字長度 >= 50 視為有提案
-            const initiativeText = formData.initiative || '';
-            return initiativeText.length >= 50 ? '1' : '0';
+            // 月產出量達成率 = 實際完成件數 / 目標件數 × 100
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const target = formData.targetOutput || 10; // 預設目標10件
+            return Math.min(150, (totalWork / target) * 100).toFixed(1); // 上限150%
           }
         }
       ],
       workCompletion: [
-        { name: '新機構設計', unit: '件', weight: 30 },
-        { name: '設變/改版支援', unit: '件', weight: 25 },
-        { name: '問題修正', unit: '件', weight: 20 },
-        { name: '文件/圖面完成', unit: '件', weight: 25 }
+        { name: '新機構設計', unit: '件', desc: '全新機構設計案' },
+        { name: '設變/改版', unit: '件', desc: '設變或改版作業' },
+        { name: '問題對策', unit: '件', desc: '品質問題處理' },
+        { name: '圖面/文件', unit: '件', desc: '圖面與文件作業' }
       ],
       quality: [
-        { name: '設計錯誤次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
-        { name: '客戶抱怨次數', type: 'number', max: 3, penalty: 6, unit: '次', desc: '每次扣6分' },
-        { name: '返工件數', type: 'number', max: 5, penalty: 3, unit: '件', desc: '每件扣3分' },
-        { name: '文件錯誤次數', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' },
-        { name: '遺漏改善項目', type: 'number', max: 3, penalty: 4, unit: '項', desc: '每項扣4分' }
+        { name: '設計錯誤次數', type: 'number', unit: '次', desc: '結構/尺寸/材料錯誤' },
+        { name: '圖面錯誤次數', type: 'number', unit: '次', desc: '圖面標註/公差錯誤' },
+        { name: '返工/修改次數', type: 'number', unit: '次', desc: '需重新修改的件數' },
+        { name: '逾期完成件數', type: 'number', unit: '件', desc: '超過預定完成日' }
       ],
-      initiative: { 
-        label: '改善結構/可維修性建議', 
-        placeholder: '例如:優化 F58B 散熱結構,減少組裝工時 (至少50字可算1項新設計提案)',
-        maxScore: 20
-      },
-      scoring: {
-        excellent: 10,
-        good: 7,
-        pass: 5,
-        minimum: 3
-      }
+      targetOutput: { label: '月目標產出件數', default: 10, desc: '部門設定的月目標' }
     },
     '電子設計課': {
-      // KPI 指標計算規則
+      // ========== KPI 指標 (品質50% + 效率50%) ==========
       indicators: [
         { 
-          category: '質量', 
-          name: '錯誤率', 
-          target: '≤ 1.5%', 
-          unit: '%', 
-          kpiField: 'errorRate',
-          calculate: (formData) => {
-            const hasError = (formData.quality?.['是否有因設計造成異常'] === '有' ? 1 : 0) + 
-                           (formData.quality?.['是否有重工'] === '有' ? 1 : 0);
-            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            return totalWork > 0 ? ((hasError / totalWork) * 100).toFixed(1) : '0';
-          }
-        },
-        { 
-          category: '效率', 
-          name: '開發時間縮短', 
-          target: '5%以上', 
-          unit: '%', 
-          kpiField: 'developmentShortenRate',
-          calculate: (formData) => {
-            // 韌體功能完成件數 >= 3 視為有效率提升
-            const firmwareCount = formData.workCompletion?.['韌體功能完成'] || 0;
-            return firmwareCount >= 3 ? '5' : '0';
-          }
-        },
-        { 
-          category: '創新', 
-          name: '問題改善案', 
-          target: '1項', 
-          unit: '項', 
-          kpiField: 'improvementCase',
-          calculate: (formData) => {
-            const initiativeText = formData.initiative || '';
-            return initiativeText.length >= 50 ? '1' : '0';
-          }
-        }
-      ],
-      workCompletion: [
-        { name: '電路/PCB設計', unit: '件', weight: 40 },
-        { name: '韌體功能完成', unit: '件', weight: 35 },
-        { name: '問題修正', unit: '件', weight: 25 }
-      ],
-      quality: [
-        { name: '電路設計錯誤', type: 'number', max: 3, penalty: 8, unit: '次', desc: '每次扣8分' },
-        { name: 'PCB修改次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
-        { name: '韌體Bug數', type: 'number', max: 5, penalty: 3, unit: '個', desc: '每個扣3分' },
-        { name: 'EMI/認證失敗', type: 'number', max: 2, penalty: 7, unit: '次', desc: '每次扣7分' }
-      ],
-      initiative: { 
-        label: '穩定度/成本/EMI改善', 
-        placeholder: '例如:降低電源雜訊,通過 CE 認證',
-        maxScore: 20
-      },
-      scoring: {
-        excellent: 8,
-        good: 6,
-        pass: 4,
-        minimum: 2
-      }
-    },
-    '工程中心': {
-      // KPI 指標計算規則
-      indicators: [
-        { 
-          category: '質量', 
-          name: 'ERP更新準確率', 
-          target: '≥ 99%', 
-          unit: '%', 
-          kpiField: 'erpAccuracyRate',
-          calculate: (formData) => {
-            const hasError = formData.quality?.['是否有資料錯誤'] === '有' ? 1 : 0;
-            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            return totalWork > 0 ? (((totalWork - hasError) / totalWork) * 100).toFixed(1) : '100';
-          }
-        },
-        { 
-          category: '效率', 
-          name: '設變單改BOM', 
+          category: '品質', 
+          name: '電路設計正確率', 
           target: '≥ 98%', 
           unit: '%', 
-          kpiField: 'ecoCompletionRate',
+          weight: 25,
+          kpiField: 'circuitAccuracyRate',
           calculate: (formData) => {
-            const bomCount = formData.workCompletion?.['BOM/設變處理'] || 0;
-            const hasError = formData.quality?.['是否有漏改/誤改'] === '有' ? 1 : 0;
-            return bomCount > 0 ? (((bomCount - hasError) / bomCount) * 100).toFixed(1) : '100';
+            // 電路設計正確率 = (總件數 - 電路錯誤) / 總件數 × 100
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const errors = (formData.quality?.['電路設計錯誤'] || 0) + (formData.quality?.['PCB佈線錯誤'] || 0);
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - errors) / totalWork) * 100).toFixed(1);
           }
         },
         { 
-          category: '準確性', 
-          name: '目錄命名規範', 
-          target: '100%', 
+          category: '品質', 
+          name: '驗證通過率', 
+          target: '≥ 95%', 
           unit: '%', 
-          kpiField: 'namingStandardRate',
+          weight: 25,
+          kpiField: 'verificationPassRate',
           calculate: (formData) => {
-            const hasError = formData.quality?.['是否有資料錯誤'] === '有' ? 0 : 1;
-            return hasError ? '100' : '95';
-          }
-        },
-        { 
-          category: '維護性', 
-          name: '文件備份', 
-          target: '100%', 
-          unit: '%', 
-          kpiField: 'backupRate',
-          calculate: (formData) => {
-            const docCount = formData.workCompletion?.['文件/圖面歸檔'] || 0;
-            return docCount > 0 ? '100' : '0';
-          }
-        }
-      ],
-      workCompletion: [
-        { name: 'BOM/設變處理', unit: '件', weight: 50 },
-        { name: '文件/圖面歸檔', unit: '件', weight: 50 }
-      ],
-      quality: [
-        { name: 'BOM錯誤次數', type: 'number', max: 5, penalty: 5, unit: '次', desc: '每次扣5分' },
-        { name: '漏改/誤改次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
-        { name: '文件命名錯誤', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' },
-        { name: 'ERP資料錯誤', type: 'number', max: 3, penalty: 6, unit: '次', desc: '每次扣6分' }
-      ],
-      initiative: { 
-        label: '流程改善/標準化建議', 
-        placeholder: '例如:建立 BOM 檢核 SOP',
-        maxScore: 20
-      },
-      scoring: {
-        excellent: 12,
-        good: 9,
-        pass: 6,
-        minimum: 4
-      }
-    },
-    '多媒體設計課': {
-      // KPI 指標計算規則
-      indicators: [
-        { 
-          category: '質量', 
-          name: '客戶滿意度', 
-          target: '≥ 100%', 
-          unit: '%', 
-          kpiField: 'customerSatisfaction',
-          calculate: (formData) => {
-            const hasDelay = formData.quality?.['是否延誤交付'] === '有' ? 1 : 0;
-            const hasRevision = formData.quality?.['是否重大修改'] === '有' ? 1 : 0;
-            return hasDelay || hasRevision ? '95' : '100';
+            // 驗證通過率 = (總件數 - 驗證失敗數) / 總件數 × 100
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const fail = (formData.quality?.['EMC/認證失敗'] || 0) + (formData.quality?.['功能驗證失敗'] || 0);
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - fail) / totalWork) * 100).toFixed(1);
           }
         },
         { 
           category: '效率', 
-          name: '按時交付率', 
-          target: '≥ 100%', 
+          name: '準時完成率', 
+          target: '≥ 95%', 
           unit: '%', 
-          kpiField: 'onTimeDeliveryRate',
+          weight: 25,
+          kpiField: 'onTimeRate',
           calculate: (formData) => {
-            const hasDelay = formData.quality?.['是否延誤交付'] === '有' ? 1 : 0;
             const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            return totalWork > 0 ? (((totalWork - hasDelay) / totalWork) * 100).toFixed(1) : '100';
+            const late = formData.quality?.['逾期完成件數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - late) / totalWork) * 100).toFixed(1);
           }
         },
         { 
-          category: '創新', 
-          name: '每季新風格', 
-          target: '1項', 
-          unit: '項', 
-          kpiField: 'newStylePerQuarter',
+          category: '效率', 
+          name: '月產出量達成率', 
+          target: '≥ 100%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'outputAchievementRate',
           calculate: (formData) => {
-            const initiativeText = formData.initiative || '';
-            return initiativeText.length >= 50 ? '1' : '0';
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const target = formData.targetOutput || 8;
+            return Math.min(150, (totalWork / target) * 100).toFixed(1);
           }
         }
       ],
       workCompletion: [
-        { name: '畫面/UI完成', unit: '件', weight: 55 },
-        { name: '動畫/視覺素材', unit: '件', weight: 45 }
+        { name: '電路/PCB設計', unit: '件', desc: '電路與PCB設計' },
+        { name: '韌體開發', unit: '件', desc: '韌體功能開發' },
+        { name: '問題對策', unit: '件', desc: '電路問題處理' },
+        { name: '驗證/測試', unit: '件', desc: 'EMC/功能驗證' }
       ],
       quality: [
-        { name: '延誤交付次數', type: 'number', max: 3, penalty: 7, unit: '次', desc: '每次扣7分' },
-        { name: '重大修改次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
-        { name: '色彩/風格錯誤', type: 'number', max: 5, penalty: 3, unit: '次', desc: '每次扣3分' },
-        { name: '檔案規格錯誤', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' }
+        { name: '電路設計錯誤', type: 'number', unit: '次', desc: '電路原理/元件錯誤' },
+        { name: 'PCB佈線錯誤', type: 'number', unit: '次', desc: 'PCB Layout錯誤' },
+        { name: 'EMC/認證失敗', type: 'number', unit: '次', desc: 'EMC或認證未通過' },
+        { name: '功能驗證失敗', type: 'number', unit: '次', desc: '功能測試未通過' },
+        { name: '逾期完成件數', type: 'number', unit: '件', desc: '超過預定完成日' }
       ],
-      initiative: { 
-        label: '新風格/呈現方式', 
-        placeholder: '例如:導入扁平化設計風格 (至少50字可算1項新風格)',
-        maxScore: 20
-      },
-      scoring: {
-        excellent: 8,
-        good: 6,
-        pass: 4,
-        minimum: 2
-      }
+      targetOutput: { label: '月目標產出件數', default: 8, desc: '部門設定的月目標' }
     },
-    '線材設計課': {
-      // KPI 指標計算規則
+    '工程中心': {
+      // ========== KPI 指標 (品質50% + 效率50%) ==========
       indicators: [
         { 
-          category: '質量', 
-          name: '錯誤率', 
-          target: '≤ 3%', 
+          category: '品質', 
+          name: 'BOM正確率', 
+          target: '≥ 99%', 
           unit: '%', 
-          kpiField: 'errorRate',
+          weight: 25,
+          kpiField: 'bomAccuracyRate',
           calculate: (formData) => {
-            const hasError = (formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0) + 
-                           (formData.quality?.['是否有重複發生問題'] === '有' ? 1 : 0);
-            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            return totalWork > 0 ? ((hasError / totalWork) * 100).toFixed(1) : '0';
+            // BOM正確率 = (BOM處理數 - BOM錯誤) / BOM處理數 × 100
+            const bomCount = formData.workCompletion?.['BOM建立/維護'] || 0;
+            const errors = formData.quality?.['BOM錯誤次數'] || 0;
+            if (bomCount === 0) return '100';
+            return Math.max(0, ((bomCount - errors) / bomCount) * 100).toFixed(1);
           }
         },
         { 
-          category: '質量', 
+          category: '品質', 
+          name: 'ERP資料正確率', 
+          target: '≥ 99%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'erpAccuracyRate',
+          calculate: (formData) => {
+            const erpCount = formData.workCompletion?.['ERP資料維護'] || 0;
+            const errors = formData.quality?.['ERP資料錯誤'] || 0;
+            if (erpCount === 0) return '100';
+            return Math.max(0, ((erpCount - errors) / erpCount) * 100).toFixed(1);
+          }
+        },
+        { 
+          category: '效率', 
+          name: '設變處理及時率', 
+          target: '≥ 98%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'ecoTimelyRate',
+          calculate: (formData) => {
+            const ecoCount = formData.workCompletion?.['設變單處理'] || 0;
+            const late = formData.quality?.['設變逾期次數'] || 0;
+            if (ecoCount === 0) return '100';
+            return Math.max(0, ((ecoCount - late) / ecoCount) * 100).toFixed(1);
+          }
+        },
+        { 
+          category: '效率', 
+          name: '月處理量達成率', 
+          target: '≥ 100%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'outputAchievementRate',
+          calculate: (formData) => {
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const target = formData.targetOutput || 50;
+            return Math.min(150, (totalWork / target) * 100).toFixed(1);
+          }
+        }
+      ],
+      workCompletion: [
+        { name: 'BOM建立/維護', unit: '件', desc: 'BOM表建立與維護' },
+        { name: '設變單處理', unit: '件', desc: '設變單作業處理' },
+        { name: 'ERP資料維護', unit: '件', desc: 'ERP系統資料維護' },
+        { name: '文件歸檔', unit: '件', desc: '文件整理歸檔' }
+      ],
+      quality: [
+        { name: 'BOM錯誤次數', type: 'number', unit: '次', desc: 'BOM資料錯誤' },
+        { name: 'ERP資料錯誤', type: 'number', unit: '次', desc: 'ERP輸入錯誤' },
+        { name: '設變逾期次數', type: 'number', unit: '次', desc: '設變處理逾期' },
+        { name: '漏改/誤改次數', type: 'number', unit: '次', desc: '設變漏改或誤改' }
+      ],
+      targetOutput: { label: '月目標處理件數', default: 50, desc: '部門設定的月目標' }
+    },
+    '多媒體設計課': {
+      // ========== KPI 指標 (品質50% + 效率50%) ==========
+      indicators: [
+        { 
+          category: '品質', 
+          name: '設計品質達成率', 
+          target: '≥ 95%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'designQualityRate',
+          calculate: (formData) => {
+            // 設計品質達成率 = (總件數 - 重大修改) / 總件數 × 100
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const majorRevision = formData.quality?.['重大修改次數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - majorRevision) / totalWork) * 100).toFixed(1);
+          }
+        },
+        { 
+          category: '品質', 
+          name: '客戶/內部滿意率', 
+          target: '≥ 90%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'satisfactionRate',
+          calculate: (formData) => {
+            // 滿意率 = 100 - (退件次數 × 5)
+            const reject = formData.quality?.['退件/駁回次數'] || 0;
+            return Math.max(0, 100 - reject * 5).toFixed(1);
+          }
+        },
+        { 
+          category: '效率', 
+          name: '準時交付率', 
+          target: '≥ 95%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'onTimeDeliveryRate',
+          calculate: (formData) => {
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const late = formData.quality?.['逾期交付次數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - late) / totalWork) * 100).toFixed(1);
+          }
+        },
+        { 
+          category: '效率', 
+          name: '月產出量達成率', 
+          target: '≥ 100%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'outputAchievementRate',
+          calculate: (formData) => {
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const target = formData.targetOutput || 15;
+            return Math.min(150, (totalWork / target) * 100).toFixed(1);
+          }
+        }
+      ],
+      workCompletion: [
+        { name: 'UI/畫面設計', unit: '件', desc: '介面與畫面設計' },
+        { name: '視覺素材', unit: '件', desc: '圖片/icon製作' },
+        { name: '動畫/影片', unit: '件', desc: '動畫與影片製作' },
+        { name: '文宣/包裝', unit: '件', desc: '文宣品與包裝設計' }
+      ],
+      quality: [
+        { name: '重大修改次數', type: 'number', unit: '次', desc: '需大幅修改重做' },
+        { name: '退件/駁回次數', type: 'number', unit: '次', desc: '成品被退回' },
+        { name: '規格錯誤次數', type: 'number', unit: '次', desc: '尺寸/格式錯誤' },
+        { name: '逾期交付次數', type: 'number', unit: '次', desc: '超過交付期限' }
+      ],
+      targetOutput: { label: '月目標產出件數', default: 15, desc: '部門設定的月目標' }
+    },
+    '線材設計課': {
+      // ========== KPI 指標 (品質50% + 效率50%) ==========
+      indicators: [
+        { 
+          category: '品質', 
+          name: '設計正確率', 
+          target: '≥ 97%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'designAccuracyRate',
+          calculate: (formData) => {
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const errors = (formData.quality?.['線材規格錯誤'] || 0) + (formData.quality?.['接頭選用錯誤'] || 0);
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - errors) / totalWork) * 100).toFixed(1);
+          }
+        },
+        { 
+          category: '品質', 
           name: '一次通過率', 
           target: '≥ 90%', 
           unit: '%', 
+          weight: 25,
           kpiField: 'firstPassRate',
           calculate: (formData) => {
             const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
-            const hasRework = formData.quality?.['是否有重大設計疏失'] === '有' ? 1 : 0;
-            const passedWork = totalWork - hasRework;
-            return totalWork > 0 ? ((passedWork / totalWork) * 100).toFixed(1) : '100';
+            const rework = formData.quality?.['返工/修改次數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - rework) / totalWork) * 100).toFixed(1);
           }
         },
         { 
           category: '效率', 
-          name: '月交付次數', 
-          target: '≥ 2次', 
-          unit: '次', 
-          kpiField: 'monthlyDelivery',
+          name: '準時完成率', 
+          target: '≥ 95%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'onTimeRate',
           calculate: (formData) => {
-            const newDesign = formData.workCompletion?.['新線材設計'] || 0;
-            const revisionSupport = formData.workCompletion?.['設變/改版支援'] || 0;
-            return (newDesign + revisionSupport).toString();
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const late = formData.quality?.['逾期完成件數'] || 0;
+            if (totalWork === 0) return '100';
+            return Math.max(0, ((totalWork - late) / totalWork) * 100).toFixed(1);
           }
         },
         { 
-          category: '創新', 
-          name: '新設計提案', 
-          target: '1項', 
-          unit: '項', 
-          kpiField: 'newDesignProposal',
+          category: '效率', 
+          name: '月產出量達成率', 
+          target: '≥ 100%', 
+          unit: '%', 
+          weight: 25,
+          kpiField: 'outputAchievementRate',
           calculate: (formData) => {
-            const initiativeText = formData.initiative || '';
-            return initiativeText.length >= 50 ? '1' : '0';
+            const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+            const target = formData.targetOutput || 12;
+            return Math.min(150, (totalWork / target) * 100).toFixed(1);
           }
         }
       ],
       workCompletion: [
-        { name: '新線材設計', unit: '件', weight: 30 },
-        { name: '設變/改版支援', unit: '件', weight: 25 },
-        { name: '問題修正', unit: '件', weight: 20 },
-        { name: '文件/圖面完成', unit: '件', weight: 25 }
+        { name: '新線材設計', unit: '件', desc: '全新線材設計案' },
+        { name: '設變/改版', unit: '件', desc: '設變或改版作業' },
+        { name: '問題對策', unit: '件', desc: '品質問題處理' },
+        { name: '圖面/承認書', unit: '件', desc: '圖面與承認書作業' }
       ],
       quality: [
-        { name: '設計錯誤次數', type: 'number', max: 5, penalty: 4, unit: '次', desc: '每次扣4分' },
-        { name: '接頭/規格錯誤', type: 'number', max: 3, penalty: 6, unit: '次', desc: '每次扣6分' },
-        { name: '返工件數', type: 'number', max: 5, penalty: 3, unit: '件', desc: '每件扣3分' },
-        { name: '文件錯誤次數', type: 'number', max: 5, penalty: 2, unit: '次', desc: '每次扣2分' }
+        { name: '線材規格錯誤', type: 'number', unit: '次', desc: '線徑/材質規格錯誤' },
+        { name: '接頭選用錯誤', type: 'number', unit: '次', desc: '接頭型號選用錯誤' },
+        { name: '返工/修改次數', type: 'number', unit: '次', desc: '需重新修改的件數' },
+        { name: '逾期完成件數', type: 'number', unit: '件', desc: '超過預定完成日' }
       ],
-      initiative: { 
-        label: '改善線材/接頭設計', 
-        placeholder: '例如:優化線材固定方式,提升耐久性 (至少50字可算1項新設計提案)',
-        maxScore: 20
-      },
-      scoring: {
-        excellent: 10,
-        good: 7,
-        pass: 5,
-        minimum: 3
-      }
+      targetOutput: { label: '月目標產出件數', default: 12, desc: '部門設定的月目標' }
     }
   };
 
@@ -1479,10 +1654,85 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
     setFormData({
       workCompletion: initialWork,
       quality: initialQuality,
-      initiative: '',
       indicators: initialIndicators
     });
   }, [userDepartment]);
+
+  // 🔥 自動訂閱 TQM 紀錄和 R&D Nexus 任務
+  useEffect(() => {
+    const unsubTqm = db.subscribe('tqm_records', setTqmRecords);
+    const unsubTasks = db.subscribe('rd_tasks', setRdTasks);
+    return () => {
+      unsubTqm();
+      unsubTasks();
+    };
+  }, []);
+
+  // 🔥 根據選擇的月份自動計算 TQM 異常和任務完成/延誤資料
+  useEffect(() => {
+    const userName = user?.displayName || '';
+    const monthNum = parseInt(currentMonth.replace('月', ''));
+    const currentYear = new Date().getFullYear();
+    
+    // 過濾當月的 TQM 紀錄 (屬於此用戶或此用戶部門)
+    const monthTqmRecords = tqmRecords.filter(r => {
+      const recordDate = new Date(r.date);
+      const recordMonth = recordDate.getMonth() + 1;
+      const recordYear = recordDate.getFullYear();
+      const isUserRecord = r.personName === userName || r.createdByUser === userName;
+      return recordMonth === monthNum && recordYear === currentYear && isUserRecord;
+    });
+    
+    // 過濾當月的 R&D Nexus 任務 (屬於此用戶)
+    const monthTasks = rdTasks.filter(t => {
+      // 檢查任務負責人
+      if (t.owner !== userName) return false;
+      
+      // 檢查任務是否在當月完成或應該在當月完成
+      const endDate = t.endDate ? new Date(t.endDate) : null;
+      const startDate = t.startDate ? new Date(t.startDate) : null;
+      
+      if (endDate) {
+        const taskMonth = endDate.getMonth() + 1;
+        const taskYear = endDate.getFullYear();
+        return taskMonth === monthNum && taskYear === currentYear;
+      } else if (startDate) {
+        const taskMonth = startDate.getMonth() + 1;
+        const taskYear = startDate.getFullYear();
+        return taskMonth === monthNum && taskYear === currentYear;
+      }
+      return false;
+    });
+    
+    // 計算統計資料
+    const tqmAbnormalCount = monthTqmRecords.filter(r => r.status !== '已改善').length;
+    const tqmRepeatCount = monthTqmRecords.filter(r => r.isRepeat).length;
+    const tqmTotal = monthTqmRecords.length;
+    
+    const tasksCompleted = monthTasks.filter(t => t.status === 'Done').length;
+    const tasksTotal = monthTasks.length;
+    const tasksOverdue = monthTasks.filter(t => {
+      if (t.status === 'Done') return false;
+      const endDate = t.endDate ? new Date(t.endDate) : null;
+      if (!endDate) return false;
+      return endDate < new Date();
+    }).length;
+    
+    setAutoFetchedData({
+      tqm: {
+        total: tqmTotal,
+        abnormal: tqmAbnormalCount,
+        repeat: tqmRepeatCount,
+        records: monthTqmRecords
+      },
+      tasks: {
+        total: tasksTotal,
+        completed: tasksCompleted,
+        overdue: tasksOverdue,
+        list: monthTasks
+      }
+    });
+  }, [tqmRecords, rdTasks, currentMonth, user]);
 
   const handleWorkChange = (name, value) => {
     setFormData(prev => ({
@@ -1518,68 +1768,61 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
       });
     }
     
-    // 進階計分邏輯 - 根據部門標準加權計算
-    const scoring = template.scoring;
+    // ========== 新版計分邏輯：以KPI指標為主 ==========
     
-    // 1. 工作完成度計分 (50分)
-    let workScore = 0;
-    let workDetails = {};
+    // 1. KPI 績效指標總分 (70分) - 品質50% + 效率50%
+    let kpiScore = 0;
+    let kpiDetails = {};
     
-    template.workCompletion.forEach(item => {
-      const count = formData.workCompletion[item.name] || 0;
-      let itemScore = 0;
-      
-      // 根據數量評分
-      if (count >= scoring.excellent) itemScore = 100;
-      else if (count >= scoring.good) itemScore = 85;
-      else if (count >= scoring.pass) itemScore = 70;
-      else if (count >= scoring.minimum) itemScore = 60;
-      else itemScore = 40;
-      
-      // 加權計算
-      const weightedScore = (itemScore * item.weight) / 100;
-      workScore += weightedScore;
-      
-      workDetails[item.name] = {
-        count: count,
-        score: itemScore,
-        weight: item.weight,
-        weightedScore: weightedScore.toFixed(1)
-      };
-    });
-
-    // 2. 品質與穩定度計分 (30分)
-    let qualityScore = 100;
-    let qualityDetails = {};
-    
-    template.quality.forEach(item => {
-      const count = formData.quality[item.name] || 0;
-      const totalPenalty = count * item.penalty; // 次數 × 每次扣分
-      qualityScore -= totalPenalty;
-      
-      qualityDetails[item.name] = {
-        count: count,
-        penaltyPerTime: item.penalty,
-        totalPenalty: totalPenalty
-      };
-    });
-    
-    qualityScore = Math.max(0, qualityScore); // 最低0分
-    const finalQualityScore = (qualityScore * 30) / 100; // 轉換為30分制
-
-    // 3. 主動貢獻計分 (20分)
-    const initiativeText = formData.initiative.trim();
-    let initiativeScore = 0;
-    
-    if (initiativeText) {
-      // 根據文字長度和內容評分
-      if (initiativeText.length >= 20) initiativeScore = template.initiative.maxScore;
-      else if (initiativeText.length >= 10) initiativeScore = template.initiative.maxScore * 0.7;
-      else initiativeScore = template.initiative.maxScore * 0.5;
+    if (template.indicators) {
+      template.indicators.forEach(indicator => {
+        const value = parseFloat(calculatedIndicators[indicator.kpiField]) || 0;
+        const weight = indicator.weight || 25; // 每個指標權重
+        let achieved = false;
+        
+        // 檢查是否達標
+        if (indicator.target.includes('≤')) {
+          const threshold = parseFloat(indicator.target.replace('≤', '').trim());
+          achieved = value <= threshold;
+        } else if (indicator.target.includes('≥')) {
+          const threshold = parseFloat(indicator.target.replace('≥', '').trim());
+          achieved = value >= threshold;
+        }
+        
+        // 計算此指標得分：達標得滿分，未達標按比例得分
+        let itemScore = 0;
+        if (achieved) {
+          itemScore = weight * 0.7; // 滿分權重的70%
+        } else {
+          // 未達標：根據達成程度給分
+          const targetValue = parseFloat(indicator.target.replace(/[≤≥%]/g, '').trim()) || 100;
+          const ratio = Math.min(value / targetValue, 1);
+          itemScore = weight * 0.7 * ratio;
+        }
+        
+        kpiScore += itemScore;
+        kpiDetails[indicator.name] = {
+          value: value,
+          target: indicator.target,
+          achieved: achieved,
+          weight: weight,
+          score: itemScore.toFixed(1)
+        };
+      });
     }
+    
+    // 2. 工作產出量 (20分)
+    const totalWork = Object.values(formData.workCompletion || {}).reduce((sum, val) => sum + val, 0);
+    const targetOutput = template.targetOutput?.default || 10;
+    const outputRate = Math.min(totalWork / targetOutput, 1.5); // 上限150%
+    const outputScore = Math.min(20, 20 * outputRate);
+    
+    // 3. 品質無異常加分 (10分) - 零錯誤獎勵
+    const totalErrors = Object.values(formData.quality || {}).reduce((sum, val) => sum + val, 0);
+    const qualityBonus = totalErrors === 0 ? 10 : Math.max(0, 10 - totalErrors * 2);
 
     // 總分計算
-    const totalScore = workScore + finalQualityScore + initiativeScore;
+    const totalScore = Math.min(100, kpiScore + outputScore + qualityBonus);
     
     // 等級評定
     let grade = 'F';
@@ -1592,6 +1835,7 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
 
     // 儲存到資料庫
     try {
+      // 1. 儲存到個人填寫記錄
       await db.addDoc('kpi_personal_entries', {
         userName: user.displayName,
         department: userDepartment,
@@ -1601,25 +1845,31 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
         // 原始填寫資料
         workCompletion: formData.workCompletion,
         quality: formData.quality,
-        initiative: formData.initiative,
+        targetOutput: targetOutput,
+        
+        // 備註和附件
+        note: formData.note || '',
+        attachment: formData.attachment || null,
+        attachmentName: formData.attachmentName || '',
         
         // 🔥 自動計算的 KPI 指標實際值
         indicators: calculatedIndicators,
         
         // 計算後的分數
         scores: {
-          work: {
-            total: parseFloat(workScore.toFixed(1)),
-            details: workDetails
+          kpi: {
+            total: parseFloat(kpiScore.toFixed(1)),
+            details: kpiDetails
+          },
+          output: {
+            total: parseFloat(outputScore.toFixed(1)),
+            count: totalWork,
+            target: targetOutput,
+            rate: (outputRate * 100).toFixed(1)
           },
           quality: {
-            baseScore: qualityScore,
-            finalScore: parseFloat(finalQualityScore.toFixed(1)),
-            details: qualityDetails
-          },
-          initiative: {
-            score: parseFloat(initiativeScore.toFixed(1)),
-            text: initiativeText
+            bonus: parseFloat(qualityBonus.toFixed(1)),
+            errorCount: totalErrors
           },
           total: parseFloat(totalScore.toFixed(1)),
           grade: grade,
@@ -1629,28 +1879,80 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
         createdAt: new Date().toISOString()
       });
 
+      // 2. 🔥 同步儲存到 KPI 績效系統 (kpi_performance)
+      const kpiMetrics = template.indicators ? template.indicators.map(ind => ({
+        category: ind.category,
+        name: ind.name,
+        target: ind.target,
+        weight: ind.weight || 25,
+        actual: `${calculatedIndicators[ind.kpiField]}${ind.unit}`,
+        status: (() => {
+          const numValue = parseFloat(calculatedIndicators[ind.kpiField]);
+          const targetStr = ind.target;
+          if (targetStr.includes('≤')) {
+            const threshold = parseFloat(targetStr.replace('≤', '').trim());
+            return numValue <= threshold ? 'Achieved' : 'Missed';
+          } else if (targetStr.includes('≥')) {
+            const threshold = parseFloat(targetStr.replace('≥', '').trim());
+            return numValue >= threshold ? 'Achieved' : 'Missed';
+          }
+          return 'Pending';
+        })(),
+        note: ''
+      })) : [];
+
+      await db.addDoc('kpi_performance', {
+        name: user.displayName,
+        department: userDepartment,
+        month: currentMonth,
+        year: new Date().getFullYear(),
+        date: new Date().toISOString().split('T')[0],
+        metrics: kpiMetrics,
+        scores: {
+          kpi: parseFloat(kpiScore.toFixed(1)),
+          output: parseFloat(outputScore.toFixed(1)),
+          qualityBonus: parseFloat(qualityBonus.toFixed(1)),
+          total: parseFloat(totalScore.toFixed(1))
+        },
+        grade: grade,
+        level: level,
+        // 🔥 新增：備註和附件
+        note: formData.note || '',
+        attachment: formData.attachment || null,
+        attachmentName: formData.attachmentName || '',
+        createdAt: new Date().toISOString()
+      });
+
+      console.log('✅ KPI 資料已同步到績效系統');
+      console.log('📝 備註:', formData.note);
+      console.log('📎 附件:', formData.attachmentName);
+
       // 顯示詳細結果
       const indicatorsText = template.indicators ? 
-        '\n\n📊 KPI 績效指標 (自動計算)\n' + 
-        template.indicators.map(ind => 
-          `  • ${ind.name}: ${calculatedIndicators[ind.kpiField]}${ind.unit} (目標:${ind.target})`
-        ).join('\n') : '';
+        '\n\n📊 KPI 績效指標達成 (自動計算)\n' + 
+        template.indicators.map(ind => {
+          const val = calculatedIndicators[ind.kpiField];
+          const detail = kpiDetails[ind.name];
+          const status = detail?.achieved ? '✓達標' : '✗未達標';
+          return `  • ${ind.name}: ${val}${ind.unit} (目標:${ind.target}) ${status}`;
+        }).join('\n') : '';
       
       alert(`✅ 已提交 ${currentMonth} KPI 資料！
 
 ━━━━━━━━━━━━━━━━━━━━━
-📊 評分結果
+📊 新版KPI評分結果
 ━━━━━━━━━━━━━━━━━━━━━
 
-🎯 工作完成度: ${workScore.toFixed(1)} / 50 分
-${Object.entries(workDetails).map(([name, detail]) => 
-  `  • ${name}: ${detail.count}件 → ${detail.weightedScore}分`
+🎯 KPI指標績效: ${kpiScore.toFixed(1)} / 70 分
+${Object.entries(kpiDetails).map(([name, detail]) => 
+  `  • ${name}: ${detail.value}${template.indicators.find(i=>i.name===name)?.unit||''} → ${detail.score}分 ${detail.achieved ? '✓' : '✗'}`
 ).join('\n')}
 
-🛡️ 品質穩定度: ${finalQualityScore.toFixed(1)} / 30 分
-  (基礎分: ${qualityScore}分)
+📈 工作產出量: ${outputScore.toFixed(1)} / 20 分
+  (完成 ${totalWork} 件, 目標 ${targetOutput} 件, 達成率 ${(outputRate * 100).toFixed(1)}%)
 
-💡 主動貢獻: ${initiativeScore.toFixed(1)} / 20 分
+🛡️ 品質零錯誤獎勵: ${qualityBonus.toFixed(1)} / 10 分
+  (品質異常 ${totalErrors} 件)
 ${indicatorsText}
 
 ━━━━━━━━━━━━━━━━━━━━━
@@ -1665,7 +1967,7 @@ ${indicatorsText}
       });
       const initialQuality = {};
       template.quality.forEach(item => {
-        initialQuality[item.name] = 0; // 改為0
+        initialQuality[item.name] = 0;
       });
       const initialIndicators = {};
       if (template.indicators) {
@@ -1676,7 +1978,6 @@ ${indicatorsText}
       setFormData({
         workCompletion: initialWork,
         quality: initialQuality,
-        initiative: '',
         indicators: initialIndicators
       });
     } catch (error) {
@@ -1742,16 +2043,248 @@ ${indicatorsText}
           </div>
         </div>
 
+        {/* 🔥 自動抓取的資料摘要 */}
+        {autoFetchedData && (
+          <div className="bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-xl shadow-sm p-6 border-2 border-emerald-200 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                <RefreshCcw className="w-6 h-6 text-white"/>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-emerald-800">🤖 自動帶入資料 ({currentMonth})</h2>
+                <p className="text-sm text-emerald-600">系統自動從 TQM 紀錄和 R&D Nexus 抓取您的資料</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* TQM 紀錄摘要 */}
+              <div className="bg-white p-4 rounded-lg border border-rose-200">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                  <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-xs">TQM</span>
+                  品質異常紀錄
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">本月異常總數:</span>
+                    <span className="font-bold text-rose-600">{autoFetchedData.tqm.total} 件</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">未改善:</span>
+                    <span className={`font-bold ${autoFetchedData.tqm.abnormal > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {autoFetchedData.tqm.abnormal} 件
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">重複發生:</span>
+                    <span className={`font-bold ${autoFetchedData.tqm.repeat > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                      {autoFetchedData.tqm.repeat} 件
+                    </span>
+                  </div>
+                </div>
+                {autoFetchedData.tqm.total > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <p className="text-xs text-slate-500 mb-2">最近紀錄:</p>
+                    <div className="max-h-24 overflow-y-auto space-y-1">
+                      {autoFetchedData.tqm.records.slice(0, 3).map((r, i) => (
+                        <div key={i} className="text-xs p-2 bg-slate-50 rounded">
+                          <span className="text-slate-400">{r.date}</span>
+                          <span className="mx-2">|</span>
+                          <span className="font-medium">{r.issueType}</span>
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${r.status === '已改善' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {r.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* R&D Nexus 任務摘要 */}
+              <div className="bg-white p-4 rounded-lg border border-blue-200">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">R&D Nexus</span>
+                  任務完成狀況
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">本月任務總數:</span>
+                    <span className="font-bold text-blue-600">{autoFetchedData.tasks.total} 件</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">已完成:</span>
+                    <span className="font-bold text-green-600">{autoFetchedData.tasks.completed} 件</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">已逾期未完成:</span>
+                    <span className={`font-bold ${autoFetchedData.tasks.overdue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {autoFetchedData.tasks.overdue} 件
+                    </span>
+                  </div>
+                </div>
+                {autoFetchedData.tasks.total > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <p className="text-xs text-slate-500 mb-2">任務列表:</p>
+                    <div className="max-h-24 overflow-y-auto space-y-1">
+                      {autoFetchedData.tasks.list.slice(0, 3).map((t, i) => (
+                        <div key={i} className="text-xs p-2 bg-slate-50 rounded flex justify-between items-center">
+                          <span className="font-medium truncate flex-1">{t.title}</span>
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${
+                            t.status === 'Done' ? 'bg-green-100 text-green-700' : 
+                            t.status === 'Doing' ? 'bg-blue-100 text-blue-700' : 
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {t.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* 一鍵帶入按鈕 */}
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  // 將 R&D Nexus 任務完成數自動帶入工作產出量
+                  const newWorkCompletion = { ...formData.workCompletion };
+                  const firstWorkKey = Object.keys(newWorkCompletion)[0];
+                  if (firstWorkKey && autoFetchedData.tasks.completed > 0) {
+                    newWorkCompletion[firstWorkKey] = autoFetchedData.tasks.completed;
+                  }
+                  
+                  // 將 TQM 異常和逾期自動帶入品質狀況
+                  const newQuality = { ...formData.quality };
+                  // 嘗試對應品質欄位
+                  if (newQuality['逾期完成件數'] !== undefined) {
+                    newQuality['逾期完成件數'] = autoFetchedData.tasks.overdue;
+                  }
+                  
+                  setFormData(prev => ({
+                    ...prev,
+                    workCompletion: newWorkCompletion,
+                    quality: newQuality
+                  }));
+                  
+                  alert(`✅ 已自動帶入資料:\n• 任務完成數: ${autoFetchedData.tasks.completed} 件\n• 逾期任務: ${autoFetchedData.tasks.overdue} 件\n• TQM異常: ${autoFetchedData.tqm.total} 件\n\n請檢查並補充其他資料`);
+                }}
+                className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
+              >
+                <Download className="w-5 h-5"/>
+                一鍵帶入 R&D Nexus 資料
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // 詳細檢視
+                  const taskDetails = autoFetchedData.tasks.list.map(t => `• ${t.title} [${t.status}]`).join('\n');
+                  const tqmDetails = autoFetchedData.tqm.records.map(r => `• ${r.date} ${r.issueType} [${r.status}]`).join('\n');
+                  alert(`📊 ${currentMonth} 詳細資料\n\n━━ R&D Nexus 任務 (${autoFetchedData.tasks.total}件) ━━\n${taskDetails || '無任務'}\n\n━━ TQM 異常紀錄 (${autoFetchedData.tqm.total}件) ━━\n${tqmDetails || '無紀錄'}`);
+                }}
+                className="px-4 py-3 border-2 border-emerald-300 text-emerald-700 rounded-lg font-medium hover:bg-emerald-50 transition-colors"
+              >
+                查看詳細
+              </button>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 模組一：工作完成度 */}
+          {/* 🔥 自動計算公式說明 */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm p-6 border-2 border-blue-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Calculator className="w-6 h-6 text-white"/>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-blue-800">📐 自動計算公式說明</h2>
+                <p className="text-sm text-blue-600">系統會根據您填寫的數據自動計算 KPI 績效指標</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {/* KPI績效指標計算 (70分) */}
+              <div className="bg-white p-4 rounded-lg border border-blue-200">
+                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">70%</span>
+                  KPI績效指標 (品質+效率)
+                </h3>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p>• 品質指標佔50%：設計準確率、一次通過率</p>
+                  <p>• 效率指標佔50%：準時率、產出達成率</p>
+                  <p>• 達標計分：每項指標達標得滿分權重</p>
+                  <p>• 未達標按比例計分：達成率 × 權重</p>
+                </div>
+              </div>
+              
+              {/* 工作產出量計算 (20分) */}
+              <div className="bg-white p-4 rounded-lg border border-green-200">
+                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">20%</span>
+                  工作產出量計算
+                </h3>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p>• 基礎目標：每月 {template.targetOutput?.default || 10} 件工作任務</p>
+                  <p>• 計分公式：<code className="bg-slate-100 px-1 rounded">實際完成數 ÷ 目標數 × 20</code></p>
+                  <p>• 達成率上限150%，最高得20分</p>
+                  <p>• 範例：完成15件/目標10件 = 30分(上限20分)</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 品質零錯誤獎勵 (10分) */}
+              <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                  <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-xs">10%</span>
+                  品質零錯誤獎勵
+                </h3>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p>• 零錯誤獎勵：品質異常為0時得滿分10分</p>
+                  <p>• 每發生1次品質異常扣2分</p>
+                  <p>• 計分公式：<code className="bg-slate-100 px-1 rounded">10 - (異常次數 × 2)</code></p>
+                  <p>• 範例：2次異常 → 10-4=6分</p>
+                </div>
+              </div>
+              
+              {/* KPI 指標自動計算 */}
+              <div className="bg-white p-4 rounded-lg border border-cyan-200">
+                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                  <span className="bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded text-xs">自動</span>
+                  KPI 績效指標自動計算
+                </h3>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p>• 品質指標：根據錯誤次數計算準確率</p>
+                  <p>• 效率指標：根據工作產出和準時率計算</p>
+                  <p>• 系統自動從您填寫的數據計算</p>
+                  <p>• 提交後同步到KPI管理系統</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* 總分計算說明 */}
+            <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+              <p className="text-sm text-blue-800 font-medium">
+                📊 總分公式: <code className="bg-white px-2 py-0.5 rounded">KPI績效指標(70分) + 工作產出量(20分) + 品質零錯誤獎勵(10分) = 總分(滿分100分)</code>
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                等級評定: A(≥90優秀) | B(≥80良好) | C(≥70合格) | D(≥60待改進) | F(&lt;60不合格)
+              </p>
+            </div>
+          </div>
+
+          {/* 模組一：工作產出量 */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                 <CheckCircle className="w-6 h-6 text-green-600"/>
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">模組一：工作完成度 (50%)</h2>
-                <p className="text-sm text-slate-500">這個月你實際完成了哪些研發工作？</p>
+                <h2 className="text-lg font-bold text-slate-800">模組一：工作產出量 (20分)</h2>
+                <p className="text-sm text-slate-500">這個月你實際完成了哪些研發工作？月目標: {template.targetOutput?.default || 10} 件</p>
               </div>
             </div>
 
@@ -1760,10 +2293,10 @@ ${indicatorsText}
                 <div key={idx} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-slate-700">
-                      {item.name} <span className="text-xs text-slate-500">(權重{item.weight}%)</span>
+                      {item.name}
                     </label>
                     <div className="text-xs text-slate-500">
-                      優秀≥{template.scoring.excellent} | 良好≥{template.scoring.good} | 合格≥{template.scoring.pass}
+                      {item.description || '填寫實際完成數量'}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1782,7 +2315,7 @@ ${indicatorsText}
 
             <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
               <p className="text-sm text-blue-700">
-                ✨ <strong>填寫提示:</strong> 只需填寫數量,系統會根據您的部門標準自動評分
+                ✨ <strong>填寫提示:</strong> 只需填寫數量,系統會自動計算達成率並轉換為KPI指標
               </p>
             </div>
           </div>
@@ -1822,83 +2355,123 @@ ${indicatorsText}
                   const getFormulaExplanation = () => {
                     const wc = formData.workCompletion || {};
                     const q = formData.quality || {};
-                    const initiative = formData.initiative || '';
+                    const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
+                    const target = formData.targetOutput || template.targetOutput?.default || 10;
                     
-                    // 機構設計課 / 線材設計課
-                    if (indicator.kpiField === 'errorRate' && (userDepartment === '機構設計課' || userDepartment === '線材設計課')) {
-                      const hasError1 = q['是否有重大設計疏失'] === '有' ? 1 : 0;
-                      const hasError2 = q['是否有重複發生問題'] === '有' ? 1 : 0;
-                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
-                      return `(${hasError1} + ${hasError2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'firstPassRate' && (userDepartment === '機構設計課' || userDepartment === '線材設計課')) {
-                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
-                      const hasRework = q['是否有重大設計疏失'] === '有' ? 1 : 0;
-                      const passedWork = totalWork - hasRework;
-                      return `(${totalWork} - ${hasRework}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'monthlyDelivery' && userDepartment === '機構設計課') {
-                      const newDesign = wc['新機構設計'] || 0;
-                      const revision = wc['設變/改版支援'] || 0;
-                      return `${newDesign} + ${revision} = ${calculatedValue}次`;
-                    }
-                    if (indicator.kpiField === 'monthlyDelivery' && userDepartment === '線材設計課') {
-                      const newDesign = wc['新線材設計'] || 0;
-                      const revision = wc['設變/改版支援'] || 0;
-                      return `${newDesign} + ${revision} = ${calculatedValue}次`;
-                    }
-                    if (indicator.kpiField === 'newDesignProposal') {
-                      return `主動貢獻文字長度 ${initiative.length} 字 ${initiative.length >= 50 ? '≥' : '<'} 50字 → ${calculatedValue}項`;
+                    // ========== 機構設計課 ==========
+                    if (userDepartment === '機構設計課') {
+                      if (indicator.kpiField === 'designAccuracyRate') {
+                        const e1 = q['設計錯誤次數'] || 0;
+                        const e2 = q['圖面錯誤次數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${e1+e2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'firstPassRate') {
+                        const rework = q['返工/修改次數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${rework}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'onTimeRate') {
+                        const late = q['逾期完成件數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${late}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'outputAchievementRate') {
+                        return `${totalWork} ÷ ${target} × 100 = ${calculatedValue}% (上限150%)`;
+                      }
                     }
                     
-                    // 電子設計課
-                    if (indicator.kpiField === 'errorRate' && userDepartment === '電子設計課') {
-                      const hasError1 = q['是否有因設計造成異常'] === '有' ? 1 : 0;
-                      const hasError2 = q['是否有重工'] === '有' ? 1 : 0;
-                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
-                      return `(${hasError1} + ${hasError2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'developmentShortenRate') {
-                      const firmwareCount = wc['韌體功能完成'] || 0;
-                      return `韌體完成 ${firmwareCount} 件 ${firmwareCount >= 3 ? '≥' : '<'} 3件 → ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'improvementCase') {
-                      return `主動貢獻文字長度 ${initiative.length} 字 ${initiative.length >= 50 ? '≥' : '<'} 50字 → ${calculatedValue}項`;
-                    }
-                    
-                    // 工程中心
-                    if (indicator.kpiField === 'erpAccuracyRate') {
-                      const hasError = q['是否有資料錯誤'] === '有' ? 1 : 0;
-                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
-                      return `(${totalWork} - ${hasError}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'ecoCompletionRate') {
-                      const bomCount = wc['BOM/設變處理'] || 0;
-                      const hasError = q['是否有漏改/誤改'] === '有' ? 1 : 0;
-                      return `(${bomCount} - ${hasError}) ÷ ${bomCount} × 100 = ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'namingStandardRate') {
-                      const hasError = q['是否有資料錯誤'] === '有';
-                      return `${hasError ? '有' : '無'}資料錯誤 → ${calculatedValue}%`;
-                    }
-                    if (indicator.kpiField === 'backupRate') {
-                      const docCount = wc['文件/圖面歸檔'] || 0;
-                      return `文件歸檔 ${docCount} 件 ${docCount > 0 ? '>' : '='} 0 → ${calculatedValue}%`;
+                    // ========== 電子設計課 ==========
+                    if (userDepartment === '電子設計課') {
+                      if (indicator.kpiField === 'circuitAccuracyRate') {
+                        const e1 = q['電路設計錯誤'] || 0;
+                        const e2 = q['PCB佈線錯誤'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${e1+e2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'verificationPassRate') {
+                        const f1 = q['EMC/認證失敗'] || 0;
+                        const f2 = q['功能驗證失敗'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${f1+f2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'onTimeRate') {
+                        const late = q['逾期完成件數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${late}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'outputAchievementRate') {
+                        return `${totalWork} ÷ ${target} × 100 = ${calculatedValue}% (上限150%)`;
+                      }
                     }
                     
-                    // 多媒體設計課
-                    if (indicator.kpiField === 'customerSatisfaction') {
-                      const hasDelay = q['是否延誤交付'] === '有';
-                      const hasRevision = q['是否重大修改'] === '有';
-                      return `${hasDelay || hasRevision ? '有' : '無'}延誤或重大修改 → ${calculatedValue}%`;
+                    // ========== 工程中心 ==========
+                    if (userDepartment === '工程中心') {
+                      if (indicator.kpiField === 'bomAccuracyRate') {
+                        const bom = wc['BOM建立/維護'] || 0;
+                        const err = q['BOM錯誤次數'] || 0;
+                        if (bom === 0) return `BOM件數:0 → 預設100%`;
+                        return `(${bom} - ${err}) ÷ ${bom} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'erpAccuracyRate') {
+                        const erp = wc['ERP資料維護'] || 0;
+                        const err = q['ERP資料錯誤'] || 0;
+                        if (erp === 0) return `ERP件數:0 → 預設100%`;
+                        return `(${erp} - ${err}) ÷ ${erp} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'ecoTimelyRate') {
+                        const eco = wc['設變單處理'] || 0;
+                        const late = q['設變逾期次數'] || 0;
+                        if (eco === 0) return `設變單:0 → 預設100%`;
+                        return `(${eco} - ${late}) ÷ ${eco} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'outputAchievementRate') {
+                        return `${totalWork} ÷ ${target} × 100 = ${calculatedValue}% (上限150%)`;
+                      }
                     }
-                    if (indicator.kpiField === 'onTimeDeliveryRate') {
-                      const hasDelay = q['是否延誤交付'] === '有' ? 1 : 0;
-                      const totalWork = Object.values(wc).reduce((sum, val) => sum + val, 0);
-                      return `(${totalWork} - ${hasDelay}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                    
+                    // ========== 多媒體設計課 ==========
+                    if (userDepartment === '多媒體設計課') {
+                      if (indicator.kpiField === 'designQualityRate') {
+                        const major = q['重大修改次數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${major}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'satisfactionRate') {
+                        const reject = q['退件/駁回次數'] || 0;
+                        return `100 - (${reject} × 5) = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'onTimeDeliveryRate') {
+                        const late = q['逾期交付次數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${late}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'outputAchievementRate') {
+                        return `${totalWork} ÷ ${target} × 100 = ${calculatedValue}% (上限150%)`;
+                      }
                     }
-                    if (indicator.kpiField === 'newStylePerQuarter') {
-                      return `主動貢獻文字長度 ${initiative.length} 字 ${initiative.length >= 50 ? '≥' : '<'} 50字 → ${calculatedValue}項`;
+                    
+                    // ========== 線材設計課 ==========
+                    if (userDepartment === '線材設計課') {
+                      if (indicator.kpiField === 'designAccuracyRate') {
+                        const e1 = q['線材規格錯誤'] || 0;
+                        const e2 = q['接頭選用錯誤'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${e1+e2}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'firstPassRate') {
+                        const rework = q['返工/修改次數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${rework}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'onTimeRate') {
+                        const late = q['逾期完成件數'] || 0;
+                        if (totalWork === 0) return `總件數:0 → 預設100%`;
+                        return `(${totalWork} - ${late}) ÷ ${totalWork} × 100 = ${calculatedValue}%`;
+                      }
+                      if (indicator.kpiField === 'outputAchievementRate') {
+                        return `${totalWork} ÷ ${target} × 100 = ${calculatedValue}% (上限150%)`;
+                      }
                     }
                     
                     return '自動計算';
@@ -1962,28 +2535,29 @@ ${indicatorsText}
 
               <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
                 <p className="text-sm text-indigo-700">
-                  🤖 <strong>自動計算:</strong> 這些指標會根據您填寫的工作完成度、品質狀況、主動貢獻自動計算,無需手動輸入
+                  🤖 <strong>自動計算:</strong> 這些KPI指標會根據您填寫的工作產出量與品質狀況自動計算,無需手動輸入。每項指標佔25%,總計100%對應70分滿分。
                 </p>
               </div>
             </div>
           )}
 
-          {/* 模組二：品質與穩定度 */}
+          {/* 模組二：品質狀況 (影響品質獎勵10分) */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
                 <AlertCircle className="w-6 h-6 text-orange-600"/>
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">模組二：品質與穩定度 (30%)</h2>
-                <p className="text-sm text-slate-500">這個月有沒有造成不必要的問題？</p>
+                <h2 className="text-lg font-bold text-slate-800">模組二：品質狀況 (10分獎勵)</h2>
+                <p className="text-sm text-slate-500">這個月有沒有品質異常？零異常可得滿分10分獎勵</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {template.quality.map((item, idx) => {
                 const count = formData.quality[item.name] || 0;
-                const totalPenalty = count * item.penalty;
+                const penalty = 2; // 每次品質異常扣2分
+                const totalPenalty = count * penalty;
                 
                 return (
                   <div key={idx} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -1999,7 +2573,6 @@ ${indicatorsText}
                       <input
                         type="number"
                         min="0"
-                        max={item.max}
                         value={count}
                         onChange={(e) => handleQualityChange(item.name, e.target.value)}
                         className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-center text-lg font-bold focus:ring-2 focus:ring-orange-500 outline-none"
@@ -2011,11 +2584,6 @@ ${indicatorsText}
                         </span>
                       )}
                     </div>
-                    {count > item.max && (
-                      <div className="mt-2 text-xs text-red-600">
-                        ⚠️ 超過建議上限 ({item.max}{item.unit})
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -2023,45 +2591,94 @@ ${indicatorsText}
 
             <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
               <p className="text-sm text-orange-700">
-                ⚠️ <strong>評分說明:</strong> 品質基礎分100分,根據問題次數累計扣分,最低0分
+                ⚠️ <strong>評分說明:</strong> 品質基礎獎勵10分,每次品質異常扣2分,最低0分
               </p>
             </div>
           </div>
 
-          {/* 模組三：主動貢獻 */}
+          {/* 模組三：備註說明 */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                <Plus className="w-6 h-6 text-purple-600"/>
+                <FileText className="w-6 h-6 text-purple-600"/>
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">模組三：主動貢獻與責任感 (20%)</h2>
-                <p className="text-sm text-slate-500">這個月你有沒有多做一點？最高{template.initiative.maxScore}分</p>
+                <h2 className="text-lg font-bold text-slate-800">模組三：備註說明 (選填)</h2>
+                <p className="text-sm text-slate-500">如有需要補充說明的事項，可在此填寫並上傳附件</p>
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                {template.initiative.label}
-                <span className="text-xs text-purple-600 ml-2">
-                  (字數≥20字得滿分,≥10字得7成,其餘得5成)
-                </span>
-              </label>
-              <textarea
-                value={formData.initiative}
-                onChange={(e) => setFormData(prev => ({ ...prev, initiative: e.target.value }))}
-                placeholder={template.initiative.placeholder}
-                rows="3"
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 outline-none"
-              />
-              <div className="mt-2 text-xs text-slate-500 text-right">
-                已輸入 {formData.initiative.length} 字
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">備註內容</label>
+                <textarea
+                  value={formData.note || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, note: e.target.value }))}
+                  placeholder="輸入補充說明，例如：本月有特殊專案加班、協助其他部門工作..."
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">上傳附件 (選填)</label>
+                <div className="flex items-center gap-4">
+                  <label className="flex-1 cursor-pointer">
+                    <div className="border-2 border-dashed border-slate-300 rounded-lg p-4 hover:border-purple-400 transition-colors">
+                      <div className="flex items-center justify-center gap-3">
+                        <Upload className="w-6 h-6 text-slate-400" />
+                        <span className="text-sm text-slate-500">
+                          {formData.attachmentName || '點擊上傳檔案 (支援圖片、PDF、Excel)'}
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.pdf,.xlsx,.xls,.doc,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          if (file.size > 1024 * 1024) {
+                            alert('檔案過大！請選擇小於 1MB 的檔案');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              attachment: event.target.result,
+                              attachmentName: file.name
+                            }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {formData.attachmentName && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, attachment: null, attachmentName: '' }))}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                      title="移除附件"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+                {formData.attachmentName && (
+                  <p className="mt-2 text-sm text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-4 h-4" />
+                    已選擇: {formData.attachmentName}
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-100">
               <p className="text-sm text-purple-700">
-                💡 <strong>評分標準:</strong> 內容豐富詳細可獲得較高分數,建議至少20字以上
+                📎 <strong>提示:</strong> 附件僅作為輔助說明，檔案限制 1MB 以內
               </p>
             </div>
           </div>
@@ -2084,7 +2701,7 @@ ${indicatorsText}
                 });
                 const initialQuality = {};
                 template.quality.forEach(item => {
-                  initialQuality[item.name] = 0; // 改為0
+                  initialQuality[item.name] = 0;
                 });
                 const initialIndicators = {};
                 if (template.indicators) {
@@ -2095,8 +2712,10 @@ ${indicatorsText}
                 setFormData({
                   workCompletion: initialWork,
                   quality: initialQuality,
-                  initiative: '',
-                  indicators: initialIndicators
+                  indicators: initialIndicators,
+                  note: '',
+                  attachment: null,
+                  attachmentName: ''
                 });
               }}
               className="px-6 py-4 border-2 border-slate-300 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition-all"
@@ -2157,11 +2776,60 @@ const KPIApp = ({ onBackToMenu }) => {
   const [data, setData] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dashboardMonth, setDashboardMonth] = useState('11月');
-  const [analysisPerson, setAnalysisPerson] = useState('黃泓銘');
+  const [dashboardMonth, setDashboardMonth] = useState('12月');
+  const [analysisPerson, setAnalysisPerson] = useState('');
   const [formData, setFormData] = useState({ name: '', department: '', month: '12月', metrics: [] });
 
-  useEffect(() => { setData(generateHistory()); }, []);
+  // 🔥 從 Firebase 訂閱 KPI 績效資料
+  useEffect(() => {
+    // 先載入假資料作為示範
+    const historyData = generateHistory();
+    
+    // 訂閱 Firebase kpi_performance 集合
+    const unsub = db.subscribe('kpi_performance', (firebaseData) => {
+      console.log('📊 KPI App: 載入 Firebase 資料', firebaseData);
+      
+      // 合併假資料和 Firebase 資料
+      const combinedData = [...historyData];
+      
+      firebaseData.forEach(record => {
+        // 檢查是否已存在相同記錄（根據姓名和月份）
+        const existingIndex = combinedData.findIndex(
+          d => d.name === record.name && d.month === record.month
+        );
+        
+        // 轉換 Firebase 資料格式
+        const formattedRecord = {
+          id: record.id,
+          name: record.name,
+          department: record.department,
+          month: record.month,
+          metrics: record.metrics || [],
+          scores: record.scores,
+          grade: record.grade,
+          level: record.level,
+          createdAt: record.createdAt
+        };
+        
+        if (existingIndex >= 0) {
+          // 更新現有記錄
+          combinedData[existingIndex] = formattedRecord;
+        } else {
+          // 新增記錄
+          combinedData.push(formattedRecord);
+        }
+      });
+      
+      setData(combinedData);
+      
+      // 設定預設分析對象
+      if (combinedData.length > 0 && !analysisPerson) {
+        setAnalysisPerson(combinedData[0].name);
+      }
+    });
+    
+    return () => unsub && unsub();
+  }, []);
 
   const calculateRate = (metrics) => {
     if (!metrics || metrics.length === 0) return 0;
@@ -2221,6 +2889,25 @@ const KPIApp = ({ onBackToMenu }) => {
   const addMetricRow = () => setFormData({ ...formData, metrics: [...formData.metrics, { category: '質量', name: '', target: '', actual: '', status: 'Achieved', note: '' }] });
   const removeMetricRow = (index) => setFormData({ ...formData, metrics: formData.metrics.filter((_, i) => i !== index) });
 
+  // 🔥 刪除 KPI 記錄
+  const handleDeleteRecord = async (record) => {
+    if (!confirm(`確定要刪除 ${record.name} 的 ${record.month} KPI 記錄嗎？`)) return;
+    
+    try {
+      // 如果有 Firebase ID，從 Firebase 刪除
+      if (record.id && typeof record.id === 'string' && record.id.length > 10) {
+        await db.deleteDoc('kpi_performance', record.id);
+        console.log('✅ 已從 Firebase 刪除');
+      }
+      // 從本地 state 移除
+      setData(prev => prev.filter(d => d.id !== record.id));
+      alert(`已刪除 ${record.name} 的 ${record.month} 記錄`);
+    } catch (error) {
+      console.error('刪除失敗:', error);
+      alert('刪除失敗: ' + error.message);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name || !formData.department) return alert('請填寫完整資訊');
@@ -2278,7 +2965,7 @@ const KPIApp = ({ onBackToMenu }) => {
         {activeTab === 'list' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4"><h3 className="text-lg font-bold text-slate-800 flex items-center"><span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded mr-2">{dashboardMonth}</span>員工列表</h3><div className="relative w-full sm:w-64"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" /><input type="text" placeholder="搜尋姓名或部門..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div></div>
-            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100"><tr><th className="p-4">姓名</th><th className="p-4">部門</th><th className="p-4">月份</th><th className="p-4 text-center">達成率</th><th className="p-4">狀態</th><th className="p-4">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredData.length > 0 ? filteredData.map((person) => { const rate = calculateRate(person.metrics); return (<tr key={person.id} className="hover:bg-slate-50 transition-colors"><td className="p-4 font-medium text-slate-900">{person.name}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-slate-600 text-xs">{person.department}</span></td><td className="p-4 text-slate-500">{person.month}</td><td className="p-4 text-center"><div className="flex items-center justify-center space-x-2"><div className="w-16 bg-slate-200 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${rate === 100 ? 'bg-green-500' : rate >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${rate}%` }}></div></div><span className="text-xs">{rate}%</span></div></td><td className="p-4">{rate === 100 ? <span className="text-green-600 flex items-center text-xs font-bold"><CheckCircle2 className="w-3 h-3 mr-1"/> 優異</span> : rate < 80 ? <span className="text-red-600 flex items-center text-xs font-bold"><AlertCircle className="w-3 h-3 mr-1"/> 需改善</span> : <span className="text-yellow-600 flex items-center text-xs font-bold"><TrendingUp className="w-3 h-3 mr-1"/> 良好</span>}</td><td className="p-4"><button onClick={() => setSelectedPerson(person)} className="text-blue-600 hover:text-blue-800 font-medium text-xs flex items-center">查看 <ChevronRight className="w-3 h-3 ml-1" /></button></td></tr>); }) : (<tr><td colSpan="6" className="p-8 text-center text-slate-400">沒有找到 {dashboardMonth} 符合條件的資料</td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100"><tr><th className="p-4">姓名</th><th className="p-4">部門</th><th className="p-4">月份</th><th className="p-4 text-center">達成率</th><th className="p-4">狀態</th><th className="p-4">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredData.length > 0 ? filteredData.map((person) => { const rate = calculateRate(person.metrics); return (<tr key={person.id} className="hover:bg-slate-50 transition-colors"><td className="p-4 font-medium text-slate-900">{person.name}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-slate-600 text-xs">{person.department}</span></td><td className="p-4 text-slate-500">{person.month}</td><td className="p-4 text-center"><div className="flex items-center justify-center space-x-2"><div className="w-16 bg-slate-200 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${rate === 100 ? 'bg-green-500' : rate >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${rate}%` }}></div></div><span className="text-xs">{rate}%</span></div></td><td className="p-4">{rate === 100 ? <span className="text-green-600 flex items-center text-xs font-bold"><CheckCircle2 className="w-3 h-3 mr-1"/> 優異</span> : rate < 80 ? <span className="text-red-600 flex items-center text-xs font-bold"><AlertCircle className="w-3 h-3 mr-1"/> 需改善</span> : <span className="text-yellow-600 flex items-center text-xs font-bold"><TrendingUp className="w-3 h-3 mr-1"/> 良好</span>}</td><td className="p-4"><div className="flex items-center gap-2"><button onClick={() => setSelectedPerson(person)} className="text-blue-600 hover:text-blue-800 font-medium text-xs flex items-center">查看 <ChevronRight className="w-3 h-3 ml-1" /></button><button onClick={() => handleDeleteRecord(person)} className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50" title="刪除記錄"><Trash2 className="w-4 h-4" /></button></div></td></tr>); }) : (<tr><td colSpan="6" className="p-8 text-center text-slate-400">沒有找到 {dashboardMonth} 符合條件的資料</td></tr>)}</tbody></table></div>
           </div>
         )}
         {activeTab === 'entry' && (
@@ -2296,7 +2983,37 @@ const KPIApp = ({ onBackToMenu }) => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10"><div><h2 className="text-2xl font-bold">{selectedPerson.name}</h2><p className="text-sm text-slate-500">{selectedPerson.department} | {selectedPerson.month}</p></div><button onClick={() => setSelectedPerson(null)}><X className="w-6 h-6 text-slate-400 hover:text-slate-600"/></button></div>
-            <div className="p-6"><div className="mb-6"><h4 className="font-bold mb-2">指標明細</h4><div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="p-3 text-left">類別</th><th className="p-3 text-left">項目</th><th className="p-3">目標/實際</th><th className="p-3">狀態</th><th className="p-3">備註</th></tr></thead><tbody className="divide-y">{selectedPerson.metrics.map((m, i) => (<tr key={i}><td className="p-3 text-slate-500">{m.category}</td><td className="p-3 font-medium">{m.name}</td><td className="p-3">{m.target} <span className="text-slate-400">/</span> <span className="font-bold text-blue-600">{m.actual}</span></td><td className="p-3"><StatusBadge status={m.status}/></td><td className="p-3 text-slate-500 text-xs">{m.note}</td></tr>))}</tbody></table></div></div></div>
+            <div className="p-6">
+              <div className="mb-6">
+                <h4 className="font-bold mb-2">指標明細</h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-600"><tr><th className="p-3 text-left">類別</th><th className="p-3 text-left">項目</th><th className="p-3">目標/實際</th><th className="p-3">狀態</th><th className="p-3">備註</th></tr></thead>
+                    <tbody className="divide-y">{selectedPerson.metrics.map((m, i) => (<tr key={i}><td className="p-3 text-slate-500">{m.category}</td><td className="p-3 font-medium">{m.name}</td><td className="p-3">{m.target} <span className="text-slate-400">/</span> <span className="font-bold text-blue-600">{m.actual}</span></td><td className="p-3"><StatusBadge status={m.status}/></td><td className="p-3 text-slate-500 text-xs">{m.note}</td></tr>))}</tbody>
+                  </table>
+                </div>
+              </div>
+              {/* 🔥 備註說明和附件區塊 - 永遠顯示 */}
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <h4 className="font-bold mb-3 flex items-center text-slate-700"><FileText className="w-4 h-4 mr-2" />備註說明</h4>
+                <div className="mb-3">
+                  <p className="text-sm text-slate-600 whitespace-pre-wrap">{selectedPerson.note || '（無備註）'}</p>
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                  <Paperclip className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm text-slate-500">附件：</span>
+                  {selectedPerson.attachment ? (
+                    selectedPerson.attachment.startsWith('data:image') ? (
+                      <a href={selectedPerson.attachment} target="_blank" className="text-blue-600 hover:underline text-sm">{selectedPerson.attachmentName || '查看圖片'}</a>
+                    ) : (
+                      <a href={selectedPerson.attachment} download={selectedPerson.attachmentName || '附件'} className="text-blue-600 hover:underline text-sm">{selectedPerson.attachmentName || '下載附件'}</a>
+                    )
+                  ) : (
+                    <span className="text-sm text-slate-400">（無附件）</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2325,9 +3042,22 @@ const TQMApp = ({ appUser, onLogout, onBackToMenu }) => {
 
   const handleAddRecord = async (formData) => {
     try {
+      // 檢查附件大小
+      if (formData.attachment && formData.attachment.length > 1024 * 1024) {
+        alert('附件過大！Firestore 限制單一文件 1MB，請壓縮圖片或移除附件');
+        return;
+      }
       await db.addDoc('tqm_records', { ...formData, createdAt: new Date().toISOString(), userId: appUser.id, createdByUser: appUser.username });
       alert('TQM紀錄已新增！'); setActiveTab('list');
-    } catch (e) { console.error("Error adding document: ", e); alert('新增失敗: ' + (e.toString().includes("exceeds") ? "檔案過大" : "請重試")); }
+    } catch (e) { 
+      console.error("Error adding document: ", e); 
+      const errMsg = e.toString();
+      if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
+        alert('新增失敗: 資料過大！\n\nFirestore 限制單一文件 1MB，請移除附件或使用較小的圖片');
+      } else {
+        alert('新增失敗: ' + errMsg);
+      }
+    }
   };
 
   const handleUpdateRecord = async (id, updatedData) => {
@@ -2564,7 +3294,9 @@ const TaskForm = ({ onSubmit, initialData, onCancel }) => {
     status: 'To Do',
     owner: '',
     priority: 'P2',
-    risk: false
+    risk: false,
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
   const handleSubmit = (e) => {
@@ -2634,6 +3366,26 @@ const TaskForm = ({ onSubmit, initialData, onCancel }) => {
           </label>
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">開始日期</label>
+          <input 
+            type="date" 
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={formData.startDate}
+            onChange={e => setFormData({...formData, startDate: e.target.value})}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">結束日期</label>
+          <input 
+            type="date" 
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={formData.endDate}
+            onChange={e => setFormData({...formData, endDate: e.target.value})}
+          />
+        </div>
+      </div>
       <div className="flex justify-end gap-3 pt-4">
         <button type="button" onClick={onCancel} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">取消</button>
         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">儲存任務</button>
@@ -2650,6 +3402,7 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
     stage: '規劃',
     progress: 0,
     status: 'normal',
+    startDate: new Date().toISOString().split('T')[0],
     deadline: '',
     category: '新產品'
   });
@@ -2756,8 +3509,19 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
           />
         </div>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">類別</label>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">開始日期</label>
+          <input 
+            type="date" 
+            name="startDate"
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={formData.startDate}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">類別</label>
         <input 
           type="text" 
           name="category"
@@ -2766,6 +3530,7 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
           onChange={handleChange}
           placeholder="e.g. 新產品, 改款, 內部案"
         />
+        </div>
       </div>
       <div className="flex justify-end gap-3 pt-4">
         <button type="button" onClick={onCancel} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">取消</button>
@@ -3296,20 +4061,109 @@ const DashboardView = ({ projects, tasks, changes, onViewDetails }) => {
         </div>
       </div>
 
+      {/* 完整甘特圖區域 - 顯示所有專案 */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
+        <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+          <LayoutDashboard size={18} className="mr-2 text-blue-500" />
+          所有專案甘特圖總覽
+          <span className="ml-2 text-xs text-slate-400 font-normal">({displayProjects.length} 個專案)</span>
+        </h3>
+        <div className="overflow-x-auto">
+          {displayProjects.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <p>尚無專案，請至「專案列表」新增。</p>
+            </div>
+          ) : (
+            <div className="min-w-[800px]">
+              {/* 甘特圖表頭 */}
+              <div className="flex border-b border-slate-200 pb-2 mb-3">
+                <div className="w-48 flex-shrink-0 text-xs font-semibold text-slate-600">專案名稱</div>
+                <div className="w-20 flex-shrink-0 text-xs font-semibold text-slate-600 text-center">負責人</div>
+                <div className="w-16 flex-shrink-0 text-xs font-semibold text-slate-600 text-center">狀態</div>
+                <div className="flex-1 flex justify-between text-xs text-slate-400 px-2">
+                  <span>開始</span>
+                  <span>進度條</span>
+                  <span>截止</span>
+                </div>
+                <div className="w-20 flex-shrink-0 text-xs font-semibold text-slate-600 text-center">進度</div>
+              </div>
+              {/* 甘特圖項目 */}
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {displayProjects.map((project) => {
+                  const validProgress = Math.min(Math.max(parseFloat(project.progress) || 0, 0), 100);
+                  const statusColor = project.status === 'delay' ? 'bg-rose-500' : 
+                    project.status === 'risk' ? 'bg-amber-500' : 
+                    project.status === 'Completed' ? 'bg-blue-500' : 'bg-emerald-500';
+                  const bgColor = project.status === 'delay' ? 'hover:bg-rose-50' : 
+                    project.status === 'risk' ? 'hover:bg-amber-50' : 'hover:bg-slate-50';
+                  
+                  return (
+                    <div 
+                      key={project.id} 
+                      className={`flex items-center py-2 px-2 rounded-lg cursor-pointer transition-all border border-transparent hover:border-slate-200 ${bgColor}`}
+                      onClick={() => onViewDetails(project)}
+                    >
+                      <div className="w-48 flex-shrink-0">
+                        <span className="font-medium text-sm text-slate-700 truncate block" title={project.name}>{project.name}</span>
+                        <span className="text-xs text-slate-400">{project.category || '一般'}</span>
+                      </div>
+                      <div className="w-20 flex-shrink-0 text-xs text-slate-500 text-center truncate" title={project.owner}>{project.owner}</div>
+                      <div className="w-16 flex-shrink-0 flex justify-center">
+                        <ProjectStatusBadge status={project.status} />
+                      </div>
+                      <div className="flex-1 px-2">
+                        <div className="relative h-6 bg-slate-100 rounded-md overflow-hidden">
+                          <div 
+                            className={`absolute top-0 left-0 h-full rounded-md transition-all ${statusColor}`}
+                            style={{ width: `${validProgress}%` }}
+                          >
+                            {validProgress > 15 && (
+                              <span className="absolute inset-0 flex items-center justify-center text-xs text-white font-medium">
+                                {validProgress.toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                          {validProgress <= 15 && (
+                            <span className="absolute inset-0 flex items-center justify-center text-xs text-slate-500 font-medium">
+                              {validProgress.toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex justify-between mt-1 text-xs text-slate-400">
+                          <span>{project.startDate || project.createdAt?.split('T')[0] || '-'}</span>
+                          <span>{project.deadline || '-'}</span>
+                        </div>
+                      </div>
+                      <div className="w-20 flex-shrink-0 text-center">
+                        <span className={`text-sm font-bold ${validProgress >= 80 ? 'text-emerald-600' : validProgress >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>
+                          {validProgress.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Project Status Overview */}
+        {/* Project Status Overview - 簡化版 */}
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 p-6">
           <h3 className="font-bold text-slate-800 mb-4 flex items-center">
             <LayoutDashboard size={18} className="mr-2 text-slate-400" />
-            專案進度總覽 (Gantt 縮圖)
+            專案進度摘要
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-3 max-h-[300px] overflow-y-auto">
             {displayProjects.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
                     <p>尚無專案，請至「專案列表」新增。</p>
                 </div>
             ) : (
-                displayProjects.map((project) => (
+                displayProjects.slice(0, 5).map((project) => {
+                const validProgress = Math.min(Math.max(parseFloat(project.progress) || 0, 0), 100);
+                return (
                 <div key={project.id} className="group hover:bg-slate-50 p-3 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-slate-100" onClick={() => onViewDetails(project)}>
                     <div className="flex justify-between items-center mb-2">
                     <div className="flex items-center">
@@ -3324,7 +4178,7 @@ const DashboardView = ({ projects, tasks, changes, onViewDetails }) => {
                         project.status === 'delay' ? 'bg-rose-500' : 
                         project.status === 'risk' ? 'bg-amber-500' : 'bg-emerald-500'
                         }`}
-                        style={{ width: `${project.progress}%` }}
+                        style={{ width: `${validProgress}%` }}
                     ></div>
                     </div>
                     <div className="flex justify-between mt-1 text-xs text-slate-400">
@@ -3332,7 +4186,12 @@ const DashboardView = ({ projects, tasks, changes, onViewDetails }) => {
                     <span>Deadline: {project.deadline}</span>
                     </div>
                 </div>
-                ))
+                );})
+            )}
+            {displayProjects.length > 5 && (
+              <div className="text-center text-xs text-slate-400 py-2">
+                還有 {displayProjects.length - 5} 個專案，請查看上方完整甘特圖
+              </div>
             )}
           </div>
         </div>
@@ -3565,15 +4424,66 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
   const handleChatFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 10 * 1024 * 1024) {
-            alert("檔案過大！請上傳 10MB 以下的檔案。");
+        // Firebase Firestore 單一文件限制約 1MB，設定檔案限制為 800KB
+        const maxSize = 800 * 1024; // 800KB
+        
+        if (file.type.startsWith('image/')) {
+          // 圖片檔案：進行壓縮
+          const img = new Image();
+          const canvas = document.createElement('canvas');
+          const reader = new FileReader();
+          
+          reader.onload = (event) => {
+            img.onload = () => {
+              // 計算壓縮後的尺寸，最大寬度 1200px
+              let width = img.width;
+              let height = img.height;
+              const maxWidth = 1200;
+              
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+              
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // 調整品質以控制大小
+              let quality = 0.7;
+              let compressedData = canvas.toDataURL('image/jpeg', quality);
+              
+              // 如果還是太大，繼續降低品質
+              while (compressedData.length > maxSize * 1.37 && quality > 0.1) {
+                quality -= 0.1;
+                compressedData = canvas.toDataURL('image/jpeg', quality);
+              }
+              
+              if (compressedData.length > maxSize * 1.37) {
+                alert('圖片太大，即使壓縮後仍超過限制，請選擇較小的圖片');
+                e.target.value = null;
+                return;
+              }
+              
+              setChatFile({ name: file.name, data: compressedData });
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        } else {
+          // 非圖片檔案：檢查大小限制
+          if (file.size > maxSize) {
+            alert(`檔案過大！非圖片檔案請上傳 ${Math.round(maxSize/1024)}KB 以下的檔案。\n\n提示：建議使用雲端硬碟分享連結`);
+            e.target.value = null;
             return;
-        }
-        const reader = new FileReader();
-        reader.onloadend = () => {
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => {
             setChatFile({ name: file.name, data: reader.result });
-        };
-        reader.readAsDataURL(file);
+          };
+          reader.readAsDataURL(file);
+        }
     }
   };
 
@@ -3911,7 +4821,33 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
         )}
         
         {activeTab === 'gantt' && (() => {
-             const allDates = phases.flatMap(p => [new Date(p.startDate), new Date(p.endDate)]);
+             // 從任務自動產生甘特圖項目
+             const getTaskColor = (status, priority) => {
+               if (status === 'Done') return 'bg-emerald-500';
+               if (status === 'Testing') return 'bg-purple-500';
+               if (status === 'Doing') return 'bg-blue-500';
+               if (priority === 'P0') return 'bg-rose-500';
+               if (priority === 'P1') return 'bg-orange-500';
+               return 'bg-slate-400';
+             };
+
+             const taskGanttItems = tasks
+               .filter(task => task.startDate && task.endDate)
+               .map(task => ({
+                 id: `task-${task.id}`,
+                 name: task.title,
+                 startDate: task.startDate,
+                 endDate: task.endDate,
+                 color: getTaskColor(task.status, task.priority),
+                 isTask: true,
+                 status: task.status,
+                 owner: task.owner
+               }));
+
+             // 合併手動新增的階段和任務
+             const allGanttItems = [...phases, ...taskGanttItems];
+
+             const allDates = allGanttItems.flatMap(p => [new Date(p.startDate), new Date(p.endDate)]);
              const minDate = allDates.length ? new Date(Math.min(...allDates)) : new Date();
              const maxDate = allDates.length ? new Date(Math.max(...allDates)) : new Date();
              minDate.setDate(minDate.getDate() - 7);
@@ -3931,9 +4867,9 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
              }
 
              const stats = [
-               { label: '階段數', value: phases.length, hint: '目前排程' },
-               { label: '時間範圍', value: `${formatShort(minDate)} ~ ${formatShort(maxDate)}`, hint: '含緩衝期' },
-               { label: '平均天數', value: `${Math.max(1, Math.round(safeDurationDays / Math.max(phases.length, 1)))} 天`, hint: '每段平均' }
+               { label: '階段數', value: phases.length, hint: '手動新增' },
+               { label: '任務數', value: taskGanttItems.length, hint: '自動帶入' },
+               { label: '時間範圍', value: `${formatShort(minDate)} ~ ${formatShort(maxDate)}`, hint: '含緩衝期' }
              ];
 
              return (
@@ -3944,7 +4880,7 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
                      <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                        <Calendar size={20} className="text-blue-600" /> 專案時程甘特圖
                      </h3>
-                     <p className="text-xs text-slate-400">日期會自動延伸，點擊階段即可編輯。</p>
+                     <p className="text-xs text-slate-400">任務會自動帶入甘特圖，顏色依狀態區分。點擊階段可編輯。</p>
                    </div>
                    <div className="flex flex-wrap gap-2 justify-end">
                      <button
@@ -3959,6 +4895,18 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
                    </div>
                  </div>
 
+                 {/* 圖例說明 */}
+                 <div className="flex flex-wrap gap-3 text-xs">
+                   <span className="text-slate-500 font-medium">任務狀態：</span>
+                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-400"></span> To Do</span>
+                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500"></span> Doing</span>
+                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500"></span> Testing</span>
+                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500"></span> Done</span>
+                   <span className="text-slate-300">|</span>
+                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-rose-500"></span> P0 緊急</span>
+                   <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> P1 重要</span>
+                 </div>
+
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                    {stats.map((stat) => (
                      <div key={stat.label} className="bg-slate-50 rounded-xl border border-slate-100 p-4">
@@ -3971,7 +4919,7 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
 
                  <div className="relative overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 p-5">
                    <div className="flex border-b border-slate-200 pb-3 mb-4">
-                     <div className="w-24 text-xs text-slate-500 font-medium">階段</div>
+                     <div className="w-32 text-xs text-slate-500 font-medium">項目</div>
                      <div className="flex-1 relative h-6">
                        {ticks.map((tick, idx) => (
                          <div key={idx} className="absolute text-xs text-slate-400 -translate-x-1/2" style={{ left: `${tick.left}%` }}>
@@ -3980,32 +4928,121 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
                        ))}
                      </div>
                    </div>
-                   <div className="space-y-3">
-                     {phases.map((phase) => (
-                       <div
-                         key={phase.id}
-                         className="flex items-center gap-3 cursor-pointer"
-                         onClick={() => { setEditingPhase(phase); setIsGanttModalOpen(true); }}
-                       >
-                         <div className="w-24 text-xs font-semibold text-slate-600 text-right">{phase.name}</div>
-                         <div className="flex-1 h-10 bg-white rounded-2xl border border-slate-200 relative overflow-hidden">
-                           {ticks.map((tick, idx) => (
-                             <div
-                               key={`tick-${phase.id}-${idx}`}
-                               className="absolute top-0 bottom-0 border-l border-slate-100 border-dashed"
-                               style={{ left: `${tick.left}%` }}
-                             ></div>
-                           ))}
+
+                   {/* 手動新增的階段 */}
+                   {phases.length > 0 && (
+                     <div className="mb-4">
+                       <p className="text-xs text-slate-400 mb-2 font-medium">📋 專案階段</p>
+                       <div className="space-y-3">
+                         {phases.map((phase) => (
                            <div
-                             className={`absolute top-1 bottom-1 rounded-2xl ${phase.color} opacity-95 flex items-center justify-center text-[11px] text-white font-semibold shadow-lg`}
-                             style={{ left: `${getLeftPos(phase.startDate)}%`, width: `${getWidth(phase.startDate, phase.endDate)}%` }}
+                             key={phase.id}
+                             className="flex items-center gap-3 group"
                            >
-                             {phase.startDate} ~ {phase.endDate}
+                             <div className="w-32 text-xs font-semibold text-slate-600 text-right truncate flex items-center justify-end gap-1" title={phase.name}>
+                               <button
+                                 onClick={(e) => {
+                                   e.stopPropagation();
+                                   if (confirm(`確定要刪除階段「${phase.name}」嗎？`)) {
+                                     setPhases(prev => prev.filter(p => p.id !== phase.id));
+                                   }
+                                 }}
+                                 className="opacity-0 group-hover:opacity-100 p-1 text-rose-500 hover:bg-rose-50 rounded transition-all"
+                                 title="刪除階段"
+                               >
+                                 <Trash2 size={12} />
+                               </button>
+                               <span 
+                                 className="truncate cursor-pointer hover:text-blue-600"
+                                 onClick={() => { setEditingPhase(phase); setIsGanttModalOpen(true); }}
+                               >{phase.name}</span>
+                             </div>
+                             <div 
+                               className="flex-1 h-10 bg-white rounded-2xl border border-slate-200 relative overflow-hidden cursor-pointer hover:border-blue-300 transition"
+                               onClick={() => { setEditingPhase(phase); setIsGanttModalOpen(true); }}
+                             >
+                               {ticks.map((tick, idx) => (
+                                 <div
+                                   key={`tick-${phase.id}-${idx}`}
+                                   className="absolute top-0 bottom-0 border-l border-slate-100 border-dashed"
+                                   style={{ left: `${tick.left}%` }}
+                                 ></div>
+                               ))}
+                               <div
+                                 className={`absolute top-1 bottom-1 rounded-2xl ${phase.color} opacity-95 flex items-center justify-center text-[11px] text-white font-semibold shadow-lg`}
+                                 style={{ left: `${getLeftPos(phase.startDate)}%`, width: `${getWidth(phase.startDate, phase.endDate)}%` }}
+                               >
+                                 {phase.startDate} ~ {phase.endDate}
+                               </div>
+                             </div>
                            </div>
-                         </div>
+                         ))}
                        </div>
-                     ))}
-                   </div>
+                     </div>
+                   )}
+
+                   {/* 任務自動帶入 */}
+                   {taskGanttItems.length > 0 && (
+                     <div>
+                       <p className="text-xs text-slate-400 mb-2 font-medium">✅ 任務時程 (自動帶入)</p>
+                       <div className="space-y-3">
+                         {taskGanttItems.map((item) => {
+                           const originalTaskId = item.id.replace('task-', '');
+                           return (
+                           <div
+                             key={item.id}
+                             className="flex items-center gap-3 group"
+                           >
+                             <div className="w-32 text-xs font-semibold text-slate-600 text-right truncate flex items-center justify-end gap-1" title={item.name}>
+                               <button
+                                 onClick={(e) => {
+                                   e.stopPropagation();
+                                   if (confirm(`確定要從甘特圖移除任務「${item.name}」嗎？\n(這將清除任務的開始/結束日期，任務本身不會刪除)`)) {
+                                     // 更新任務，清除日期
+                                     const taskToUpdate = tasks.find(t => t.id === originalTaskId);
+                                     if (taskToUpdate) {
+                                       handleUpdateTask(originalTaskId, { ...taskToUpdate, startDate: '', endDate: '' });
+                                     }
+                                   }
+                                 }}
+                                 className="opacity-0 group-hover:opacity-100 p-1 text-rose-500 hover:bg-rose-50 rounded transition-all"
+                                 title="從甘特圖移除"
+                               >
+                                 <Trash2 size={12} />
+                               </button>
+                               <div className="text-right">
+                                 <span className="block truncate">{item.name}</span>
+                                 <span className="text-[10px] text-slate-400 font-normal">{item.owner}</span>
+                               </div>
+                             </div>
+                             <div className="flex-1 h-10 bg-white rounded-2xl border border-slate-200 relative overflow-hidden">
+                               {ticks.map((tick, idx) => (
+                                 <div
+                                   key={`tick-${item.id}-${idx}`}
+                                   className="absolute top-0 bottom-0 border-l border-slate-100 border-dashed"
+                                   style={{ left: `${tick.left}%` }}
+                                 ></div>
+                               ))}
+                               <div
+                                 className={`absolute top-1 bottom-1 rounded-2xl ${item.color} opacity-95 flex items-center justify-center text-[11px] text-white font-semibold shadow-lg`}
+                                 style={{ left: `${getLeftPos(item.startDate)}%`, width: `${getWidth(item.startDate, item.endDate)}%` }}
+                               >
+                                 {item.status}
+                               </div>
+                             </div>
+                           </div>
+                         );})}
+                       </div>
+                     </div>
+                   )}
+
+                   {allGanttItems.length === 0 && (
+                     <div className="text-center py-8 text-slate-400">
+                       <Calendar size={32} className="mx-auto mb-2 opacity-50" />
+                       <p>尚無時程資料</p>
+                       <p className="text-xs">請新增階段或建立含日期的任務</p>
+                     </div>
+                   )}
                  </div>
                </div>
              );
@@ -4569,6 +5606,7 @@ const SpecDiscussionView = ({ machine }) => {
   const [editingUrl, setEditingUrl] = useState(null);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const [newDescription, setNewDescription] = useState('');
 
   // 從資料庫訂閱資料
   useEffect(() => {
@@ -4588,12 +5626,14 @@ const SpecDiscussionView = ({ machine }) => {
         id: Date.now(),
         name: newName,
         url: newUrl,
+        description: newDescription,
         machineId: machine.id,
         createdAt: new Date().toISOString()
       };
       await db.addDoc('spec_discussion_urls', newEntry);
       setNewName('');
       setNewUrl('');
+      setNewDescription('');
       setIsEditing(false);
     } catch (error) {
       console.error('新增連結失敗:', error);
@@ -4609,11 +5649,13 @@ const SpecDiscussionView = ({ machine }) => {
     try {
       await db.updateDoc('spec_discussion_urls', id, {
         name: newName,
-        url: newUrl
+        url: newUrl,
+        description: newDescription
       });
       setEditingUrl(null);
       setNewName('');
       setNewUrl('');
+      setNewDescription('');
     } catch (error) {
       console.error('更新連結失敗:', error);
       alert('更新失敗，請稍後再試');
@@ -4639,6 +5681,7 @@ const SpecDiscussionView = ({ machine }) => {
     setEditingUrl(urlEntry.id);
     setNewName(urlEntry.name);
     setNewUrl(urlEntry.url);
+    setNewDescription(urlEntry.description || '');
     setIsEditing(false);
   };
 
@@ -4658,6 +5701,7 @@ const SpecDiscussionView = ({ machine }) => {
             setEditingUrl(null);
             setNewName('');
             setNewUrl('');
+            setNewDescription('');
           }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
         >
@@ -4693,6 +5737,16 @@ const SpecDiscussionView = ({ machine }) => {
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">敘述說明 (選填)</label>
+              <textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="輸入連結的敘述說明，例如：此連結包含產品規格的主要討論內容..."
+                rows={3}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => {
@@ -4700,6 +5754,7 @@ const SpecDiscussionView = ({ machine }) => {
                   setEditingUrl(null);
                   setNewName('');
                   setNewUrl('');
+                  setNewDescription('');
                 }}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
               >
@@ -4737,6 +5792,13 @@ const SpecDiscussionView = ({ machine }) => {
               </div>
             </div>
             
+            {/* 敘述說明 */}
+            {urlEntry.description && (
+              <div className="mb-3 p-3 bg-slate-50 rounded-lg">
+                <p className="text-sm text-slate-600">{urlEntry.description}</p>
+              </div>
+            )}
+
             <div className="mb-4">
               <a
                 href={urlEntry.url}
@@ -5038,7 +6100,22 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   };
 
   const handleAddMessage = async (newMessage) => {
-    await db.addDoc('rd_messages', newMessage);
+    try {
+      // 檢查訊息中的附件大小
+      if (newMessage.fileData && newMessage.fileData.length > 1024 * 1024) {
+        alert('附件過大！Firestore 限制單一文件 1MB，請壓縮圖片或使用較小的檔案');
+        return;
+      }
+      await db.addDoc('rd_messages', newMessage);
+    } catch (e) {
+      console.error("Error adding message: ", e);
+      const errMsg = e.toString();
+      if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
+        alert('發送失敗: 資料過大！\n\nFirestore 限制單一文件 1MB，請移除附件或使用較小的圖片');
+      } else {
+        alert('發送失敗: ' + errMsg);
+      }
+    }
   };
 
   const renderContent = () => {
@@ -5262,8 +6339,8 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
     if (!selectedMonth) return tqmRecords;
     const month = parseInt(selectedMonth.replace('月', ''));
     return tqmRecords.filter(record => {
-      if (!record.createdAt) return false;
-      const recordDate = new Date(record.createdAt);
+      if (!record.date) return false;
+      const recordDate = new Date(record.date);
       const recordYear = recordDate.getFullYear();
       const recordMonth = recordDate.getMonth() + 1;
       return recordYear === selectedYear && recordMonth === month;
@@ -5310,72 +6387,46 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
     
     const filtered = projects.filter(project => {
       console.log('檢查專案:', project.name || project.id, {
-        createdAt: project.createdAt,
+        confirmDate: project.confirmDate,
         deadline: project.deadline,
-        status: project.status,
-        completedAt: project.completedAt
+        status: project.status
       });
       
-      // 如果專案有截止日期，檢查截止日期是否在選定月份或之後
+      // 優先使用 confirmDate (確認日期)
+      if (project.confirmDate) {
+        const confirmDate = new Date(project.confirmDate);
+        const confirmYear = confirmDate.getFullYear();
+        const confirmMonth = confirmDate.getMonth() + 1;
+        
+        console.log('  → 確認日期檢查:', {
+          confirmDate: project.confirmDate,
+          confirmMonth,
+          selectedMonth: month,
+          isMatch: confirmYear === selectedYear && confirmMonth === month
+        });
+        
+        return confirmYear === selectedYear && confirmMonth === month;
+      }
+      
+      // 如果沒有 confirmDate，使用 deadline (截止日期)
       if (project.deadline) {
         const deadlineDate = new Date(project.deadline);
         const deadlineYear = deadlineDate.getFullYear();
         const deadlineMonth = deadlineDate.getMonth() + 1;
         
-        // 截止日期在選定月份或之後的專案都應該顯示
-        const isDeadlineInOrAfterMonth = deadlineYear > selectedYear || 
-                                         (deadlineYear === selectedYear && deadlineMonth >= month);
-        
         console.log('  → 截止日期檢查:', {
           deadline: project.deadline,
           deadlineMonth,
           selectedMonth: month,
-          isDeadlineInOrAfterMonth
+          isMatch: deadlineYear === selectedYear && deadlineMonth === month
         });
         
-        if (isDeadlineInOrAfterMonth) {
-          // 如果有 createdAt，確保創建時間 <= 選定月份
-          if (project.createdAt) {
-            const createdDate = new Date(project.createdAt);
-            const createdYear = createdDate.getFullYear();
-            const createdMonth = createdDate.getMonth() + 1;
-            const isCreatedBeforeOrInMonth = createdYear < selectedYear || 
-                                            (createdYear === selectedYear && createdMonth <= month);
-            console.log('  → 有 createdAt，檢查是否在選定月份之前或當月:', isCreatedBeforeOrInMonth);
-            return isCreatedBeforeOrInMonth;
-          }
-          // 沒有 createdAt 就直接通過
-          console.log('  → 沒有 createdAt，直接顯示');
-          return true;
-        }
-        return false;
+        return deadlineYear === selectedYear && deadlineMonth === month;
       }
       
-      // 如果有 createdAt 但沒有 deadline
-      if (project.createdAt) {
-        const createdDate = new Date(project.createdAt);
-        const createdYear = createdDate.getFullYear();
-        const createdMonth = createdDate.getMonth() + 1;
-        
-        // 已完成的專案：只顯示當月完成的
-        if (project.status === 'Completed' || project.status === 'completed') {
-          if (project.completedAt) {
-            const completedDate = new Date(project.completedAt);
-            const completedYear = completedDate.getFullYear();
-            const completedMonth = completedDate.getMonth() + 1;
-            return completedYear === selectedYear && completedMonth === month;
-          }
-          return false;
-        }
-        
-        // 進行中的專案：創建時間 <= 選定月份
-        return createdYear < selectedYear || (createdYear === selectedYear && createdMonth <= month);
-      }
-      
-      // 沒有 createdAt 也沒有 deadline 的專案：
-      // 只要不是已完成狀態就顯示
-      console.log('  → 沒有日期資訊，檢查狀態:', project.status);
-      return project.status !== 'Completed' && project.status !== 'completed';
+      // 沒有任何日期資訊的專案不顯示
+      console.log('  → 沒有日期資訊，不顯示');
+      return false;
     });
     
     console.log('篩選後的專案:', filtered);
@@ -5471,38 +6522,226 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
     };
   }, [filteredKpiData]);
 
-  // 計算專案進度分數 (30%)
+  // 🔥 新版：計算專案進度KPI分數 (30%)
+  // 根據 R&D Nexus 專案資料計算每月預期進度與實際達成率
   const calculateProjectScore = useMemo(() => {
-    if (filteredProjects.length === 0) return { score: 0, weight: 30, weightedScore: 0, details: { total: 0, completed: 0, onTime: 0, avgProgress: 0, onTimeRate: 0, inProgress: 0 } };
+    // 使用所有專案來計算（不只是當月的）
+    const activeProjects = projects.filter(p => 
+      p.status !== 'Completed' && p.status !== 'Cancelled' && 
+      p.startDate && p.deadline
+    );
     
-    const completedProjects = filteredProjects.filter(p => p.status === 'Completed');
-    const onTimeProjects = completedProjects.filter(p => {
-      if (!p.deadline || !p.completedAt) return false;
-      return new Date(p.completedAt) <= new Date(p.deadline);
+    if (activeProjects.length === 0 && projects.length === 0) {
+      return { 
+        score: 0, 
+        weight: 30, 
+        weightedScore: 0, 
+        details: { 
+          total: 0, 
+          projectsAnalyzed: 0,
+          avgExpectedProgress: 0,
+          avgActualProgress: 0,
+          avgAchieveRate: 0,
+          onTrackCount: 0,
+          behindCount: 0,
+          aheadCount: 0,
+          completedCount: 0,
+          projectDetails: []
+        } 
+      };
+    }
+    
+    const currentMonth = parseInt(selectedMonth.replace('月', ''));
+    const currentYear = selectedYear;
+    
+    // 計算當月月底日期
+    const monthEndDate = new Date(currentYear, currentMonth, 0); // 當月最後一天
+    const today = new Date();
+    const evaluationDate = monthEndDate < today ? monthEndDate : today;
+    
+    let projectDetails = [];
+    let totalExpectedProgress = 0;
+    let totalActualProgress = 0;
+    let onTrackCount = 0;
+    let behindCount = 0;
+    let aheadCount = 0;
+    let completedCount = 0;
+    
+    // 分析所有專案
+    projects.forEach(project => {
+      // 🔥 智能取得開始日期：優先使用 startDate，否則用 createdAt，最後用截止日期往前推30天
+      let startDate = null;
+      if (project.startDate) {
+        startDate = new Date(project.startDate);
+      } else if (project.createdAt) {
+        startDate = new Date(project.createdAt);
+      }
+      
+      const deadline = project.deadline ? new Date(project.deadline) : null;
+      const actualProgress = Math.min(Math.max(parseFloat(project.progress) || 0, 0), 100);
+      
+      // 已完成的專案
+      if (project.status === 'Completed') {
+        completedCount++;
+        projectDetails.push({
+          name: project.name,
+          code: project.code || '-',
+          status: 'completed',
+          expectedProgress: 100,
+          actualProgress: 100,
+          achieveRate: 100,
+          deviation: 0,
+          statusText: '✅ 已完成'
+        });
+        totalExpectedProgress += 100;
+        totalActualProgress += 100;
+        onTrackCount++;
+        return;
+      }
+      
+      // 如果沒有截止日期，跳過計算
+      if (!deadline) {
+        projectDetails.push({
+          name: project.name,
+          code: project.code || '-',
+          status: 'no-date',
+          expectedProgress: '-',
+          actualProgress: actualProgress,
+          achieveRate: '-',
+          deviation: '-',
+          statusText: '⚠️ 缺少截止日期'
+        });
+        return;
+      }
+      
+      // 如果沒有開始日期，使用截止日期往前推60天作為預設開始日期
+      if (!startDate) {
+        startDate = new Date(deadline);
+        startDate.setDate(startDate.getDate() - 60);
+      }
+      
+      // 計算專案總天數
+      const totalDays = Math.max(1, (deadline - startDate) / (1000 * 60 * 60 * 24));
+      
+      // 計算到當月底為止應經過的天數
+      let elapsedDays = 0;
+      if (evaluationDate >= deadline) {
+        // 已過截止日期
+        elapsedDays = totalDays;
+      } else if (evaluationDate <= startDate) {
+        // 尚未開始
+        elapsedDays = 0;
+      } else {
+        elapsedDays = (evaluationDate - startDate) / (1000 * 60 * 60 * 24);
+      }
+      
+      // 計算當月底預期進度百分比
+      const expectedProgress = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
+      
+      // 計算達成率（實際進度 / 預期進度）
+      let achieveRate = 0;
+      if (expectedProgress > 0) {
+        achieveRate = Math.min(150, (actualProgress / expectedProgress) * 100);
+      } else if (actualProgress > 0) {
+        achieveRate = 150; // 還沒到預期時間但已有進度
+      } else {
+        achieveRate = 100; // 都是 0
+      }
+      
+      // 進度偏差
+      const deviation = actualProgress - expectedProgress;
+      
+      // 判斷狀態
+      let status = 'on-track';
+      let statusText = '🟢 進度正常';
+      
+      if (achieveRate >= 110) {
+        status = 'ahead';
+        statusText = '🔵 超前進度';
+        aheadCount++;
+      } else if (achieveRate >= 90) {
+        status = 'on-track';
+        statusText = '🟢 進度正常';
+        onTrackCount++;
+      } else if (achieveRate >= 70) {
+        status = 'slight-behind';
+        statusText = '🟡 稍微落後';
+        behindCount++;
+      } else {
+        status = 'behind';
+        statusText = '🔴 進度落後';
+        behindCount++;
+      }
+      
+      projectDetails.push({
+        name: project.name,
+        code: project.code || '-',
+        status,
+        startDate: project.startDate,
+        deadline: project.deadline,
+        expectedProgress: expectedProgress.toFixed(1),
+        actualProgress: actualProgress.toFixed(1),
+        achieveRate: achieveRate.toFixed(1),
+        deviation: deviation.toFixed(1),
+        statusText
+      });
+      
+      totalExpectedProgress += expectedProgress;
+      totalActualProgress += actualProgress;
     });
     
-    const avgProgress = filteredProjects.reduce((sum, p) => sum + (p.progress || 0), 0) / filteredProjects.length;
-    const onTimeRate = completedProjects.length > 0 
-      ? (onTimeProjects.length / completedProjects.length) * 100 
-      : 0;
+    // 計算有效分析的專案數
+    const analyzedProjects = projectDetails.filter(p => p.status !== 'no-date');
+    const projectsAnalyzed = analyzedProjects.length;
     
-    // 綜合評分：平均進度70% + 準時率30%
-    const score = Math.round(avgProgress * 0.7 + onTimeRate * 0.3);
+    // 計算平均值
+    const avgExpectedProgress = projectsAnalyzed > 0 ? totalExpectedProgress / projectsAnalyzed : 0;
+    const avgActualProgress = projectsAnalyzed > 0 ? totalActualProgress / projectsAnalyzed : 0;
+    const avgAchieveRate = avgExpectedProgress > 0 
+      ? Math.min(150, (avgActualProgress / avgExpectedProgress) * 100) 
+      : 100;
+    
+    // 計算KPI分數 (滿分100分)
+    // 評分標準：
+    // - 基礎分：平均達成率轉換 (0-80分)
+    // - 進度正常/超前獎勵 (0-20分)
+    let baseScore = 0;
+    if (avgAchieveRate >= 100) {
+      baseScore = 80; // 達標得滿分基礎分
+    } else if (avgAchieveRate >= 90) {
+      baseScore = 70 + (avgAchieveRate - 90);
+    } else if (avgAchieveRate >= 70) {
+      baseScore = 50 + (avgAchieveRate - 70);
+    } else if (avgAchieveRate >= 50) {
+      baseScore = 30 + (avgAchieveRate - 50);
+    } else {
+      baseScore = avgAchieveRate * 0.6;
+    }
+    
+    // 進度狀態獎勵分數
+    const onTrackRatio = projectsAnalyzed > 0 ? (onTrackCount + aheadCount) / projectsAnalyzed : 0;
+    const bonusScore = onTrackRatio * 20;
+    
+    const score = Math.min(100, Math.round(baseScore + bonusScore));
     
     return {
       score,
       weight: 30,
       weightedScore: (score * 0.3).toFixed(1),
       details: {
-        total: filteredProjects.length,
-        completed: completedProjects.length,
-        onTime: onTimeProjects.length,
-        avgProgress: avgProgress.toFixed(1),
-        onTimeRate: onTimeRate.toFixed(1),
-        inProgress: filteredProjects.filter(p => p.status === 'In Progress').length
+        total: projects.length,
+        projectsAnalyzed,
+        avgExpectedProgress: avgExpectedProgress.toFixed(1),
+        avgActualProgress: avgActualProgress.toFixed(1),
+        avgAchieveRate: avgAchieveRate.toFixed(1),
+        onTrackCount,
+        behindCount,
+        aheadCount,
+        completedCount,
+        projectDetails
       }
     };
-  }, [filteredProjects]);
+  }, [projects, selectedMonth, selectedYear]);
 
   // 計算預算控制分數 (15%)
   const calculateBudgetScore = useMemo(() => {
@@ -5662,15 +6901,28 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
    ├─ 達成率：${calculateKPIScore.details.achieveRate}%
    └─ 未達成：${calculateKPIScore.details.missed}
 
-三、研發專案進度 (佔比 30%)
+三、研發專案進度 (佔比 30%) - R&D Nexus 資料
    原始分數：${calculateProjectScore.score} 分
    加權分數：${calculateProjectScore.weightedScore} 分
    ├─ 總專案數：${calculateProjectScore.details.total}
-   ├─ 已完成：${calculateProjectScore.details.completed}
-   ├─ 準時完成：${calculateProjectScore.details.onTime}
-   ├─ 平均進度：${calculateProjectScore.details.avgProgress}%
-   ├─ 準時率：${calculateProjectScore.details.onTimeRate}%
-   └─ 進行中：${calculateProjectScore.details.inProgress}
+   ├─ 已分析：${calculateProjectScore.details.projectsAnalyzed}
+   ├─ 平均預期進度：${calculateProjectScore.details.avgExpectedProgress}%
+   ├─ 平均實際進度：${calculateProjectScore.details.avgActualProgress}%
+   ├─ 平均達成率：${calculateProjectScore.details.avgAchieveRate}%
+   ├─ 進度正常/超前：${calculateProjectScore.details.onTrackCount + calculateProjectScore.details.aheadCount}
+   ├─ 進度落後：${calculateProjectScore.details.behindCount}
+   └─ 已完成：${calculateProjectScore.details.completedCount}
+
+【專案進度明細】
+────────────────────────────────────────
+${calculateProjectScore.details.projectDetails ? 
+  calculateProjectScore.details.projectDetails.map((p, i) => 
+    `${i+1}. ${p.name} (${p.code})
+   預期進度：${p.expectedProgress}%
+   實際進度：${p.actualProgress}%
+   達成率：${p.achieveRate}% ${p.statusText}`
+  ).join('\n')
+  : '尚無專案資料'}
 
 四、年度預算控制 (佔比 15%)
    原始分數：${calculateBudgetScore.score} 分
@@ -5804,7 +7056,7 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
                     <div className="bg-white p-2 rounded border border-cyan-100">
                       <p className="font-medium text-cyan-700">專案進度</p>
                       <p className="text-slate-600 mt-1">{selectedYear}年{selectedMonth}</p>
-                      <p className="text-cyan-600 font-bold">{filteredProjects.length} 個專案</p>
+                      <p className="text-cyan-600 font-bold">{calculateProjectScore.details.projectsAnalyzed} 個專案</p>
                     </div>
                     <div className="bg-white p-2 rounded border border-green-100">
                       <p className="font-medium text-green-700">預算控管</p>
@@ -5893,7 +7145,7 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
                 <p className="text-3xl font-bold text-slate-800">{calculateProjectScore.weightedScore}</p>
                 <p className="text-xs text-slate-400 mt-1">原始: {calculateProjectScore.score}分</p>
                 <div className="mt-3 pt-3 border-t border-slate-100">
-                  <p className="text-xs text-slate-600">準時率 {calculateProjectScore.details.onTimeRate}%</p>
+                  <p className="text-xs text-slate-600">達標率 {calculateProjectScore.details.avgAchieveRate}%</p>
                 </div>
               </div>
 
@@ -6058,7 +7310,7 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
                   </div>
                 </div>
 
-                {/* 專案計分說明 */}
+                {/* 專案計分說明 - 新版 */}
                 <div className="bg-white rounded-lg p-4 border border-cyan-200">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center">
@@ -6067,18 +7319,19 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
                     <h4 className="font-bold text-cyan-900">專案進度 (30%)</h4>
                   </div>
                   <div className="text-xs space-y-2 text-slate-700">
-                    <p className="font-medium text-cyan-700">計算公式:</p>
-                    <p>綜合分數 = 平均進度×70% + 準時率×30%</p>
+                    <p className="font-medium text-cyan-700">計算公式 (R&D Nexus 資料):</p>
+                    <p>預期進度 = (月底 - 開始日) / (截止日 - 開始日) × 100%</p>
+                    <p>達成率 = 實際進度 / 預期進度 × 100%</p>
                     <div className="bg-cyan-50 p-2 rounded mt-2">
-                      <p className="font-medium">計算方式:</p>
-                      <p>• 平均進度: 所有專案進度平均</p>
-                      <p>• 準時率: 準時完成數 ÷ 已完成數</p>
-                      <p className="mt-1 text-cyan-700">權重分配:</p>
-                      <p>- 進度完成度占 70%</p>
-                      <p>- 時程控制占 30%</p>
+                      <p className="font-medium">評分標準:</p>
+                      <p>• 達成率 ≥100%: 80分基礎</p>
+                      <p>• 達成率 90-99%: 70-79分</p>
+                      <p>• 達成率 70-89%: 50-69分</p>
+                      <p className="mt-1 text-cyan-700">獎勵分數:</p>
+                      <p>正常/超前專案比例 × 20分</p>
                     </div>
                     <p className="text-indigo-600 font-medium mt-2">
-                      當月數據: {calculateProjectScore.details.total} 個專案
+                      當月數據: {calculateProjectScore.details.projectsAnalyzed} 個專案 (達成率: {calculateProjectScore.details.avgAchieveRate}%)
                     </p>
                   </div>
                 </div>
@@ -6206,27 +7459,121 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
               </div>
             </div>
 
-            {/* 專案詳細 */}
+            {/* 專案進度詳細 - 新版 */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h3 className="text-xl font-bold text-indigo-600 mb-4 flex items-center gap-2">
-                <Activity className="w-6 h-6"/>專案進度詳細
+                <Activity className="w-6 h-6"/>專案進度KPI詳細 (R&D Nexus 資料)
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-indigo-50 rounded-lg">
+              
+              {/* 統計概覽 */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div className="p-4 bg-indigo-50 rounded-lg text-center">
                   <p className="text-sm text-slate-600">總專案數</p>
                   <p className="text-2xl font-bold text-slate-800">{calculateProjectScore.details.total}</p>
                 </div>
-                <div className="p-4 bg-green-50 rounded-lg">
+                <div className="p-4 bg-blue-50 rounded-lg text-center">
+                  <p className="text-sm text-slate-600">已分析</p>
+                  <p className="text-2xl font-bold text-blue-600">{calculateProjectScore.details.projectsAnalyzed}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg text-center">
+                  <p className="text-sm text-slate-600">進度正常/超前</p>
+                  <p className="text-2xl font-bold text-green-600">{calculateProjectScore.details.onTrackCount + calculateProjectScore.details.aheadCount}</p>
+                </div>
+                <div className="p-4 bg-amber-50 rounded-lg text-center">
+                  <p className="text-sm text-slate-600">進度落後</p>
+                  <p className="text-2xl font-bold text-amber-600">{calculateProjectScore.details.behindCount}</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg text-center">
                   <p className="text-sm text-slate-600">已完成</p>
-                  <p className="text-2xl font-bold text-green-600">{calculateProjectScore.details.completed}</p>
+                  <p className="text-2xl font-bold text-purple-600">{calculateProjectScore.details.completedCount}</p>
                 </div>
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-slate-600">準時完成</p>
-                  <p className="text-2xl font-bold text-blue-600">{calculateProjectScore.details.onTime}</p>
+              </div>
+              
+              {/* 進度達成率總覽 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl">
+                <div className="text-center">
+                  <p className="text-sm text-slate-600">平均預期進度</p>
+                  <p className="text-3xl font-bold text-indigo-600">{calculateProjectScore.details.avgExpectedProgress}%</p>
+                  <p className="text-xs text-slate-500">當月應達成的進度</p>
                 </div>
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <p className="text-sm text-slate-600">平均進度</p>
-                  <p className="text-2xl font-bold text-purple-600">{calculateProjectScore.details.avgProgress}%</p>
+                <div className="text-center">
+                  <p className="text-sm text-slate-600">平均實際進度</p>
+                  <p className="text-3xl font-bold text-blue-600">{calculateProjectScore.details.avgActualProgress}%</p>
+                  <p className="text-xs text-slate-500">目前實際完成進度</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-slate-600">平均達成率</p>
+                  <p className={`text-3xl font-bold ${parseFloat(calculateProjectScore.details.avgAchieveRate) >= 90 ? 'text-green-600' : parseFloat(calculateProjectScore.details.avgAchieveRate) >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
+                    {calculateProjectScore.details.avgAchieveRate}%
+                  </p>
+                  <p className="text-xs text-slate-500">實際/預期 × 100</p>
+                </div>
+              </div>
+              
+              {/* 專案列表明細 */}
+              {calculateProjectScore.details.projectDetails && calculateProjectScore.details.projectDetails.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">專案名稱</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">代碼</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">預期進度</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">實際進度</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">達成率</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">偏差</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">狀態</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {calculateProjectScore.details.projectDetails.map((proj, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-800">{proj.name}</td>
+                          <td className="px-4 py-3 text-center text-slate-600 text-sm">{proj.code}</td>
+                          <td className="px-4 py-3 text-center">
+                            {proj.expectedProgress === '-' ? (
+                              <span className="text-slate-400">-</span>
+                            ) : (
+                              <span className="font-medium text-indigo-600">{proj.expectedProgress}%</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-blue-600">{proj.actualProgress}%</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {proj.achieveRate === '-' ? (
+                              <span className="text-slate-400">-</span>
+                            ) : (
+                              <span className={`font-bold ${parseFloat(proj.achieveRate) >= 90 ? 'text-green-600' : parseFloat(proj.achieveRate) >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {proj.achieveRate}%
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {proj.deviation === '-' ? (
+                              <span className="text-slate-400">-</span>
+                            ) : (
+                              <span className={`font-medium ${parseFloat(proj.deviation) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {parseFloat(proj.deviation) >= 0 ? '+' : ''}{proj.deviation}%
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm">{proj.statusText}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              
+              {/* 計算說明 */}
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+                <h4 className="font-bold text-slate-700 mb-2">📊 KPI 計算說明</h4>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <p>• <strong>預期進度</strong> = (當月底日期 - 開始日期) / (截止日期 - 開始日期) × 100%</p>
+                  <p>• <strong>達成率</strong> = 實際進度 / 預期進度 × 100%</p>
+                  <p>• <strong>KPI分數</strong> = 基礎分(達成率對應分數) + 獎勵分(正常/超前專案比例 × 20分)</p>
+                  <p>• 達成率 ≥90% 為🟢進度正常，70-90% 為🟡稍微落後，&lt;70% 為🔴進度落後</p>
                 </div>
               </div>
             </div>
