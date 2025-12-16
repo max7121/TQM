@@ -701,13 +701,25 @@ const LoginScreen = ({ onLogin, loading, onImportDB, onExportDB }) => {
 };
 
 // --- User Management Component ---
-const UserManagement = ({ currentUser }) => {
+const UserManagement = ({ currentUser, onBackToMenu }) => {
   const [users, setUsers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    username: '', password: '', displayName: '', department: DEPARTMENTS[0], role: 'user'
+    username: '', password: '', displayName: '', department: DEPARTMENTS[0], role: 'user',
+    permissions: ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL'] // 預設全部權限
   });
   const [editId, setEditId] = useState(null);
+  
+  // 系統項目列表
+  const SYSTEM_MODULES = [
+    { id: 'TQM', name: 'TQM 品質管理' },
+    { id: 'KPI_PERSONAL', name: 'KPI 個人填寫' },
+    { id: 'KPI', name: 'KPI 管理儀表板' },
+    { id: 'PROJECT', name: 'R&D Nexus 專案管理' },
+    { id: 'KPI_REPORT', name: 'KPI 整合報告' },
+    { id: 'WAR_ROOM', name: '產品開發戰情室' },
+    { id: 'APPRAISAL', name: 'Appraisal 績效表' }
+  ];
 
   useEffect(() => {
     const unsubscribe = db.subscribe('tqm_users', (data) => {
@@ -746,19 +758,48 @@ const UserManagement = ({ currentUser }) => {
 
   const startEdit = (user) => {
     setEditId(user.id);
-    setFormData({ username: user.username, password: '', displayName: user.displayName, department: user.department, role: user.role });
+    setFormData({ 
+      username: user.username, 
+      password: '', 
+      displayName: user.displayName, 
+      department: user.department, 
+      role: user.role,
+      permissions: user.permissions || ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL']
+    });
     setIsModalOpen(true);
   };
 
   const resetForm = () => {
     setEditId(null);
-    setFormData({ username: '', password: '', displayName: '', department: DEPARTMENTS[0], role: 'user' });
+    setFormData({ 
+      username: '', 
+      password: '', 
+      displayName: '', 
+      department: DEPARTMENTS[0], 
+      role: 'user',
+      permissions: ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL']
+    });
+  };
+  
+  // 權限切換處理
+  const handlePermissionToggle = (moduleId) => {
+    const newPermissions = formData.permissions.includes(moduleId)
+      ? formData.permissions.filter(p => p !== moduleId)
+      : [...formData.permissions, moduleId];
+    setFormData({...formData, permissions: newPermissions});
   };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-blue-600"/> 帳號管理</h2>
+        <div>
+          {onBackToMenu && (
+            <button onClick={onBackToMenu} className="flex items-center text-slate-500 hover:text-slate-700 mb-2">
+              <ArrowRight className="rotate-180 mr-2" size={20} /> 返回系統選單
+            </button>
+          )}
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-blue-600"/> 帳號管理</h2>
+        </div>
         <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"><PlusCircle size={16} /> 新增帳號</button>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -784,7 +825,26 @@ const UserManagement = ({ currentUser }) => {
                 <div><label className="block text-xs font-bold text-gray-500 mb-1">密碼 {editId && '(不修改請留空)'}</label><input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-2 border rounded text-sm" required={!editId} /></div>
                 <div><label className="block text-xs font-bold text-gray-500 mb-1">姓名</label><input type="text" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} className="w-full p-2 border rounded text-sm" required /></div>
                 <div><label className="block text-xs font-bold text-gray-500 mb-1">部門</label><select value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full p-2 border rounded text-sm">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">權限</label><select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-2 border rounded text-sm"><option value="user">一般使用者</option><option value="admin">系統管理員</option></select></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">權限角色</label><select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-2 border rounded text-sm"><option value="user">一般使用者</option><option value="admin">系統管理員</option></select></div>
+                
+                <div className="border-t pt-4">
+                  <label className="block text-xs font-bold text-gray-500 mb-2">📌 系統進入權限設定</label>
+                  <div className="bg-slate-50 p-3 rounded-lg space-y-2">
+                    {SYSTEM_MODULES.map(module => (
+                      <label key={module.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded transition-colors">
+                        <input 
+                          type="checkbox" 
+                          checked={formData.permissions.includes(module.id)}
+                          onChange={() => handlePermissionToggle(module.id)}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700">{module.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">💡 提示：管理員帳號預設擁有所有權限</p>
+                </div>
+                
                 <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">取消</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">儲存</button></div>
              </form>
           </div>
@@ -9154,6 +9214,14 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
     onSelect('PROJECT');
   };
   
+  // 🔥 檢查用戶權限
+  const userPermissions = user.permissions || ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL'];
+  const hasPermission = (moduleId) => {
+    // 管理員擁有所有權限
+    if (user.role === 'admin') return true;
+    return userPermissions.includes(moduleId);
+  };
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="max-w-6xl w-full">
@@ -9261,6 +9329,7 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
         </div>
         
         <div className={gridClass}>
+          {hasPermission('TQM') && (
           <button 
             onClick={() => onSelect('TQM')}
             className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
@@ -9271,7 +9340,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             <h2 className="text-xl font-bold text-slate-800 mb-2">TQM 品質管理</h2>
             <p className="text-slate-500 text-sm">管理異常紀錄、追蹤改善進度、統計分析報表。</p>
           </button>
+          )}
 
+          {hasPermission('KPI_PERSONAL') && (
           <button 
             onClick={() => onSelect('KPI_PERSONAL')}
             className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-blue-200 group text-left relative overflow-hidden"
@@ -9283,7 +9354,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 個人填寫</h2>
             <p className="text-slate-500 text-sm">5分鐘快速填寫,只記錄工作內容,不用算分數。</p>
           </button>
+          )}
 
+          {hasPermission('KPI') && (
           <button 
             onClick={() => onSelect('KPI')}
             className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
@@ -9294,7 +9367,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 管理儀表板</h2>
             <p className="text-slate-500 text-sm">主管專用:評核員工表現、年度趨勢分析。</p>
           </button>
+          )}
 
+          {hasPermission('PROJECT') && (
           <button 
             onClick={() => onSelect('PROJECT')}
             className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
@@ -9305,7 +9380,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             <h2 className="text-xl font-bold text-slate-800 mb-2">R&D Nexus</h2>
             <p className="text-slate-500 text-sm">研發專案進度追蹤、甘特圖管理、資源負載分析。</p>
           </button>
+          )}
 
+          {hasPermission('KPI_REPORT') && (
           <button 
             onClick={() => onSelect('KPI_REPORT')}
             className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-green-200 group text-left relative overflow-hidden"
@@ -9317,7 +9394,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 整合報告</h2>
             <p className="text-slate-500 text-sm">研發部門綜合評分、五大指標整合分析。</p>
           </button>
+          )}
 
+          {hasPermission('WAR_ROOM') && (
           <button 
             onClick={() => onSelect('PRODUCT_WAR_ROOM')}
             className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-cyan-200 group text-left relative overflow-hidden"
@@ -9329,8 +9408,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             <h2 className="text-xl font-bold text-slate-800 mb-2">產品開發戰情室</h2>
             <p className="text-slate-500 text-sm">料號分析、開發趨勢、單據追蹤、戰情匯報。</p>
           </button>
+          )}
 
-          {isAdmin && (
+          {hasPermission('APPRAISAL') && (
             <button 
               onClick={() => onSelect('APPRAISAL')}
               className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
@@ -9343,6 +9423,20 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
               <div className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-amber-500 uppercase tracking-wide">
                 <Shield className="w-3 h-3"/>管理員限定
               </div>
+            </button>
+          )}
+          
+          {user.role === 'admin' && (
+            <button 
+              onClick={() => onSelect('ADMIN')}
+              className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-red-200 group text-left relative overflow-hidden"
+            >
+              <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">限定</div>
+              <div className="bg-gradient-to-br from-red-100 to-pink-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-red-600 group-hover:to-pink-600 transition-all">
+                <Shield className="w-8 h-8 text-red-600 group-hover:text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">🔑 管理員功能</h2>
+              <p className="text-slate-500 text-sm">帳號管理、權限設定、資料庫匯出入。</p>
             </button>
           )}
         </div>
@@ -10036,6 +10130,10 @@ export default function App() {
 
   if (system === 'PRODUCT_WAR_ROOM') {
     return <ProductWarRoom onBackToMenu={() => setSystem(null)} />;
+  }
+  
+  if (system === 'ADMIN') {
+    return <UserManagement currentUser={user} onBackToMenu={() => setSystem(null)} />;
   }
 
   return null;
