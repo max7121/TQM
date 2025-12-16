@@ -3360,10 +3360,10 @@ const TaskForm = ({ onSubmit, initialData, onCancel }) => {
             value={formData.status}
             onChange={e => setFormData({...formData, status: e.target.value})}
           >
-            <option value="To Do">To Do</option>
-            <option value="Doing">Doing</option>
-            <option value="Testing">Testing</option>
-            <option value="Done">Done</option>
+            <option value="To Do">待辦</option>
+            <option value="Doing">進行中</option>
+            <option value="Testing">測試中</option>
+            <option value="Done">完成</option>
           </select>
         </div>
       </div>
@@ -3375,9 +3375,9 @@ const TaskForm = ({ onSubmit, initialData, onCancel }) => {
             value={formData.priority}
             onChange={e => setFormData({...formData, priority: e.target.value})}
           >
-            <option value="P1">P1 (High)</option>
-            <option value="P2">P2 (Medium)</option>
-            <option value="P3">P3 (Low)</option>
+            <option value="P1">P1 (高)</option>
+            <option value="P2">P2 (中)</option>
+            <option value="P3">P3 (低)</option>
           </select>
         </div>
         <div className="flex items-center pt-6">
@@ -4426,6 +4426,60 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
       console.log('🎯 自動切換到頁籤:', targetTab);
     }
   }, []);
+  
+  // 🔥 自動計算專案進度（混合計算法）
+  useEffect(() => {
+    if (!project || tasks.length === 0) return;
+    
+    // 1️⃣ 任務完成度計算（權重 60%）
+    const taskWeights = {
+      'Done': 1.0,
+      'Testing': 0.8,
+      'Doing': 0.5,
+      'To Do': 0
+    };
+    const totalTaskWeight = tasks.reduce((sum, task) => 
+      sum + (taskWeights[task.status] || 0), 0
+    );
+    const taskProgress = tasks.length > 0 ? (totalTaskWeight / tasks.length) * 100 : 0;
+    
+    // 2️⃣ 時間進度計算（權重 30%）
+    let timeProgress = 0;
+    if (project.startDate && project.deadline) {
+      const start = new Date(project.startDate);
+      const end = new Date(project.deadline);
+      const today = new Date();
+      const totalDays = (end - start) / (1000 * 60 * 60 * 24);
+      const passedDays = (today - start) / (1000 * 60 * 60 * 24);
+      timeProgress = Math.max(0, Math.min(100, (passedDays / totalDays) * 100));
+    }
+    
+    // 3️⃣ 階段完成度計算（權重 10%）
+    let phaseProgress = 0;
+    if (phases && phases.length > 0) {
+      const today = new Date();
+      const completedPhases = phases.filter(p => new Date(p.endDate) < today).length;
+      phaseProgress = (completedPhases / phases.length) * 100;
+    }
+    
+    // 🎯 綜合進度計算
+    const autoProgress = Math.round(
+      taskProgress * 0.6 + 
+      timeProgress * 0.3 + 
+      phaseProgress * 0.1
+    );
+    
+    // 只有當進度變化時才更新（避免無限循環）
+    if (autoProgress !== project.progress) {
+      console.log('📊 自動更新專案進度:', {
+        任務完成度: taskProgress.toFixed(1) + '%',
+        時間進度: timeProgress.toFixed(1) + '%',
+        階段完成度: phaseProgress.toFixed(1) + '%',
+        綜合進度: autoProgress + '%'
+      });
+      onUpdateProject({ ...project, progress: autoProgress });
+    }
+  }, [tasks, phases, project.startDate, project.deadline]);
   
   // Gantt State
   const [phases, setPhases] = useState(project.phases || [
