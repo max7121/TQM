@@ -4417,6 +4417,16 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
   const [editingTask, setEditingTask] = useState(null);
   const [newTaskStatus, setNewTaskStatus] = useState('To Do');
   
+  // 🔥 檢查是否從跑馬燈跳轉，自動切換到指定頁籤
+  useEffect(() => {
+    const targetTab = sessionStorage.getItem('openProjectTab');
+    if (targetTab) {
+      setActiveTab(targetTab);
+      sessionStorage.removeItem('openProjectTab');
+      console.log('🎯 自動切換到頁籤:', targetTab);
+    }
+  }, []);
+  
   // Gantt State
   const [phases, setPhases] = useState(project.phases || [
     { id: 1, name: 'Phase 1', startDate: '2025-01-01', endDate: '2025-01-31', color: 'bg-blue-500' },
@@ -5907,6 +5917,21 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         unsubMessages();
     };
   }, [machine.id]);
+  
+  // 🔥 檢查是否有從跑馬燈點擊跳轉的專案
+  useEffect(() => {
+    const openProjectId = sessionStorage.getItem('openProjectId');
+    if (openProjectId && projects.length > 0) {
+      const targetProject = projects.find(p => p.id === openProjectId);
+      if (targetProject) {
+        setSelectedProject(targetProject);
+        setCurrentView('detail');
+        // 清除 sessionStorage
+        sessionStorage.removeItem('openProjectId');
+        console.log('🎯 自動打開專案:', targetProject.name);
+      }
+    }
+  }, [projects]);
 
   const handleViewDetails = (project) => {
     setSelectedProject(project);
@@ -8912,12 +8937,273 @@ const ProductWarRoom = ({ onBackToMenu }) => {
 const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   const isAdmin = user?.role === 'admin';
   const gridClass = `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`;
+  
+  // 🔥 訂閱 R&D Nexus 任務數據
+  const [rdTasks, setRdTasks] = useState([]);
+  const [rdProjects, setRdProjects] = useState([]); // 訂閱專案數據
+  const [rdMachines, setRdMachines] = useState([]); // 訂閱機台數據
+  const [marqueeMessages, setMarqueeMessages] = useState([]);
+  
+  useEffect(() => {
+    const unsubscribeTasks = db.subscribe('rd_tasks', setRdTasks);
+    const unsubscribeProjects = db.subscribe('rd_projects', setRdProjects);
+    const unsubscribeMachines = db.subscribe('rd_machines', setRdMachines);
+    return () => {
+      unsubscribeTasks();
+      unsubscribeProjects();
+      unsubscribeMachines();
+    };
+  }, []);
+  
+  // 🔥 生成跑馬燈訊息
+  useEffect(() => {
+    if (!user || rdTasks.length === 0) return;
+    
+    const userName = user.displayName;
+    const today = new Date();
+    const messages = [];
+    const processedTaskIds = new Set(); // 避免重複顯示
+    
+    // 過濾屬於當前用戶的未完成任務
+    const userTasks = rdTasks.filter(task => 
+      task.owner === userName && task.status !== 'Done'
+    );
+    
+    console.log('🔍 跑馬燈任務數據:', userTasks); // 調試用
+    
+    // 輔助函數：根據 projectId 獲取專案名稱和機台名稱
+    const getProjectInfo = (projectId) => {
+      if (!projectId) return { projectName: '未分配專案', machineName: '' };
+      const project = rdProjects.find(p => p.id === projectId);
+      if (!project) return { projectName: '未知專案', machineName: '' };
+      
+      // 根據 machineId 獲取機台名稱
+      let machineName = '';
+      if (project.machineId) {
+        const machine = rdMachines.find(m => m.id === project.machineId);
+        machineName = machine ? machine.name : '';
+      }
+      
+      return { projectName: project.name, machineName };
+    };
+    
+    // 輔助函數：格式化日期
+    const formatDate = (dateStr) => {
+      if (!dateStr) return '未設定';
+      const date = new Date(dateStr);
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      return `${month}/${day}`;
+    };
+    
+    // 1. 優先處理超時任務（最高優先級）
+    userTasks.forEach(task => {
+      if (task.endDate) {
+        const endDate = new Date(task.endDate);
+        if (endDate < today) {
+          const daysOverdue = Math.floor((today - endDate) / (1000 * 60 * 60 * 24));
+          const taskName = task.title || task.name || '未命名任務';
+          const { projectName, machineName } = getProjectInfo(task.projectId);
+          const deadline = formatDate(task.endDate);
+          
+          // 格式：表情符號 + 機台名稱 + 專案名稱 - 任務名稱 - 截止日期 + 額外資訊
+          const machinePrefix = machineName ? `${machineName} | ` : '';
+          const overdueInfo = `逾期${daysOverdue}天`;
+          
+          messages.push({
+            type: 'overdue',
+            priority: 1,
+            text: `⚠️ ${machinePrefix}${projectName} - ${taskName} - 截止:${deadline} (${overdueInfo})`,
+            color: 'text-red-600 font-bold',
+            taskId: task.id,
+            projectId: task.projectId
+          });
+          processedTaskIds.add(task.id);
+        }
+      }
+    });
+    
+    // 2. 新增的任務（最近7天內創建且未超時）
+    userTasks.forEach(task => {
+      if (processedTaskIds.has(task.id)) return;
+      
+      if (task.createdAt) {
+        const createdDate = new Date(task.createdAt);
+        const daysSinceCreated = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
+        if (daysSinceCreated <= 7) {
+          const taskName = task.title || task.name || '未命名任務';
+          const { projectName, machineName } = getProjectInfo(task.projectId);
+          const deadline = formatDate(task.endDate);
+          
+          // 格式：表情符號 + 機台名稱 + 專案名稱 - 任務名稱 - 截止日期 + 額外資訊
+          const machinePrefix = machineName ? `${machineName} | ` : '';
+          const statusInfo = `[${task.status}]`;
+          
+          messages.push({
+            type: 'new',
+            priority: 2,
+            text: `🆕 ${machinePrefix}${projectName} - ${taskName} - 截止:${deadline} ${statusInfo}`,
+            color: 'text-blue-600',
+            taskId: task.id,
+            projectId: task.projectId
+          });
+          processedTaskIds.add(task.id);
+        }
+      }
+    });
+    
+    // 3. 其他未完成的任務
+    userTasks.forEach(task => {
+      if (processedTaskIds.has(task.id)) return;
+      
+      const taskName = task.title || task.name || '未命名任務';
+      const { projectName, machineName } = getProjectInfo(task.projectId);
+      const deadline = formatDate(task.endDate);
+      
+      // 格式：表情符號 + 機台名稱 + 專案名稱 - 任務名稱 - 截止日期 + 額外資訊
+      const machinePrefix = machineName ? `${machineName} | ` : '';
+      const statusInfo = `[${task.status}]`;
+      
+      messages.push({
+        type: 'pending',
+        priority: 3,
+        text: `📋 ${machinePrefix}${projectName} - ${taskName} - 截止:${deadline} ${statusInfo}`,
+        color: 'text-orange-600',
+        taskId: task.id,
+        projectId: task.projectId
+      });
+      processedTaskIds.add(task.id);
+    });
+    
+    // 按優先級排序
+    messages.sort((a, b) => a.priority - b.priority);
+    
+    console.log('📊 生成的跑馬燈訊息:', messages); // 調試用
+    
+    setMarqueeMessages(messages);
+  }, [rdTasks, rdProjects, rdMachines, user]);
+  
+  // 🔥 點擊任務跳轉到 R&D Nexus 的任務看板
+  const handleTaskClick = (projectId) => {
+    if (projectId) {
+      // 查找專案對應的機台ID
+      const project = rdProjects.find(p => p.id === projectId);
+      const machineId = project?.machineId;
+      
+      // 將 projectId、machineId 和 activeTab 存儲到 sessionStorage
+      sessionStorage.setItem('openProjectId', projectId);
+      sessionStorage.setItem('openMachineId', machineId || '');
+      sessionStorage.setItem('openProjectTab', 'kanban');
+      
+      console.log('🎯 跳轉到專案:', { projectId, machineId, project: project?.name });
+    }
+    onSelect('PROJECT');
+  };
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="max-w-6xl w-full">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-800 mb-2">歡迎回來，{user.displayName}</h1>
           <p className="text-slate-500 text-lg">請選擇您要進入的系統</p>
+        </div>
+        
+        {/* 🔥 任務跑馬燈 - 永久顯示 */}
+        <div className="mb-8 bg-white rounded-2xl shadow-lg border-2 border-blue-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white text-sm font-medium">
+              <Activity className="w-4 h-4 animate-pulse" />
+              <span>R&D Nexus 任務提醒</span>
+            </div>
+            {marqueeMessages.length > 0 ? (
+              <div className="flex items-center gap-3 text-white text-xs">
+                <span className="bg-white/20 px-2 py-1 rounded-full">
+                  共 {marqueeMessages.length} 項待辦
+                </span>
+                {marqueeMessages.filter(m => m.type === 'overdue').length > 0 && (
+                  <span className="bg-red-500 px-2 py-1 rounded-full font-bold animate-pulse">
+                    {marqueeMessages.filter(m => m.type === 'overdue').length} 逾期
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="text-white text-xs bg-white/20 px-2 py-1 rounded-full">
+                ✅ 目前無待辦任務
+              </div>
+            )}
+          </div>
+          <div className="relative overflow-hidden bg-gradient-to-r from-slate-50 to-blue-50 py-4">
+            {marqueeMessages.length > 0 ? (
+              <>
+                <style dangerouslySetInnerHTML={{__html: `
+                  @keyframes marquee {
+                    0% { transform: translateX(0%); }
+                    100% { transform: translateX(-100%); }
+                  }
+                  .marquee-container {
+                    display: flex;
+                    width: 100%;
+                  }
+                  .marquee-content {
+                    animation: marquee ${Math.max(60, marqueeMessages.length * 10)}s linear infinite;
+                    white-space: nowrap;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 1.5rem;
+                    padding-left: 1rem;
+                  }
+                  .marquee-content:hover {
+                    animation-play-state: paused;
+                  }
+                  .task-item {
+                    transition: all 0.3s ease;
+                    cursor: pointer;
+                    flex-shrink: 0;
+                  }
+                  .task-item:hover {
+                    transform: scale(1.08);
+                    box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+                    z-index: 10;
+                  }
+                `}} />
+                <div className="marquee-content">
+                  {marqueeMessages.map((msg, idx) => (
+                    <span 
+                      key={idx} 
+                      onClick={() => handleTaskClick(msg.projectId)}
+                      className={`task-item ${msg.color} flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border-l-4 ${
+                        msg.type === 'overdue' ? 'border-red-500 hover:bg-red-50' :
+                        msg.type === 'new' ? 'border-blue-500 hover:bg-blue-50' :
+                        'border-orange-500 hover:bg-orange-50'
+                      }`}
+                      title={`點擊查看專案詳情 - 任務 ID: ${msg.taskId || 'N/A'}`}
+                    >
+                      {msg.text}
+                    </span>
+                  ))}
+                  {/* 重複一次以實現無縫循環 */}
+                  {marqueeMessages.map((msg, idx) => (
+                    <span 
+                      key={`dup-${idx}`} 
+                      onClick={() => handleTaskClick(msg.projectId)}
+                      className={`task-item ${msg.color} flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border-l-4 ${
+                        msg.type === 'overdue' ? 'border-red-500 hover:bg-red-50' :
+                        msg.type === 'new' ? 'border-blue-500 hover:bg-blue-50' :
+                        'border-orange-500 hover:bg-orange-50'
+                      }`}
+                      title={`點擊查看專案詳情 - 任務 ID: ${msg.taskId || 'N/A'}`}
+                    >
+                      {msg.text}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-2 text-slate-500 text-sm">
+                <span className="animate-pulse">🎉 太棒了！目前沒有待處理的任務，保持這個狀態！</span>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className={gridClass}>
@@ -9040,6 +9326,19 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
         });
         return () => unsubscribe();
     }, []);
+    
+    // 🔥 檢查是否有從跑馬燈跳轉的機台ID，自動選擇機台
+    useEffect(() => {
+        const targetMachineId = sessionStorage.getItem('openMachineId');
+        if (targetMachineId && machines.length > 0) {
+            const machine = machines.find(m => m.id === targetMachineId);
+            if (machine) {
+                setSelectedMachine(machine);
+                sessionStorage.removeItem('openMachineId');
+                console.log('🎯 自動選擇機台:', machine.name);
+            }
+        }
+    }, [machines]);
 
     const handleAddMachine = async (newMachine) => {
         await db.addDoc('rd_machines', { ...newMachine, id: 'M' + Date.now() });
