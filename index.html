@@ -6070,17 +6070,20 @@ const ProjectListView = ({ onViewDetails, projects, onAddProject, onUpdateProjec
   );
 };
 
-const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpdateTask, changes: allChanges, onAddChange, history: allHistory, onAddHistory, messages: allMessages, onAddMessage, onUpdateProject, onDeleteProject, user }) => {
+const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpdateTask, changes: allChanges, onAddChange, history: allHistory, onAddHistory, messages: allMessages, onAddMessage, meetings: allMeetings, onAddMeeting, onUpdateMeeting, onDeleteMeeting, onUpdateProject, onDeleteProject, user }) => {
   const tasks = allTasks.filter(t => t.projectId === project.id);
   const changes = allChanges.filter(c => c.projectId === project.id);
   const history = allHistory.filter(h => h.projectId === project.id);
   const messages = allMessages ? allMessages.filter(m => m.projectId === project.id) : [];
+  const meetings = allMeetings ? allMeetings.filter(m => m.projectId === project.id) : [];
 
   const [activeTab, setActiveTab] = useState('kanban');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSpecsModalOpen, setIsSpecsModalOpen] = useState(false);
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [newTaskStatus, setNewTaskStatus] = useState('To Do');
   
@@ -6327,6 +6330,22 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
         <HistoryForm onSubmit={(data) => { onAddHistory({ ...data, projectId: project.id }); setIsHistoryModalOpen(false); }} onCancel={() => setIsHistoryModalOpen(false)} />
       </Modal>
 
+      <Modal isOpen={isMeetingModalOpen} onClose={() => { setIsMeetingModalOpen(false); setEditingMeeting(null); }} title={editingMeeting ? "編輯會議紀錄" : "新增設計會議紀錄"}>
+        <MeetingForm 
+          initialData={editingMeeting}
+          onSubmit={(data) => { 
+            if (editingMeeting) {
+              onUpdateMeeting({ ...editingMeeting, ...data });
+            } else {
+              onAddMeeting({ ...data, projectId: project.id });
+            }
+            setIsMeetingModalOpen(false); 
+            setEditingMeeting(null);
+          }} 
+          onCancel={() => { setIsMeetingModalOpen(false); setEditingMeeting(null); }} 
+        />
+      </Modal>
+
       <Modal isOpen={isGanttModalOpen} onClose={() => setIsGanttModalOpen(false)} title={editingPhase ? "編輯階段" : "新增階段"}>
         <form onSubmit={handleGanttSubmit} className="space-y-4">
           <div><label className="block text-sm font-medium mb-2 text-slate-300">階段名稱</label><input name="name" defaultValue={editingPhase?.name} required className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 outline-none"/></div>
@@ -6390,7 +6409,7 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
       {/* Tabs - 深色風格 */}
       <div className="border-b border-white/10 px-2">
         <nav className="flex gap-1 overflow-x-auto">
-          {['dashboard', 'kanban', 'gantt', 'changes', 'history', 'files'].map((tab) => (
+          {['dashboard', 'kanban', 'gantt', 'meetings', 'changes', 'history', 'files'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -6403,6 +6422,7 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
               {tab === 'dashboard' && '📊 總覽'}
               {tab === 'kanban' && '📋 任務看板'}
               {tab === 'gantt' && '📅 甘特圖'}
+              {tab === 'meetings' && '📝 會議紀錄'}
               {tab === 'changes' && '🔄 變更紀錄'}
               {tab === 'history' && '📜 設計履歷'}
               {tab === 'files' && '💬 討論檔案'}
@@ -6463,6 +6483,176 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
                 </div>
               </div>
             );})}
+          </div>
+        )}
+
+        {activeTab === 'meetings' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-white flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl shadow-lg shadow-indigo-500/25">
+                    <Users size={18} className="text-white" />
+                  </div>
+                  設計會議紀錄
+                </h3>
+                <div className="flex gap-3 items-center">
+                  <span className="text-xs bg-indigo-500/20 text-indigo-400 px-3 py-1.5 rounded-lg flex items-center border border-indigo-500/20">
+                    共 {meetings.length} 場會議
+                  </span>
+                  <button 
+                    onClick={() => { setEditingMeeting(null); setIsMeetingModalOpen(true); }} 
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl text-sm font-medium hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/25 transition-all"
+                  >
+                    <Plus size={14}/> 新增會議紀錄
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Meeting List */}
+            {meetings.length === 0 ? (
+              <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-12 text-center">
+                <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+                  <Users className="w-10 h-10 text-slate-500" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-400 mb-2">尚無會議紀錄</h3>
+                <p className="text-slate-500 mb-4">點擊上方「新增會議紀錄」按鈕來添加第一個會議</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {meetings.map((meeting) => (
+                  <div 
+                    key={meeting.id} 
+                    className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 hover:border-white/20 hover:bg-white/10 transition-all overflow-hidden group"
+                  >
+                    {/* Meeting Card Header */}
+                    <div className="p-5 border-b border-white/10">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/25">
+                            {meeting.date ? new Date(meeting.date).getDate() : '?'}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-lg">{meeting.title}</h4>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                              <span className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {meeting.date}
+                              </span>
+                              {meeting.time && (
+                                <span className="flex items-center gap-1">
+                                  <Clock size={12} />
+                                  {meeting.time}
+                                </span>
+                              )}
+                              {meeting.location && (
+                                <span className="flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded">
+                                  📍 {meeting.location}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => { setEditingMeeting(meeting); setIsMeetingModalOpen(true); }}
+                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all"
+                            title="編輯"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button 
+                            onClick={() => onDeleteMeeting(meeting.id)}
+                            className="p-2 bg-rose-500/10 hover:bg-rose-500/20 rounded-lg text-rose-400 transition-all"
+                            title="刪除"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Attendees */}
+                      <div className="flex items-center gap-2 mt-3">
+                        <span className="text-xs text-slate-500">出席者:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {meeting.attendees?.split(',').slice(0, 5).map((attendee, i) => (
+                            <span key={i} className="text-xs bg-white/10 text-slate-300 px-2 py-0.5 rounded-full">
+                              {attendee.trim()}
+                            </span>
+                          ))}
+                          {meeting.attendees?.split(',').length > 5 && (
+                            <span className="text-xs text-slate-500">+{meeting.attendees.split(',').length - 5} 人</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Meeting Card Body */}
+                    <div className="p-5 space-y-4 text-sm">
+                      {meeting.agenda && (
+                        <div>
+                          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <ListTodo size={12} /> 會議議程
+                          </div>
+                          <p className="text-slate-300 whitespace-pre-wrap bg-white/5 p-3 rounded-xl border border-white/5">{meeting.agenda}</p>
+                        </div>
+                      )}
+
+                      {meeting.decisions && (
+                        <div>
+                          <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <CheckCircle size={12} /> 決議事項
+                          </div>
+                          <p className="text-slate-300 whitespace-pre-wrap bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">{meeting.decisions}</p>
+                        </div>
+                      )}
+
+                      {meeting.actionItems && (
+                        <div>
+                          <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <AlertCircle size={12} /> 待辦事項
+                          </div>
+                          <p className="text-slate-300 whitespace-pre-wrap bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">{meeting.actionItems}</p>
+                        </div>
+                      )}
+
+                      {meeting.notes && (
+                        <div>
+                          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <FileText size={12} /> 備註
+                          </div>
+                          <p className="text-slate-400 whitespace-pre-wrap">{meeting.notes}</p>
+                        </div>
+                      )}
+
+                      {meeting.nextMeetingDate && (
+                        <div className="pt-3 border-t border-white/10">
+                          <span className="text-xs text-blue-400 flex items-center gap-2">
+                            <Calendar size={12} />
+                            下次會議: {meeting.nextMeetingDate}
+                          </span>
+                        </div>
+                      )}
+
+                      {meeting.attachment && (
+                        <div className="pt-3 border-t border-white/10">
+                          <a 
+                            href={meeting.attachment} 
+                            download={meeting.fileName}
+                            className="inline-flex items-center gap-2 text-xs text-cyan-400 hover:text-cyan-300 transition-colors bg-cyan-500/10 px-3 py-2 rounded-lg border border-cyan-500/20"
+                          >
+                            <Download size={14} />
+                            {meeting.fileName || '下載附件'}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -7418,6 +7608,216 @@ const HistoryForm = ({ onSubmit, onCancel }) => {
   );
 };
 
+// --- 設計會議紀錄表單 ---
+const MeetingForm = ({ onSubmit, onCancel, initialData }) => {
+  const [formData, setFormData] = useState(initialData || {
+    title: '',
+    date: new Date().toISOString().split('T')[0],
+    time: '09:00',
+    location: '',
+    attendees: '',
+    agenda: '',
+    decisions: '',
+    actionItems: '',
+    notes: '',
+    nextMeetingDate: '',
+    attachment: null,
+    fileName: ''
+  });
+  const [fileName, setFileName] = useState(initialData?.fileName || '');
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert("檔案過大！請上傳 10MB 以下的檔案。");
+        e.target.value = null;
+        return;
+      }
+      setFileName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, attachment: reader.result, fileName: file.name }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setFileName('');
+    setFormData(prev => ({ ...prev, attachment: null, fileName: '' }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      ...formData,
+      createdAt: new Date().toISOString()
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5 max-h-[70vh] overflow-y-auto pr-2">
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">會議主題 *</label>
+        <input
+          type="text"
+          name="title"
+          value={formData.title}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all"
+          placeholder="例如：新產品設計評審會議"
+          required
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">日期 *</label>
+          <input
+            type="date"
+            name="date"
+            value={formData.date}
+            onChange={handleChange}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all [color-scheme:dark]"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">時間</label>
+          <input
+            type="time"
+            name="time"
+            value={formData.time}
+            onChange={handleChange}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all [color-scheme:dark]"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">地點</label>
+          <input
+            type="text"
+            name="location"
+            value={formData.location}
+            onChange={handleChange}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all"
+            placeholder="會議室/線上"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">出席人員 *</label>
+        <input
+          type="text"
+          name="attendees"
+          value={formData.attendees}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all"
+          placeholder="以逗號分隔，例如：張三, 李四, 王五"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">會議議程</label>
+        <textarea
+          name="agenda"
+          value={formData.agenda}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all h-20 resize-none"
+          placeholder="1. 議題一\n2. 議題二\n3. 議題三"
+        ></textarea>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">決議事項</label>
+        <textarea
+          name="decisions"
+          value={formData.decisions}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all h-20 resize-none"
+          placeholder="列出會議中做出的重要決定..."
+        ></textarea>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">待辦事項 (Action Items)</label>
+        <textarea
+          name="actionItems"
+          value={formData.actionItems}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all h-20 resize-none"
+          placeholder="1. [負責人] 待辦事項描述 - 截止日期\n2. [負責人] 待辦事項描述 - 截止日期"
+        ></textarea>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">會議備註</label>
+        <textarea
+          name="notes"
+          value={formData.notes}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all h-16 resize-none"
+          placeholder="其他備註或重要記錄..."
+        ></textarea>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">下次會議日期</label>
+        <input
+          type="date"
+          name="nextMeetingDate"
+          value={formData.nextMeetingDate}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all [color-scheme:dark]"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-2">附件 (會議資料)</label>
+        <div className="flex items-center space-x-4">
+          <label className="flex items-center gap-2 cursor-pointer bg-white/5 hover:bg-white/10 text-slate-300 px-4 py-2.5 rounded-xl transition-all border border-white/10 hover:border-white/20">
+            <Upload size={18} />
+            <span>選擇檔案</span>
+            <input type="file" onChange={handleFileChange} className="hidden" />
+          </label>
+          {fileName && (
+            <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/20 px-3 py-1.5 rounded-full border border-emerald-500/30">
+              <span>{fileName}</span>
+              <button type="button" onClick={handleRemoveFile} className="hover:text-rose-400 transition-colors">
+                <X size={14}/>
+              </button>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-slate-500 mt-2">支援圖片與文件，最大 10MB</p>
+      </div>
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-5 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+        >
+          取消
+        </button>
+        <button
+          type="submit"
+          className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/25 transition-all font-medium"
+        >
+          {initialData ? '更新紀錄' : '新增紀錄'}
+        </button>
+      </div>
+    </form>
+  );
+};
+
 // --- 專案規格討論歷程視圖 ---
 const SpecDiscussionView = ({ machine }) => {
   const [urls, setUrls] = useState([]);
@@ -7683,6 +8083,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   const [changes, setChanges] = useState([]);
   const [history, setHistory] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [meetings, setMeetings] = useState([]);
 
   // Sync with DB
   useEffect(() => {
@@ -7700,6 +8101,15 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       setHistory(sortedData);
     });
     const unsubMessages = db.subscribe('rd_messages', (data) => setMessages(data));
+    // 訂閱會議紀錄
+    const unsubMeetings = db.subscribe('rd_meetings', (data) => {
+      const sortedData = [...data].sort((a, b) => {
+        const timeA = new Date(a.date + ' ' + (a.time || '00:00')).getTime();
+        const timeB = new Date(b.date + ' ' + (b.time || '00:00')).getTime();
+        return timeB - timeA; // 降序排列（新的在前）
+      });
+      setMeetings(sortedData);
+    });
     
     return () => {
         unsubProjects();
@@ -7707,6 +8117,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         unsubChanges();
         unsubHistory();
         unsubMessages();
+        unsubMeetings();
     };
   }, [machine.id]);
   
@@ -7980,6 +8391,36 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     }
   };
 
+  // 會議紀錄處理函數
+  const handleAddMeeting = async (newMeeting) => {
+    try {
+      await db.addDoc('rd_meetings', newMeeting);
+    } catch (e) {
+      console.error("Error adding meeting: ", e);
+      alert('新增會議紀錄失敗: ' + e.message);
+    }
+  };
+
+  const handleUpdateMeeting = async (updatedMeeting) => {
+    try {
+      await db.updateDoc('rd_meetings', updatedMeeting.id, updatedMeeting);
+    } catch (e) {
+      console.error("Error updating meeting: ", e);
+      alert('更新會議紀錄失敗: ' + e.message);
+    }
+  };
+
+  const handleDeleteMeeting = async (meetingId) => {
+    if (confirm('確定要刪除此會議紀錄嗎？')) {
+      try {
+        await db.deleteDoc('rd_meetings', meetingId);
+      } catch (e) {
+        console.error("Error deleting meeting: ", e);
+        alert('刪除會議紀錄失敗: ' + e.message);
+      }
+    }
+  };
+
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
@@ -8008,6 +8449,10 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
             onAddHistory={handleAddHistory}
             messages={messages}
             onAddMessage={handleAddMessage}
+            meetings={meetings}
+            onAddMeeting={handleAddMeeting}
+            onUpdateMeeting={handleUpdateMeeting}
+            onDeleteMeeting={handleDeleteMeeting}
             onUpdateProject={handleUpdateProject}
             onDeleteProject={handleDeleteProject}
             user={user}
