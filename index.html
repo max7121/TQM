@@ -465,19 +465,26 @@ class FirebaseDB {
       callback(this.cache[collectionName].data);
     }
 
-    // 設定超時處理 - 增加到 10 秒
-    const timeoutId = setTimeout(() => {
-      if (!this.cache[collectionName]) {
-        console.warn(`⚠️ ${collectionName} 載入超時，繼續等待...`);
-        // 不要返回空陣列，繼續等待
+    // 設定超時處理 - 15 秒後如果還沒載入成功，使用快取或空陣列
+    let timeoutId = setTimeout(() => {
+      if (this.cache[collectionName]) {
+        console.warn(`⏰ ${collectionName} 載入超時，使用快取數據`);
+        // 不要阻止後續真實數據的到來
+        callback(this.cache[collectionName].data);
+      } else {
+        console.warn(`⏰ ${collectionName} 載入超時且無快取，使用空陣列`);
+        // 不要阻止後續真實數據的到來
+        callback([]);
       }
-    }, 10000);
+    }, 15000);
 
     try {
       const unsubscribe = window.firebase.onSnapshot(
         window.firebase.collection(this.db, collectionName),
         (snapshot) => {
+          // 清除超時計時器
           clearTimeout(timeoutId);
+          
           const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
           // 更新快取
           this.cache[collectionName] = {
@@ -488,11 +495,13 @@ class FirebaseDB {
           callback(data);
         },
         (error) => {
+          // 清除超時計時器
           clearTimeout(timeoutId);
-          console.error(`❌ ${collectionName} 訂閱錯誤:`, error);
+          
+          console.error(`❌ ${collectionName} 訂閱錯誤:`, error.message || error);
           // 如果有快取，使用快取
           if (this.cache[collectionName]) {
-            console.log(`📦 使用 ${collectionName} 快取數據`);
+            console.log(`📦 錯誤後使用 ${collectionName} 快取數據`);
             callback(this.cache[collectionName].data);
           } else {
             // 只在真正錯誤時才使用空陣列
@@ -504,8 +513,15 @@ class FirebaseDB {
       return unsubscribe;
     } catch (error) {
       clearTimeout(timeoutId);
-      console.error(`❌ ${collectionName} 訂閱失敗:`, error);
-      callback([]);
+      console.error(`❌ ${collectionName} 訂閱失敗:`, error.message || error);
+      
+      // 使用快取或空陣列
+      if (this.cache[collectionName]) {
+        console.log(`📦 異常後使用 ${collectionName} 快取數據`);
+        callback(this.cache[collectionName].data);
+      } else {
+        callback([]);
+      }
       return () => {};
     }
   }
