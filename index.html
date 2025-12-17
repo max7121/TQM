@@ -4049,11 +4049,16 @@ const TQMApp = ({ appUser, onLogout, onBackToMenu }) => {
 
 // --- Components ---
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const Modal = ({ isOpen, onClose, title, children, size = 'default' }) => {
   if (!isOpen) return null;
+  const sizeClasses = {
+    default: 'max-w-lg',
+    large: 'max-w-2xl',
+    xlarge: 'max-w-4xl'
+  };
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto border border-white/10">
+      <div className={`bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-2xl w-full ${sizeClasses[size] || sizeClasses.default} max-h-[90vh] overflow-y-auto border border-white/10`}>
         <div className="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-slate-800/95 backdrop-blur-xl z-10 rounded-t-2xl">
           <h2 className="text-xl font-bold text-white">{title}</h2>
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
@@ -4199,9 +4204,9 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-2">專案名稱</label>
+        <label className="block text-sm font-medium text-slate-300 mb-2">專案名稱 *</label>
         <input 
           type="text" 
           name="name"
@@ -4209,11 +4214,12 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
           className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white placeholder-slate-500"
           value={formData.name}
           onChange={handleChange}
+          placeholder="輸入專案名稱"
         />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">負責人</label>
+          <label className="block text-sm font-medium text-slate-300 mb-2">負責人 *</label>
           <input 
             type="text" 
             name="owner"
@@ -4221,6 +4227,7 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
             className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white placeholder-slate-500"
             value={formData.owner}
             onChange={handleChange}
+            placeholder="輸入負責人姓名"
           />
         </div>
         <div>
@@ -4240,17 +4247,23 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">階段</label>
-          <input 
-            type="text" 
+          <select 
             name="stage"
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white placeholder-slate-500"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white appearance-none cursor-pointer"
             value={formData.stage}
             onChange={handleChange}
-            placeholder="e.g. 規劃, 開發, 測試"
-          />
+          >
+            <option value="規劃" className="bg-slate-800">規劃</option>
+            <option value="設計" className="bg-slate-800">設計</option>
+            <option value="開發" className="bg-slate-800">開發</option>
+            <option value="測試" className="bg-slate-800">測試</option>
+            <option value="驗證" className="bg-slate-800">驗證</option>
+            <option value="量產" className="bg-slate-800">量產</option>
+            <option value="結案" className="bg-slate-800">結案</option>
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">進度 (%)</label>
@@ -4262,10 +4275,11 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
             className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white"
             value={formData.progress}
             onChange={handleChange}
+            placeholder="0-100"
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">狀態</label>
           <select 
@@ -4284,36 +4298,40 @@ const ProjectForm = ({ onSubmit, initialData, onCancel }) => {
           <input 
             type="date" 
             name="deadline"
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white [color-scheme:dark]"
             value={formData.deadline}
             onChange={handleChange}
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">開始日期</label>
           <input 
             type="date" 
             name="startDate"
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white [color-scheme:dark]"
             value={formData.startDate}
             onChange={handleChange}
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">類別</label>
-        <input 
-          type="text" 
-          name="category"
-          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white placeholder-slate-500"
-          value={formData.category}
-          onChange={handleChange}
-          placeholder="e.g. 新產品, 改款, 內部案"
-        />
+          <select 
+            name="category"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white appearance-none cursor-pointer"
+            value={formData.category}
+            onChange={handleChange}
+          >
+            <option value="新產品" className="bg-slate-800">新產品</option>
+            <option value="改款" className="bg-slate-800">改款</option>
+            <option value="內部案" className="bg-slate-800">內部案</option>
+            <option value="客戶案" className="bg-slate-800">客戶案</option>
+            <option value="研發案" className="bg-slate-800">研發案</option>
+          </select>
         </div>
       </div>
-      <div className="flex justify-end gap-3 pt-6">
+      <div className="flex justify-end gap-3 pt-6 border-t border-white/10">
         <button type="button" onClick={onCancel} className="px-5 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl text-sm font-medium transition-all">取消</button>
         <button type="submit" className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl text-sm font-medium hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/25 transition-all">儲存專案</button>
       </div>
@@ -5953,23 +5971,24 @@ const ProjectListView = ({ onViewDetails, projects, onAddProject, onUpdateProjec
   };
 
   return (
-    <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden">
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingProject ? "編輯專案" : "新增專案"}>
+    <>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingProject ? "編輯專案" : "新增專案"} size="large">
         <ProjectForm 
           initialData={editingProject} 
           onSubmit={handleSubmit} 
           onCancel={() => setIsModalOpen(false)} 
         />
       </Modal>
-
-      <div className="p-6 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-3">
-            <div className="p-2.5 bg-blue-500/20 rounded-xl">
-              <ListTodo size={20} className="text-blue-400" />
-            </div>
-            專案清單
-          </h2>
+      
+      <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden">
+        <div className="p-6 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/20 rounded-xl">
+                <ListTodo size={20} className="text-blue-400" />
+              </div>
+              專案清單
+            </h2>
           <p className="text-sm text-slate-400 mt-1 ml-12">快速搜尋、篩選與定位問題專案</p>
         </div>
         <div className="flex gap-3 flex-wrap">
@@ -6066,11 +6085,12 @@ const ProjectListView = ({ onViewDetails, projects, onAddProject, onUpdateProjec
           </tbody>
         </table>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
-const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpdateTask, changes: allChanges, onAddChange, history: allHistory, onAddHistory, messages: allMessages, onAddMessage, meetings: allMeetings, onAddMeeting, onUpdateMeeting, onDeleteMeeting, onUpdateProject, onDeleteProject, user }) => {
+const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpdateTask, changes: allChanges, onAddChange, history: allHistory, onAddHistory, messages: allMessages, onAddMessage, meetings: allMeetings, onAddMeeting, onUpdateMeeting, onDeleteMeeting, notifications: allNotifications, onAddNotification, allUsers, onUpdateProject, onDeleteProject, user }) => {
   const tasks = allTasks.filter(t => t.projectId === project.id);
   const changes = allChanges.filter(c => c.projectId === project.id);
   const history = allHistory.filter(h => h.projectId === project.id);
@@ -6083,6 +6103,7 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSpecsModalOpen, setIsSpecsModalOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [newTaskStatus, setNewTaskStatus] = useState('To Do');
@@ -6346,6 +6367,21 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
         />
       </Modal>
 
+      {/* 發送通知 Modal */}
+      <Modal isOpen={isNotificationModalOpen} onClose={() => setIsNotificationModalOpen(false)} title="📢 發送專案通知">
+        <NotificationForm 
+          project={project}
+          allUsers={allUsers || []}
+          currentUser={user}
+          onSubmit={(data) => { 
+            onAddNotification(data);
+            setIsNotificationModalOpen(false);
+            alert(`✅ 通知已發送給 ${data.recipients.length} 位成員！`);
+          }} 
+          onCancel={() => setIsNotificationModalOpen(false)} 
+        />
+      </Modal>
+
       <Modal isOpen={isGanttModalOpen} onClose={() => setIsGanttModalOpen(false)} title={editingPhase ? "編輯階段" : "新增階段"}>
         <form onSubmit={handleGanttSubmit} className="space-y-4">
           <div><label className="block text-sm font-medium mb-2 text-slate-300">階段名稱</label><input name="name" defaultValue={editingPhase?.name} required className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 outline-none"/></div>
@@ -6390,6 +6426,12 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
         <div className="flex flex-wrap gap-3">
           <button onClick={() => openAddTask('To Do')} className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl text-sm font-medium hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/25 transition-all flex items-center gap-2">
             <Plus size={16} /> 新增任務
+          </button>
+          <button 
+            onClick={() => setIsNotificationModalOpen(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/25 transition-all flex items-center gap-2"
+          >
+            <Send size={16} /> 發送通知
           </button>
           <button className="px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-xl text-sm font-medium hover:bg-white/10 transition-all">
             產生報告
@@ -7180,169 +7222,521 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
 };
 
 const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
-  // Dynamic Data Calculation
+  // ============== 實際數據計算 ==============
   
-  // 1. Department Load (Mock calculation based on active projects count per department)
-  // In a real app, this would sum up task hours. Here we count projects/tasks.
-  const deptLoadMap = { '機構部': 0, '電子部': 0, '軟體部': 0, '美工部': 0 };
-  projects.forEach(p => {
-    if (deptLoadMap[p.department] !== undefined) deptLoadMap[p.department] += 20; // Assume 20% load per project
-  });
+  // 1. 專案狀態統計
+  const projectStats = {
+    total: projects.length,
+    normal: projects.filter(p => p.status === 'normal').length,
+    risk: projects.filter(p => p.status === 'risk').length,
+    delay: projects.filter(p => p.status === 'delay').length,
+    avgProgress: projects.length > 0 
+      ? Math.round(projects.reduce((sum, p) => sum + (p.progress || 0), 0) / projects.length) 
+      : 0
+  };
+
+  // 2. 任務狀態統計
+  const taskStats = {
+    total: tasks.length,
+    todo: tasks.filter(t => t.status === 'To Do').length,
+    doing: tasks.filter(t => t.status === 'Doing').length,
+    testing: tasks.filter(t => t.status === 'Testing').length,
+    done: tasks.filter(t => t.status === 'Done').length
+  };
+  
+  // 3. 任務完成率
+  const taskCompletionRate = taskStats.total > 0 
+    ? Math.round((taskStats.done / taskStats.total) * 100) 
+    : 0;
+
+  // 4. 人員任務負載分析
+  const ownerTaskMap = {};
   tasks.forEach(t => {
-     // Find project for task to get department? Or just assume owner's dept? 
-     // Simplified: Randomly distribute task load or just use project load for now.
+    if (t.owner) {
+      if (!ownerTaskMap[t.owner]) {
+        ownerTaskMap[t.owner] = { total: 0, done: 0, doing: 0, todo: 0, overdue: 0 };
+      }
+      ownerTaskMap[t.owner].total++;
+      if (t.status === 'Done') ownerTaskMap[t.owner].done++;
+      else if (t.status === 'Doing' || t.status === 'Testing') ownerTaskMap[t.owner].doing++;
+      else ownerTaskMap[t.owner].todo++;
+      
+      // 檢查是否逾期
+      if (t.endDate && new Date(t.endDate) < new Date() && t.status !== 'Done') {
+        ownerTaskMap[t.owner].overdue++;
+      }
+    }
   });
   
-  const dynamicLoadData = Object.keys(deptLoadMap).map(dept => ({
-    name: dept,
-    load: deptLoadMap[dept],
-    capacity: 100
-  }));
+  const ownerLoadData = Object.entries(ownerTaskMap)
+    .map(([name, data]) => ({
+      name,
+      ...data,
+      completionRate: data.total > 0 ? Math.round((data.done / data.total) * 100) : 0
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8);
 
-  // 2. On-Time Trend (Mock: Generate based on project deadlines)
-  // If no data, show empty or default
-  const dynamicTrendData = projects.length > 0 ? [
-      { month: '5月', onTime: 92, delay: 8 }, // Keep some history or calculate from completed projects
-      { month: '6月', onTime: 88, delay: 12 },
-      { month: '7月', onTime: 85, delay: 15 },
-      { month: '8月', onTime: 78, delay: 22 },
-  ] : []; 
-  // Better: Calculate from actual projects if possible, or just show empty if no projects.
-  // Since we don't have historical trend data stored, we might have to hide this chart or show "No Data".
-  // For now, let's show "No Data" if projects is empty.
+  // 5. 專案進度分佈
+  const progressDistribution = [
+    { name: '0-25%', value: projects.filter(p => p.progress <= 25).length, color: '#ef4444' },
+    { name: '26-50%', value: projects.filter(p => p.progress > 25 && p.progress <= 50).length, color: '#f97316' },
+    { name: '51-75%', value: projects.filter(p => p.progress > 50 && p.progress <= 75).length, color: '#eab308' },
+    { name: '76-99%', value: projects.filter(p => p.progress > 75 && p.progress < 100).length, color: '#22c55e' },
+    { name: '完成', value: projects.filter(p => p.progress === 100).length, color: '#10b981' }
+  ].filter(d => d.value > 0);
 
-  // 3. Change Type Distribution
-  const changeTypeMap = {};
-  changes.forEach(c => {
-    changeTypeMap[c.type] = (changeTypeMap[c.type] || 0) + 1;
+  // 6. 部門專案分佈
+  const deptProjectMap = {};
+  projects.forEach(p => {
+    const dept = p.department || '未分類';
+    if (!deptProjectMap[dept]) deptProjectMap[dept] = { count: 0, progress: 0 };
+    deptProjectMap[dept].count++;
+    deptProjectMap[dept].progress += (p.progress || 0);
   });
-  const dynamicChangeTypeData = Object.keys(changeTypeMap).map(type => ({
-    name: type,
-    value: changeTypeMap[type]
-  }));
+  
+  const deptData = Object.entries(deptProjectMap)
+    .map(([name, data]) => ({
+      name,
+      專案數: data.count,
+      平均進度: Math.round(data.progress / data.count)
+    }))
+    .sort((a, b) => b.專案數 - a.專案數);
 
-  if (projects.length === 0 && tasks.length === 0 && changes.length === 0) {
-      return (
-          <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-              <BarChart3 size={48} className="mb-4 opacity-20" />
-              <p>尚無數據可供分析</p>
-              <p className="text-xs mt-2">請先新增專案、任務與設變紀錄</p>
-          </div>
-      );
+  // 7. 逾期任務列表
+  const overdueTasks = tasks.filter(t => {
+    if (!t.endDate || t.status === 'Done') return false;
+    return new Date(t.endDate) < new Date();
+  }).map(t => {
+    const project = projects.find(p => p.id === t.projectId);
+    const daysOverdue = Math.floor((new Date() - new Date(t.endDate)) / (1000 * 60 * 60 * 24));
+    return { ...t, projectName: project?.name || '未知專案', daysOverdue };
+  }).sort((a, b) => b.daysOverdue - a.daysOverdue).slice(0, 10);
+
+  // 8. 即將到期任務（7天內）
+  const upcomingTasks = tasks.filter(t => {
+    if (!t.endDate || t.status === 'Done') return false;
+    const daysLeft = Math.floor((new Date(t.endDate) - new Date()) / (1000 * 60 * 60 * 24));
+    return daysLeft >= 0 && daysLeft <= 7;
+  }).map(t => {
+    const project = projects.find(p => p.id === t.projectId);
+    const daysLeft = Math.floor((new Date(t.endDate) - new Date()) / (1000 * 60 * 60 * 24));
+    return { ...t, projectName: project?.name || '未知專案', daysLeft };
+  }).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 10);
+
+  // 9. 專案階段分佈
+  const stageMap = {};
+  projects.forEach(p => {
+    const stage = p.stage || '未分類';
+    stageMap[stage] = (stageMap[stage] || 0) + 1;
+  });
+  const stageData = Object.entries(stageMap).map(([name, value]) => ({ name, value }));
+
+  // 10. 風險專案列表
+  const riskProjects = projects
+    .filter(p => p.status === 'risk' || p.status === 'delay')
+    .map(p => {
+      const projectTasks = tasks.filter(t => t.projectId === p.id);
+      const completedTasks = projectTasks.filter(t => t.status === 'Done').length;
+      return {
+        ...p,
+        taskCount: projectTasks.length,
+        completedTasks,
+        taskProgress: projectTasks.length > 0 ? Math.round((completedTasks / projectTasks.length) * 100) : 0
+      };
+    });
+
+  // 圖表顏色
+  const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+
+  // 空數據狀態
+  if (projects.length === 0 && tasks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 text-slate-400">
+        <BarChart3 size={64} className="mb-4 opacity-20" />
+        <p className="text-xl">尚無數據可供分析</p>
+        <p className="text-sm mt-2">請先新增專案與任務</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Department Load */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-            <BarChart3 size={18} className="mr-2 text-slate-400" />
-            各部門負載分析 (Load Balance)
+      {/* 頂部統計卡片 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 backdrop-blur-xl p-5 rounded-2xl border border-blue-500/20">
+          <div className="text-blue-400 text-sm font-medium mb-1">總專案數</div>
+          <div className="text-3xl font-bold text-white">{projectStats.total}</div>
+        </div>
+        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 backdrop-blur-xl p-5 rounded-2xl border border-emerald-500/20">
+          <div className="text-emerald-400 text-sm font-medium mb-1">正常專案</div>
+          <div className="text-3xl font-bold text-white">{projectStats.normal}</div>
+        </div>
+        <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20">
+          <div className="text-amber-400 text-sm font-medium mb-1">風險專案</div>
+          <div className="text-3xl font-bold text-white">{projectStats.risk}</div>
+        </div>
+        <div className="bg-gradient-to-br from-rose-500/20 to-rose-600/10 backdrop-blur-xl p-5 rounded-2xl border border-rose-500/20">
+          <div className="text-rose-400 text-sm font-medium mb-1">延遲專案</div>
+          <div className="text-3xl font-bold text-white">{projectStats.delay}</div>
+        </div>
+        <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 backdrop-blur-xl p-5 rounded-2xl border border-violet-500/20">
+          <div className="text-violet-400 text-sm font-medium mb-1">總任務數</div>
+          <div className="text-3xl font-bold text-white">{taskStats.total}</div>
+        </div>
+        <div className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 backdrop-blur-xl p-5 rounded-2xl border border-cyan-500/20">
+          <div className="text-cyan-400 text-sm font-medium mb-1">任務完成率</div>
+          <div className="text-3xl font-bold text-white">{taskCompletionRate}%</div>
+        </div>
+      </div>
+
+      {/* 第一行圖表 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 任務狀態分佈 */}
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-blue-500/20 rounded-lg"><ListTodo size={18} className="text-blue-400" /></div>
+            任務狀態分佈
           </h3>
-          <div className="h-64">
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dynamicLoadData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" domain={[0, 150]} />
-                <YAxis dataKey="name" type="category" width={60} />
-                <RechartsTooltip />
-                <Bar dataKey="load" name="負載率 (%)" barSize={20} radius={[0, 4, 4, 0]}>
-                  {dynamicLoadData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.load > 100 ? '#ef4444' : '#3b82f6'} />
+              <BarChart data={[
+                { name: '待辦', value: taskStats.todo, fill: '#64748b' },
+                { name: '進行中', value: taskStats.doing, fill: '#3b82f6' },
+                { name: '測試中', value: taskStats.testing, fill: '#f59e0b' },
+                { name: '已完成', value: taskStats.done, fill: '#10b981' }
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" />
+                <RechartsTooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  labelStyle={{ color: '#fff' }}
+                />
+                <Bar dataKey="value" name="任務數" radius={[8, 8, 0, 0]}>
+                  {[
+                    { fill: '#64748b' },
+                    { fill: '#3b82f6' },
+                    { fill: '#f59e0b' },
+                    { fill: '#10b981' }
+                  ].map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Bar>
-                <Bar dataKey="capacity" name="產能上限" barSize={20} fill="#e2e8f0" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-slate-400 mt-2 text-center">* 紅色代表過載 (&gt;100%)，需進行資源調配</p>
         </div>
 
-        {/* On-Time Trend */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-            <TrendingUp size={18} className="mr-2 text-slate-400" />
-            專案準時率趨勢
+        {/* 專案進度分佈 */}
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-emerald-500/20 rounded-lg"><Target size={18} className="text-emerald-400" /></div>
+            專案進度分佈
           </h3>
-          <div className="h-64 flex items-center justify-center">
-            {dynamicTrendData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dynamicTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <RechartsTooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="onTime" name="準時率 (%)" stroke="#10b981" strokeWidth={2} />
-                    <Line type="monotone" dataKey="delay" name="延遲率 (%)" stroke="#f43f5e" strokeWidth={2} />
-                </LineChart>
-                </ResponsiveContainer>
+          <div className="h-72 flex items-center">
+            {progressDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={progressDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={{ stroke: '#64748b' }}
+                  >
+                    {progressDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             ) : (
-                <div className="text-slate-400 text-sm">資料不足，無法顯示趨勢</div>
+              <div className="w-full text-center text-slate-500">無專案數據</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 人員任務負載分析 */}
+      <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10">
+        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+          <div className="p-2 bg-violet-500/20 rounded-lg"><Users size={18} className="text-violet-400" /></div>
+          人員任務負載分析
+          <span className="ml-auto text-sm text-slate-400 font-normal">共 {Object.keys(ownerTaskMap).length} 位成員</span>
+        </h3>
+        {ownerLoadData.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-slate-400 text-sm border-b border-white/10">
+                  <th className="pb-3 pl-2">成員</th>
+                  <th className="pb-3 text-center">總任務</th>
+                  <th className="pb-3 text-center">已完成</th>
+                  <th className="pb-3 text-center">進行中</th>
+                  <th className="pb-3 text-center">待辦</th>
+                  <th className="pb-3 text-center">逾期</th>
+                  <th className="pb-3 text-center">完成率</th>
+                  <th className="pb-3 pr-2">進度</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {ownerLoadData.map((person, idx) => (
+                  <tr key={idx} className="hover:bg-white/5 transition-colors">
+                    <td className="py-3 pl-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white text-sm font-bold">
+                          {person.name[0]}
+                        </div>
+                        <span className="text-white font-medium">{person.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-center text-white font-medium">{person.total}</td>
+                    <td className="py-3 text-center text-emerald-400">{person.done}</td>
+                    <td className="py-3 text-center text-blue-400">{person.doing}</td>
+                    <td className="py-3 text-center text-slate-400">{person.todo}</td>
+                    <td className="py-3 text-center">
+                      {person.overdue > 0 ? (
+                        <span className="text-rose-400 font-bold">{person.overdue}</span>
+                      ) : (
+                        <span className="text-slate-500">0</span>
+                      )}
+                    </td>
+                    <td className="py-3 text-center">
+                      <span className={`font-bold ${person.completionRate >= 80 ? 'text-emerald-400' : person.completionRate >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {person.completionRate}%
+                      </span>
+                    </td>
+                    <td className="py-3 pr-2">
+                      <div className="w-24 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${person.completionRate >= 80 ? 'bg-emerald-500' : person.completionRate >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                          style={{ width: `${person.completionRate}%` }}
+                        ></div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center text-slate-500 py-8">尚無任務分配數據</div>
+        )}
+      </div>
+
+      {/* 第三行：逾期任務 & 即將到期 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 逾期任務警示 */}
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-rose-500/20">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-rose-500/20 rounded-lg"><AlertCircle size={18} className="text-rose-400" /></div>
+            逾期任務警示
+            {overdueTasks.length > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-rose-500 text-white text-xs rounded-full font-bold animate-pulse">
+                {overdueTasks.length}
+              </span>
+            )}
+          </h3>
+          {overdueTasks.length > 0 ? (
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+              {overdueTasks.map((task, idx) => (
+                <div key={idx} className="p-3 bg-rose-500/10 rounded-xl border border-rose-500/20 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-medium truncate">{task.title}</div>
+                    <div className="text-xs text-slate-400 flex items-center gap-2 mt-1">
+                      <span>{task.projectName}</span>
+                      <span>•</span>
+                      <span>{task.owner}</span>
+                    </div>
+                  </div>
+                  <div className="text-right ml-3">
+                    <div className="text-rose-400 font-bold text-lg">+{task.daysOverdue}天</div>
+                    <div className="text-xs text-slate-500">截止: {task.endDate}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+              <CheckCircle size={32} className="text-emerald-500 mb-2" />
+              <span>太棒了！目前沒有逾期任務</span>
+            </div>
+          )}
+        </div>
+
+        {/* 即將到期任務 */}
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-amber-500/20">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-amber-500/20 rounded-lg"><Clock size={18} className="text-amber-400" /></div>
+            即將到期 (7天內)
+            {upcomingTasks.length > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-amber-500 text-white text-xs rounded-full font-bold">
+                {upcomingTasks.length}
+              </span>
+            )}
+          </h3>
+          {upcomingTasks.length > 0 ? (
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+              {upcomingTasks.map((task, idx) => (
+                <div key={idx} className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-medium truncate">{task.title}</div>
+                    <div className="text-xs text-slate-400 flex items-center gap-2 mt-1">
+                      <span>{task.projectName}</span>
+                      <span>•</span>
+                      <span>{task.owner}</span>
+                    </div>
+                  </div>
+                  <div className="text-right ml-3">
+                    <div className={`font-bold text-lg ${task.daysLeft <= 2 ? 'text-rose-400' : 'text-amber-400'}`}>
+                      {task.daysLeft === 0 ? '今天' : `${task.daysLeft}天後`}
+                    </div>
+                    <div className="text-xs text-slate-500">截止: {task.endDate}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+              <Calendar size={32} className="text-blue-400 mb-2" />
+              <span>近7天內沒有到期的任務</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 部門與階段分析 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 部門專案統計 */}
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-cyan-500/20 rounded-lg"><LayoutDashboard size={18} className="text-cyan-400" /></div>
+            部門專案統計
+          </h3>
+          <div className="h-64">
+            {deptData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={deptData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" />
+                  <YAxis dataKey="name" type="category" width={80} stroke="#94a3b8" />
+                  <RechartsTooltip 
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="專案數" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
+                  <Bar dataKey="平均進度" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-500">無部門數據</div>
             )}
           </div>
         </div>
 
-        {/* Change Type Distribution */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-            <Activity size={18} className="mr-2 text-slate-400" />
-            設變類型分析 (TQM)
+        {/* 專案階段分佈 */}
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-purple-500/20 rounded-lg"><Activity size={18} className="text-purple-400" /></div>
+            專案階段分佈
           </h3>
-          <div className="h-64 flex items-center justify-center">
-             {dynamicChangeTypeData.length > 0 ? (
-                 <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                    <Pie
-                        data={dynamicChangeTypeData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        paddingAngle={5}
-                        dataKey="value"
-                    >
-                        {dynamicChangeTypeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                    </Pie>
-                    <RechartsTooltip />
-                    <Legend verticalAlign="bottom" height={36}/>
-                    </PieChart>
-                </ResponsiveContainer>
-             ) : (
-                 <div className="text-slate-400 text-sm">尚無設變紀錄</div>
-             )}
-          </div>
-        </div>
-
-         {/* Bottleneck Analysis */}
-         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-            <AlertCircle size={18} className="mr-2 text-slate-400" />
-            AI 瓶頸診斷
-          </h3>
-          <div className="space-y-4">
-             {changes.length > 0 || tasks.some(t => t.status === 'delay') ? (
-                 <>
-                    <div className="flex items-start gap-3">
-                        <div className="p-2 bg-rose-100 rounded text-rose-600 mt-1"><XCircle size={16}/></div>
-                        <div>
-                            <h4 className="text-sm font-bold text-slate-800">偵測到潛在風險</h4>
-                            <p className="text-xs text-slate-500">根據目前的設變頻率與任務延遲狀況，建議加強設計審查。</p>
-                        </div>
-                    </div>
-                 </>
-             ) : (
-                 <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
-                     目前專案運行狀況良好，無顯著瓶頸。
-                 </div>
-             )}
+          <div className="h-64">
+            {stageData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={stageData}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={{ stroke: '#64748b' }}
+                  >
+                    {stageData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-500">無階段數據</div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* 風險專案清單 */}
+      {riskProjects.length > 0 && (
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10">
+          <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+            <div className="p-2 bg-rose-500/20 rounded-lg"><AlertTriangle size={18} className="text-rose-400" /></div>
+            風險/延遲專案追蹤
+            <span className="ml-2 px-2 py-0.5 bg-rose-500/20 text-rose-400 text-xs rounded-full font-bold">
+              {riskProjects.length} 個專案需要關注
+            </span>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-slate-400 text-sm border-b border-white/10">
+                  <th className="pb-3 pl-2">專案名稱</th>
+                  <th className="pb-3">負責人</th>
+                  <th className="pb-3">狀態</th>
+                  <th className="pb-3 text-center">專案進度</th>
+                  <th className="pb-3 text-center">任務進度</th>
+                  <th className="pb-3">截止日期</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {riskProjects.map((project, idx) => (
+                  <tr key={idx} className="hover:bg-white/5 transition-colors">
+                    <td className="py-3 pl-2 text-white font-medium">{project.name}</td>
+                    <td className="py-3 text-slate-300">{project.owner}</td>
+                    <td className="py-3">
+                      <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                        project.status === 'delay' 
+                          ? 'bg-rose-500/20 text-rose-400' 
+                          : 'bg-amber-500/20 text-amber-400'
+                      }`}>
+                        {project.status === 'delay' ? '延遲' : '風險'}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-20 h-2 bg-white/10 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full ${project.progress >= 80 ? 'bg-emerald-500' : project.progress >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                            style={{ width: `${project.progress}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm text-slate-300">{project.progress}%</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-center">
+                      <span className="text-slate-300">{project.completedTasks}/{project.taskCount}</span>
+                      <span className="text-slate-500 text-xs ml-1">({project.taskProgress}%)</span>
+                    </td>
+                    <td className="py-3 text-slate-400">{project.deadline || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -7818,6 +8212,288 @@ const MeetingForm = ({ onSubmit, onCancel, initialData }) => {
   );
 };
 
+// --- 專案通知表單組件 ---
+const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }) => {
+  const [formData, setFormData] = useState({
+    title: '',
+    type: 'general', // general, meeting, urgent
+    content: '',
+    meetingDate: '',
+    meetingTime: '09:00',
+    meetingLocation: '',
+    recipients: []
+  });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  // 過濾可選擇的用戶
+  const availableUsers = allUsers.filter(u => 
+    u.displayName && 
+    u.displayName.toLowerCase().includes(searchTerm.toLowerCase()) &&
+    !formData.recipients.find(r => r.username === u.username)
+  );
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddRecipient = (user) => {
+    setFormData(prev => ({
+      ...prev,
+      recipients: [...prev.recipients, { username: user.username, displayName: user.displayName }]
+    }));
+    setSearchTerm('');
+    setShowUserDropdown(false);
+  };
+
+  const handleRemoveRecipient = (username) => {
+    setFormData(prev => ({
+      ...prev,
+      recipients: prev.recipients.filter(r => r.username !== username)
+    }));
+  };
+
+  const handleSelectAll = () => {
+    const allRecipients = allUsers
+      .filter(u => u.displayName && u.username !== currentUser?.username)
+      .map(u => ({ username: u.username, displayName: u.displayName }));
+    setFormData(prev => ({ ...prev, recipients: allRecipients }));
+  };
+
+  const handleClearAll = () => {
+    setFormData(prev => ({ ...prev, recipients: [] }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (formData.recipients.length === 0) {
+      alert('請選擇至少一位通知對象');
+      return;
+    }
+    onSubmit({
+      ...formData,
+      projectId: project.id,
+      projectName: project.name,
+      sender: currentUser?.displayName || 'System',
+      senderUsername: currentUser?.username || 'system',
+      createdAt: new Date().toISOString(),
+      isRead: {} // 各收件人已讀狀態
+    });
+  };
+
+  const notificationTypes = [
+    { value: 'general', label: '📢 一般通知', color: 'from-blue-500 to-cyan-500' },
+    { value: 'meeting', label: '📅 開會通知', color: 'from-purple-500 to-pink-500' },
+    { value: 'urgent', label: '🚨 緊急通知', color: 'from-red-500 to-orange-500' }
+  ];
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5 max-h-[70vh] overflow-y-auto pr-2">
+      {/* 通知類型 */}
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-2">通知類型</label>
+        <div className="grid grid-cols-3 gap-3">
+          {notificationTypes.map(type => (
+            <button
+              key={type.value}
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, type: type.value }))}
+              className={`px-4 py-3 rounded-xl text-sm font-medium transition-all border ${
+                formData.type === type.value
+                  ? `bg-gradient-to-r ${type.color} text-white border-transparent shadow-lg`
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              {type.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 標題 */}
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">通知標題 *</label>
+        <input
+          type="text"
+          name="title"
+          value={formData.title}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all"
+          placeholder="例如：專案進度更新通知"
+          required
+        />
+      </div>
+
+      {/* 開會通知時顯示日期時間地點 */}
+      {formData.type === 'meeting' && (
+        <div className="grid grid-cols-3 gap-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+          <div>
+            <label className="block text-sm font-medium text-purple-300 mb-1.5">📅 會議日期 *</label>
+            <input
+              type="date"
+              name="meetingDate"
+              value={formData.meetingDate}
+              onChange={handleChange}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-purple-500/50 outline-none transition-all [color-scheme:dark]"
+              required={formData.type === 'meeting'}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-purple-300 mb-1.5">⏰ 會議時間 *</label>
+            <input
+              type="time"
+              name="meetingTime"
+              value={formData.meetingTime}
+              onChange={handleChange}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-purple-500/50 outline-none transition-all [color-scheme:dark]"
+              required={formData.type === 'meeting'}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-purple-300 mb-1.5">📍 會議地點</label>
+            <input
+              type="text"
+              name="meetingLocation"
+              value={formData.meetingLocation}
+              onChange={handleChange}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 outline-none transition-all"
+              placeholder="會議室/線上連結"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 通知內容 */}
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">通知內容 *</label>
+        <textarea
+          name="content"
+          value={formData.content}
+          onChange={handleChange}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all h-28 resize-none"
+          placeholder={formData.type === 'meeting' 
+            ? "請說明會議主題、討論事項等..."
+            : "請輸入通知詳細內容..."}
+          required
+        ></textarea>
+      </div>
+
+      {/* 選擇收件人 */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-slate-300">
+            選擇通知對象 * <span className="text-slate-500">（已選 {formData.recipients.length} 人）</span>
+          </label>
+          <div className="flex gap-2">
+            <button 
+              type="button" 
+              onClick={handleSelectAll}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              全選
+            </button>
+            <span className="text-slate-600">|</span>
+            <button 
+              type="button" 
+              onClick={handleClearAll}
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              清除
+            </button>
+          </div>
+        </div>
+        
+        {/* 搜尋用戶 */}
+        <div className="relative">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setShowUserDropdown(true);
+            }}
+            onFocus={() => setShowUserDropdown(true)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+            placeholder="搜尋用戶名稱..."
+          />
+          <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          
+          {/* 用戶下拉選單 */}
+          {showUserDropdown && availableUsers.length > 0 && (
+            <div className="absolute z-20 w-full mt-2 bg-slate-800 border border-white/10 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+              {availableUsers.slice(0, 10).map(user => (
+                <button
+                  key={user.username}
+                  type="button"
+                  onClick={() => handleAddRecipient(user)}
+                  className="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors flex items-center gap-3 border-b border-white/5 last:border-0"
+                >
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                    {user.displayName?.[0] || '?'}
+                  </div>
+                  <div>
+                    <div className="text-white text-sm">{user.displayName}</div>
+                    <div className="text-slate-500 text-xs">{user.department || '未設定部門'}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 已選擇的收件人 */}
+        {formData.recipients.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {formData.recipients.map(r => (
+              <span 
+                key={r.username}
+                className="inline-flex items-center gap-2 bg-blue-500/20 text-blue-300 px-3 py-1.5 rounded-full text-sm border border-blue-500/30"
+              >
+                <span className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs">
+                  {r.displayName?.[0] || '?'}
+                </span>
+                {r.displayName}
+                <button 
+                  type="button"
+                  onClick={() => handleRemoveRecipient(r.username)}
+                  className="hover:text-red-400 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 按鈕 */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-5 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+        >
+          取消
+        </button>
+        <button
+          type="submit"
+          className={`px-5 py-2.5 text-white rounded-xl hover:shadow-lg transition-all font-medium flex items-center gap-2 ${
+            formData.type === 'urgent' 
+              ? 'bg-gradient-to-r from-red-500 to-orange-500 hover:shadow-red-500/25'
+              : formData.type === 'meeting'
+              ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:shadow-purple-500/25'
+              : 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:shadow-blue-500/25'
+          }`}
+        >
+          <Send size={16} />
+          發送通知
+        </button>
+      </div>
+    </form>
+  );
+};
+
 // --- 專案規格討論歷程視圖 ---
 const SpecDiscussionView = ({ machine }) => {
   const [urls, setUrls] = useState([]);
@@ -8084,6 +8760,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   const [history, setHistory] = useState([]);
   const [messages, setMessages] = useState([]);
   const [meetings, setMeetings] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
 
   // Sync with DB
   useEffect(() => {
@@ -8110,6 +8788,17 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       });
       setMeetings(sortedData);
     });
+    // 訂閱通知
+    const unsubNotifications = db.subscribe('rd_notifications', (data) => {
+      const sortedData = [...data].sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      setNotifications(sortedData);
+    });
+    // 訂閱用戶列表（用於通知選擇收件人）
+    const unsubUsers = db.subscribe('tqm_users', (data) => setAllUsers(data));
     
     return () => {
         unsubProjects();
@@ -8118,6 +8807,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         unsubHistory();
         unsubMessages();
         unsubMeetings();
+        unsubNotifications();
+        unsubUsers();
     };
   }, [machine.id]);
   
@@ -8421,6 +9112,17 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     }
   };
 
+  // 通知處理函數
+  const handleAddNotification = async (newNotification) => {
+    try {
+      await db.addDoc('rd_notifications', newNotification);
+      console.log('✅ 通知已發送:', newNotification);
+    } catch (e) {
+      console.error("Error adding notification: ", e);
+      alert('發送通知失敗: ' + e.message);
+    }
+  };
+
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
@@ -8453,6 +9155,9 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
             onAddMeeting={handleAddMeeting}
             onUpdateMeeting={handleUpdateMeeting}
             onDeleteMeeting={handleDeleteMeeting}
+            notifications={notifications}
+            onAddNotification={handleAddNotification}
+            allUsers={allUsers}
             onUpdateProject={handleUpdateProject}
             onDeleteProject={handleDeleteProject}
             user={user}
@@ -11219,17 +11924,60 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   const [rdProjects, setRdProjects] = useState([]); // 訂閱專案數據
   const [rdMachines, setRdMachines] = useState([]); // 訂閱機台數據
   const [marqueeMessages, setMarqueeMessages] = useState([]);
+  const [rdNotifications, setRdNotifications] = useState([]); // 訂閱通知數據
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
   
   useEffect(() => {
     const unsubscribeTasks = db.subscribe('rd_tasks', setRdTasks);
     const unsubscribeProjects = db.subscribe('rd_projects', setRdProjects);
     const unsubscribeMachines = db.subscribe('rd_machines', setRdMachines);
+    // 訂閱通知
+    const unsubscribeNotifications = db.subscribe('rd_notifications', (data) => {
+      const sortedData = [...data].sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      setRdNotifications(sortedData);
+    });
     return () => {
       unsubscribeTasks();
       unsubscribeProjects();
       unsubscribeMachines();
+      unsubscribeNotifications();
     };
   }, []);
+  
+  // 🔥 過濾當前用戶的通知
+  const myNotifications = rdNotifications.filter(n => 
+    n.recipients && n.recipients.some(r => r.username === user?.username)
+  );
+  
+  // 未讀通知數量
+  const unreadCount = myNotifications.filter(n => 
+    !n.isRead || !n.isRead[user?.username]
+  ).length;
+  
+  // 標記通知為已讀
+  const markAsRead = async (notification) => {
+    try {
+      const updatedIsRead = { ...notification.isRead, [user?.username]: true };
+      await db.updateDoc('rd_notifications', notification.id, { isRead: updatedIsRead });
+    } catch (e) {
+      console.error('標記已讀失敗:', e);
+    }
+  };
+  
+  // 刪除通知（僅發送者可刪除）
+  const deleteNotification = async (notificationId) => {
+    if (confirm('確定要刪除此通知嗎？')) {
+      try {
+        await db.deleteDoc('rd_notifications', notificationId);
+      } catch (e) {
+        console.error('刪除通知失敗:', e);
+      }
+    }
+  };
   
   // 🔥 生成跑馬燈訊息
   useEffect(() => {
@@ -11504,6 +12252,131 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
             )}
           </div>
         </div>
+        
+        {/* 🔔 專案通知區塊 */}
+        {myNotifications.length > 0 && (
+          <div className="mb-10 bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3 text-white font-medium">
+                <div className="p-2 bg-white/20 rounded-lg relative">
+                  <AlertCircle className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center font-bold animate-pulse">
+                      {unreadCount}
+                    </span>
+                  )}
+                </div>
+                <span>📬 R&D Nexus 專案通知</span>
+              </div>
+              <button 
+                onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+                className="text-white text-sm bg-white/20 px-4 py-1.5 rounded-full hover:bg-white/30 transition-all flex items-center gap-2"
+              >
+                {showNotificationPanel ? '收起通知' : `展開查看 (${myNotifications.length})`}
+                {showNotificationPanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
+            
+            {showNotificationPanel && (
+              <div className="p-4 max-h-96 overflow-y-auto space-y-3">
+                {myNotifications.map((notification, idx) => {
+                  const isRead = notification.isRead && notification.isRead[user?.username];
+                  const isUrgent = notification.type === 'urgent';
+                  const isMeeting = notification.type === 'meeting';
+                  
+                  return (
+                    <div 
+                      key={notification.id || idx}
+                      onClick={() => !isRead && markAsRead(notification)}
+                      className={`p-4 rounded-xl transition-all cursor-pointer border ${
+                        isUrgent 
+                          ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20' 
+                          : isMeeting
+                          ? 'bg-purple-500/10 border-purple-500/30 hover:bg-purple-500/20'
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      } ${!isRead ? 'ring-2 ring-amber-400/50' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            {/* 通知類型標籤 */}
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              isUrgent 
+                                ? 'bg-red-500 text-white' 
+                                : isMeeting
+                                ? 'bg-purple-500 text-white'
+                                : 'bg-blue-500 text-white'
+                            }`}>
+                              {isUrgent ? '🚨 緊急' : isMeeting ? '📅 開會' : '📢 通知'}
+                            </span>
+                            {/* 專案名稱 */}
+                            <span className="text-xs text-slate-400 bg-white/10 px-2 py-0.5 rounded">
+                              {notification.projectName}
+                            </span>
+                            {/* 未讀標記 */}
+                            {!isRead && (
+                              <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+                            )}
+                          </div>
+                          
+                          {/* 標題 */}
+                          <h4 className={`font-bold mb-1 ${isUrgent ? 'text-red-300' : 'text-white'}`}>
+                            {notification.title}
+                          </h4>
+                          
+                          {/* 開會資訊 */}
+                          {isMeeting && notification.meetingDate && (
+                            <div className="flex items-center gap-4 mb-2 text-sm text-purple-300">
+                              <span className="flex items-center gap-1">
+                                <Calendar size={14} /> {notification.meetingDate}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock size={14} /> {notification.meetingTime}
+                              </span>
+                              {notification.meetingLocation && (
+                                <span className="flex items-center gap-1">
+                                  📍 {notification.meetingLocation}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* 內容 */}
+                          <p className="text-slate-300 text-sm whitespace-pre-line">{notification.content}</p>
+                          
+                          {/* 發送資訊 */}
+                          <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
+                            <span>發送者：{notification.sender}</span>
+                            <span>時間：{new Date(notification.createdAt).toLocaleString('zh-TW')}</span>
+                            <span>收件人：{notification.recipients?.length || 0} 人</span>
+                          </div>
+                        </div>
+                        
+                        {/* 操作按鈕 */}
+                        <div className="flex flex-col gap-2">
+                          {notification.senderUsername === user?.username && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteNotification(notification.id); }}
+                              className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
+                              title="刪除通知"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                          {isRead && (
+                            <span className="text-xs text-emerald-400 flex items-center gap-1">
+                              <CheckCircle size={12} /> 已讀
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         
         <div className={gridClass}>
           {hasPermission('TQM') && (
