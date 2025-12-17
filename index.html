@@ -4661,10 +4661,34 @@ const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
   );
 };
 
-const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpdateMachine }) => {
+const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpdateMachine, user }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState(null);
   const [showPersonalDashboard, setShowPersonalDashboard] = useState(false);
+
+  // 過濾機台：管理員顯示全部，一般使用者只顯示 members 中包含自己的機台
+  const filteredMachines = React.useMemo(() => {
+    if (!user) return machines;
+    
+    // 管理員顯示全部
+    if (user.role === 'admin') {
+      return machines;
+    }
+    
+    // 一般使用者只顯示 members 中包含自己的機台
+    return machines.filter(machine => {
+      if (!machine.members) return false;
+      
+      const memberList = machine.members.split(',').map(m => m.trim());
+      // 檢查 members 中是否包含使用者的 displayName 或 username
+      return memberList.some(member => 
+        member === user.displayName || 
+        member === user.username ||
+        member.includes(user.displayName) ||
+        member.includes(user.username)
+      );
+    });
+  }, [machines, user]);
 
   const handleOpenAdd = () => {
     setEditingMachine(null);
@@ -4719,17 +4743,17 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
             </button>
              <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                <span className="text-sm font-medium text-slate-600">運作正常: {machines.filter(m => m.status === 'Active').length}</span>
+                <span className="text-sm font-medium text-slate-600">運作正常: {filteredMachines.filter(m => m.status === 'Active').length}</span>
              </div>
              <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                <span className="text-sm font-medium text-slate-600">需關注: {machines.filter(m => m.status !== 'Active').length}</span>
+                <span className="text-sm font-medium text-slate-600">需關注: {filteredMachines.filter(m => m.status !== 'Active').length}</span>
              </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-           {machines.map(machine => (
+           {filteredMachines.map(machine => (
              <div 
                 key={machine.id} 
                 onClick={() => onSelect(machine)}
@@ -4857,11 +4881,12 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
   );
 };
 
-const DashboardView = ({ projects, tasks, changes, onViewDetails }) => {
+const DashboardView = ({ projects, tasks, changes, history, onViewDetails }) => {
   // Fallback to global PROJECTS if prop is missing (for safety)
   const displayProjects = projects || [];
   const displayTasks = tasks || [];
   const displayChanges = changes || [];
+  const displayHistory = history || [];
 
   // Calculate Stats
   const projectIds = displayProjects.map(p => p.id);
@@ -5079,33 +5104,92 @@ const DashboardView = ({ projects, tasks, changes, onViewDetails }) => {
           </div>
         </div>
 
-        {/* High Priority Alerts */}
+        {/* Recent Changes - 最近變更記錄 */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center text-rose-600">
-            <AlertTriangle size={18} className="mr-2" />
-            本週重點異常
+          <h3 className="font-bold text-slate-800 mb-4 flex items-center text-blue-600">
+            <Activity size={18} className="mr-2" />
+            最近專案動態
           </h3>
           <div className="space-y-3">
-            {delayProjects.length === 0 && riskTasks.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm">
-                    目前無重大異常
-                </div>
-            ) : (
-                <>
-                    {delayProjects.map(p => (
-                        <div key={p.id} className="p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm text-rose-800">
-                            <div className="font-bold mb-1">{p.name} - 進度延遲</div>
-                            <div className="text-xs opacity-80">Deadline: {p.deadline}</div>
+            {(() => {
+              // 過濾出屬於當前機台專案的歷史記錄
+              const projectIds = displayProjects.map(p => p.id);
+              const machineHistory = displayHistory.filter(item => 
+                item.projectId && projectIds.includes(item.projectId)
+              );
+              
+              if (machineHistory.length === 0) {
+                return (
+                  <div className="text-center py-8 text-slate-400 text-sm">
+                    尚無變更記錄
+                  </div>
+                );
+              }
+              
+              return machineHistory.slice(0, 5).map((item, index) => {
+                const project = displayProjects.find(p => p.id === item.projectId);
+                const projectName = project ? project.name : '未知專案';
+                
+                // 決定顏色和圖示
+                let bgColor = 'bg-blue-50';
+                let borderColor = 'border-blue-100';
+                let textColor = 'text-blue-800';
+                let icon = '📄';
+                
+                if (item.type === '新增專案' || item.action === '新增專案') {
+                  bgColor = 'bg-green-50';
+                  borderColor = 'border-green-100';
+                  textColor = 'text-green-800';
+                  icon = '➕';
+                } else if (item.type === '新增任務' || item.action === '新增任務') {
+                  bgColor = 'bg-cyan-50';
+                  borderColor = 'border-cyan-100';
+                  textColor = 'text-cyan-800';
+                  icon = '✔️';
+                } else if (item.type === '更新專案' || item.action === '更新專案') {
+                  bgColor = 'bg-amber-50';
+                  borderColor = 'border-amber-100';
+                  textColor = 'text-amber-800';
+                  icon = '✏️';
+                } else if (item.type === '更新任務' || item.action === '更新任務') {
+                  bgColor = 'bg-purple-50';
+                  borderColor = 'border-purple-100';
+                  textColor = 'text-purple-800';
+                  icon = '🔄';
+                }
+                
+                // 格式化時間
+                const timestamp = item.createdAt || item.date || item.timestamp;
+                const timeStr = timestamp ? new Date(timestamp).toLocaleString('zh-TW', { 
+                  month: '2-digit', 
+                  day: '2-digit', 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                }) : '-';
+                
+                return (
+                  <div key={item.id || index} className={`p-3 ${bgColor} border ${borderColor} rounded-lg text-sm ${textColor}`}>
+                    <div className="flex items-start justify-between mb-1">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-base">{icon}</span>
+                        <div className="flex-1">
+                          <div className="font-bold">{item.type || item.action || '變更'}</div>
+                          <div className="text-xs opacity-80 mt-0.5">
+                            {projectName} {item.description && `- ${item.description}`}
+                          </div>
                         </div>
-                    ))}
-                    {riskTasks.map(t => (
-                        <div key={t.id} className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-800">
-                            <div className="font-bold mb-1">高風險任務: {t.title}</div>
-                            <div className="text-xs opacity-80">Owner: {t.owner}</div>
-                        </div>
-                    ))}
-                </>
-            )}
+                      </div>
+                      <span className="text-xs opacity-60 whitespace-nowrap ml-2">{timeStr}</span>
+                    </div>
+                    {item.user && (
+                      <div className="text-xs opacity-70 mt-1">
+                        👤 {item.user}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       </div>
@@ -7122,7 +7206,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <DashboardView projects={projects} tasks={tasks} changes={changes} onViewDetails={handleViewDetails} />;
+        return <DashboardView projects={projects} tasks={tasks} changes={changes} history={history} onViewDetails={handleViewDetails} />;
       case 'list':
         return (
           <ProjectListView 
@@ -10389,6 +10473,7 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
             onBack={onBackToMenu} 
             onAddMachine={handleAddMachine}
             onUpdateMachine={handleUpdateMachine}
+            user={user}
         />
     );
 };
