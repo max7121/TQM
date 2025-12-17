@@ -67,7 +67,164 @@
     }
     </script>
     <style>
-        body { background-color: #f8fafc; }
+        /* === 全域樣式優化 === */
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+        }
+        
+        /* 滾動條美化 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #94a3b8, #64748b);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #64748b, #475569);
+        }
+        
+        /* 卡片懸停效果 */
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        /* 按鈕動畫 */
+        .btn-animated {
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-animated:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .btn-animated:active {
+            transform: translateY(0);
+        }
+        
+        /* 漸層背景 */
+        .gradient-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+        .gradient-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        .gradient-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+        .gradient-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+        .gradient-purple {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        }
+        
+        /* 玻璃擬態效果 */
+        .glass {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* 輸入框聚焦效果 */
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            border-color: #3b82f6 !important;
+        }
+        
+        /* 動畫效果 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        
+        .animate-fadeIn {
+            animation: fadeIn 0.4s ease-out;
+        }
+        .animate-slideIn {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        /* 載入骨架屏 */
+        .skeleton {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        
+        /* 表格樣式優化 */
+        table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        /* 側邊欄樣式 */
+        .sidebar-item {
+            transition: all 0.2s ease;
+            border-radius: 12px;
+            margin: 4px 8px;
+        }
+        .sidebar-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+        .sidebar-item.active {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        /* 狀態標籤 */
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        /* 數字計數動畫 */
+        .count-up {
+            transition: all 0.5s ease-out;
+        }
+        
+        /* 響應式優化 */
+        @media (max-width: 768px) {
+            .card-hover:hover {
+                transform: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -918,15 +1075,29 @@ const parseCSV = (text) => {
 
 // --- Helper Components ---
 
-const StatCard = ({ title, value, subtext, icon: Icon, colorClass }) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
-    <div className={`p-4 rounded-full ${colorClass} bg-opacity-10`}>
-      <Icon className={`w-8 h-8 ${colorClass.replace('bg-', 'text-')}`} />
-    </div>
-    <div>
-      <p className="text-gray-500 text-sm font-medium">{title}</p>
-      <h3 className="text-2xl font-bold text-gray-800">{value}</h3>
-      {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+const StatCard = ({ title, value, subtext, icon: Icon, colorClass, trend, trendValue }) => (
+  <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100/50 card-hover relative overflow-hidden group">
+    {/* 背景裝飾 */}
+    <div className={`absolute top-0 right-0 w-32 h-32 ${colorClass} opacity-5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500`}></div>
+    
+    <div className="relative flex items-center space-x-4">
+      <div className={`p-4 rounded-2xl ${colorClass} bg-opacity-10 group-hover:scale-110 transition-transform duration-300`}>
+        <Icon className={`w-7 h-7 ${colorClass.replace('bg-', 'text-')}`} />
+      </div>
+      <div className="flex-1">
+        <p className="text-gray-500 text-sm font-medium mb-1">{title}</p>
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-3xl font-bold text-gray-800">{value}</h3>
+          {trend && (
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+              trend === 'up' ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'
+            }`}>
+              {trend === 'up' ? '↑' : '↓'} {trendValue}
+            </span>
+          )}
+        </div>
+        {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+      </div>
     </div>
   </div>
 );
@@ -934,10 +1105,10 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass }) => (
 const ImageModal = ({ src, onClose }) => {
   if (!src) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-80 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fadeIn" onClick={onClose}>
       <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
-        <button onClick={onClose} className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"><X size={32} /></button>
-        <img src={src} alt="Evidence" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl bg-white" onClick={(e) => e.stopPropagation()} />
+        <button onClick={onClose} className="absolute -top-12 right-0 text-white/80 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-full"><X size={28} /></button>
+        <img src={src} alt="Evidence" className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl ring-1 ring-white/20" onClick={(e) => e.stopPropagation()} />
       </div>
     </div>
   );
@@ -946,8 +1117,10 @@ const ImageModal = ({ src, onClose }) => {
 const NavButton = ({ active, onClick, icon: Icon, label }) => (
   <button 
     onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-      active ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+    className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all duration-200 ${
+      active 
+        ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25' 
+        : 'text-slate-400 hover:bg-white/10 hover:text-white'
     }`}
   >
     <Icon size={20} />
@@ -971,47 +1144,67 @@ const LoginScreen = ({ onLogin, loading, onImportDB, onExportDB }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-xl">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* 背景動態效果 */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{animationDelay: '1s'}}></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style={{animationDelay: '2s'}}></div>
+      </div>
+      
+      <div className="relative bg-white/95 backdrop-blur-xl w-full max-w-md p-8 rounded-3xl shadow-2xl border border-white/20 animate-fadeIn">
         <div className="text-center mb-8">
-          <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <CheckCircle2 className="text-white w-8 h-8" />
+          <div className="relative inline-block">
+            <div className="absolute inset-0 bg-blue-600 rounded-2xl blur-lg opacity-50"></div>
+            <div className="relative bg-gradient-to-br from-blue-500 to-blue-700 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
+              <CheckCircle2 className="text-white w-10 h-10" />
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">TQM 品質管理系統</h1>
-          <p className="text-slate-500 mt-2">請登入以繼續操作 (Firebase 雲端版)</p>
-          <div className="mt-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block">🔥 Firebase Firestore 雲端資料庫</div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">TQM 品質管理系統</h1>
+          <p className="text-slate-500 mt-2 text-sm">全方位研發專案追蹤與品質管理平台</p>
+          <div className="mt-3 inline-flex items-center gap-2 text-xs bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-700 px-4 py-2 rounded-full border border-blue-100">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+            Firebase 雲端連線中
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2">
-              <AlertCircle size={16} /> {error}
+            <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm flex items-center gap-3 border border-red-100 animate-fadeIn">
+              <div className="bg-red-100 p-2 rounded-lg">
+                <AlertCircle size={18} />
+              </div>
+              <span>{error}</span>
             </div>
           )}
           
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">帳號</label>
-            <div className="relative">
-              <User className="absolute left-3 top-2.5 text-gray-400" size={18} />
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">帳號</label>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <User className="text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+              </div>
               <input 
                 type="text" 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 transition-all text-slate-700 placeholder-slate-400"
                 placeholder="請輸入使用者帳號"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-2.5 text-gray-400" size={18} />
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-slate-700">密碼</label>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Lock className="text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+              </div>
               <input 
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 transition-all text-slate-700 placeholder-slate-400"
                 placeholder="請輸入密碼"
               />
             </div>
@@ -1020,33 +1213,43 @@ const LoginScreen = ({ onLogin, loading, onImportDB, onExportDB }) => {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg shadow-md transition-all flex items-center justify-center"
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            {loading ? '驗證中...' : '登入系統'}
+            {loading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                驗證中...
+              </>
+            ) : (
+              <>
+                <LogOut size={18} />
+                登入系統
+              </>
+            )}
           </button>
         </form>
         
-        <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
+        <div className="mt-8 pt-6 border-t border-slate-200 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center justify-center gap-2 w-full p-2.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors text-sm border border-dashed border-gray-300">
-               <Database size={16} />
-               <span>載入資料庫</span>
+            <label className="flex items-center justify-center gap-2 w-full p-3 text-slate-600 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-xl cursor-pointer transition-all text-sm font-medium border-2 border-dashed border-slate-200 hover:border-blue-300 group">
+               <Database size={18} className="group-hover:scale-110 transition-transform" />
+               <span>載入備份</span>
                <input type="file" accept=".json" onChange={onImportDB} className="hidden" />
             </label>
             <button 
               onClick={onExportDB}
-              className="flex items-center justify-center gap-2 w-full p-2.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors text-sm border border-dashed border-green-300"
+              className="flex items-center justify-center gap-2 w-full p-3 text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-all text-sm font-medium border-2 border-dashed border-emerald-200 hover:border-emerald-300 group"
             >
-              <FileJson size={16} />
-              <span>匯出資料庫</span>
+              <FileJson size={18} className="group-hover:scale-110 transition-transform" />
+              <span>匯出備份</span>
             </button>
           </div>
-          <p className="text-center text-xs text-gray-400">
-            💾 備份您的資料檔 (.json) 或載入先前備份
+          <p className="text-center text-xs text-slate-400">
+            💾 定期備份您的資料，確保資料安全
           </p>
         </div>
 
-        <div className="mt-4 text-center text-xs text-gray-400">
+        <div className="mt-4 text-center text-xs text-slate-400">
           預設管理員帳號: admin / admin123
         </div>
       </div>
@@ -1144,68 +1347,99 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-blue-600"/> 帳號管理</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"><PlusCircle size={16} /> 新增帳號</button>
-          {onBackToMenu && (
-            <button onClick={onBackToMenu} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
-              <LogOut size={16} /> 返回
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-sm text-left text-gray-600">
-          <thead className="bg-gray-50 text-gray-700 uppercase text-xs"><tr><th className="px-6 py-3">帳號</th><th className="px-6 py-3">姓名</th><th className="px-6 py-3">部門</th><th className="px-6 py-3">權限角色</th><th className="px-6 py-3 text-center">操作</th></tr></thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id} className="border-b hover:bg-gray-50">
-                <td className="px-6 py-4 font-medium">{u.username}</td><td className="px-6 py-4">{u.displayName}</td><td className="px-6 py-4">{u.department}</td>
-                <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>{u.role === 'admin' ? '管理員' : '一般使用者'}</span></td>
-                <td className="px-6 py-4 text-center"><div className="flex justify-center gap-2"><button onClick={() => startEdit(u)} className="text-blue-500 hover:text-blue-700"><Edit size={16}/></button>{u.username !== 'admin' && (<button onClick={() => handleDelete(u.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button>)}</div></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-             <h3 className="text-xl font-bold mb-4">{editId ? '編輯帳號' : '新增帳號'}</h3>
-             <form onSubmit={handleSubmit} className="space-y-4">
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">帳號</label><input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!editId} className="w-full p-2 border rounded text-sm disabled:bg-gray-100" required /></div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">密碼 {editId && '(不修改請留空)'}</label><input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-2 border rounded text-sm" required={!editId} /></div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">姓名</label><input type="text" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} className="w-full p-2 border rounded text-sm" required /></div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">部門</label><select value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full p-2 border rounded text-sm">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">權限角色</label><select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-2 border rounded text-sm"><option value="user">一般使用者</option><option value="admin">系統管理員</option></select></div>
-                
-                <div className="border-t pt-4">
-                  <label className="block text-xs font-bold text-gray-500 mb-2">📌 系統進入權限設定</label>
-                  <div className="bg-slate-50 p-3 rounded-lg space-y-2">
-                    {SYSTEM_MODULES.map(module => (
-                      <label key={module.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded transition-colors">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.permissions.includes(module.id)}
-                          onChange={() => handlePermissionToggle(module.id)}
-                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-slate-700">{module.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">💡 提示：管理員帳號預設擁有所有權限</p>
-                </div>
-                
-                <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">取消</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">儲存</button></div>
-             </form>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-lg shadow-purple-500/25">
+                <Users className="text-white w-6 h-6"/>
+              </div>
+              帳號管理
+            </h2>
+            <p className="text-slate-400 mt-2">管理系統使用者與權限設定</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-5 py-3 rounded-xl text-sm transition-all shadow-lg shadow-blue-500/25"><PlusCircle size={18} /> 新增帳號</button>
+            {onBackToMenu && (
+              <button onClick={onBackToMenu} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-xl text-sm transition-all border border-white/10">
+                <LogOut size={18} /> 返回
+              </button>
+            )}
           </div>
         </div>
-      )}
+        <div className="bg-white/5 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
+          <table className="w-full text-sm text-left text-slate-300">
+            <thead className="bg-white/5 text-slate-400 uppercase text-xs border-b border-white/10">
+              <tr>
+                <th className="px-6 py-4 font-semibold">帳號</th>
+                <th className="px-6 py-4 font-semibold">姓名</th>
+                <th className="px-6 py-4 font-semibold">部門</th>
+                <th className="px-6 py-4 font-semibold">權限角色</th>
+                <th className="px-6 py-4 text-center font-semibold">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u, idx) => (
+                <tr key={u.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''}`}>
+                  <td className="px-6 py-4 font-medium text-white">{u.username}</td>
+                  <td className="px-6 py-4 text-slate-300">{u.displayName}</td>
+                  <td className="px-6 py-4"><span className="px-3 py-1.5 bg-slate-700/50 rounded-lg text-xs text-slate-300 border border-slate-600/50">{u.department}</span></td>
+                  <td className="px-6 py-4"><span className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${u.role === 'admin' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'}`}>{u.role === 'admin' ? '管理員' : '一般使用者'}</span></td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex justify-center gap-2">
+                      <button onClick={() => startEdit(u)} className="text-blue-400 hover:text-blue-300 p-2 hover:bg-blue-500/20 rounded-lg transition-all"><Edit size={16}/></button>
+                      {u.username !== 'admin' && (<button onClick={() => handleDelete(u.id)} className="text-slate-500 hover:text-red-400 p-2 hover:bg-red-500/20 rounded-lg transition-all"><Trash2 size={16}/></button>)}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fadeIn">
+            <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-white/10">
+               <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                 <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl">
+                   {editId ? <Edit size={18} className="text-white"/> : <PlusCircle size={18} className="text-white"/>}
+                 </div>
+                 {editId ? '編輯帳號' : '新增帳號'}
+               </h3>
+               <form onSubmit={handleSubmit} className="space-y-4">
+                  <div><label className="block text-xs font-bold text-slate-400 mb-2">帳號</label><input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!editId} className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white disabled:bg-white/5 disabled:text-slate-500 placeholder-slate-500" required /></div>
+                  <div><label className="block text-xs font-bold text-slate-400 mb-2">密碼 {editId && '(不修改請留空)'}</label><input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white placeholder-slate-500" required={!editId} /></div>
+                  <div><label className="block text-xs font-bold text-slate-400 mb-2">姓名</label><input type="text" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white placeholder-slate-500" required /></div>
+                  <div><label className="block text-xs font-bold text-slate-400 mb-2">部門</label><select value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white">{DEPARTMENTS.map(d => <option key={d} value={d} className="bg-slate-800">{d}</option>)}</select></div>
+                  <div><label className="block text-xs font-bold text-slate-400 mb-2">權限角色</label><select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white"><option value="user" className="bg-slate-800">一般使用者</option><option value="admin" className="bg-slate-800">系統管理員</option></select></div>
+                  
+                  <div className="border-t border-white/10 pt-4">
+                    <label className="block text-xs font-bold text-slate-400 mb-3">📌 系統進入權限設定</label>
+                    <div className="bg-white/5 backdrop-blur p-4 rounded-xl space-y-2 border border-white/10">
+                      {SYSTEM_MODULES.map(module => (
+                        <label key={module.id} className="flex items-center gap-3 cursor-pointer hover:bg-white/10 p-2.5 rounded-lg transition-all">
+                          <input 
+                            type="checkbox" 
+                            checked={formData.permissions.includes(module.id)}
+                            onChange={() => handlePermissionToggle(module.id)}
+                            className="w-5 h-5 text-blue-500 rounded border-white/30 bg-white/10 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-300">{module.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3">💡 提示：管理員帳號預設擁有所有權限</p>
+                  </div>
+                  
+                  <div className="flex justify-end gap-3 pt-4">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-3 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl text-sm transition-all">取消</button>
+                    <button type="submit" className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl text-sm font-semibold hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/25 transition-all transform hover:scale-105">儲存</button>
+                  </div>
+               </form>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -1300,31 +1534,56 @@ const EntryForm = ({ onSubmit, currentUser }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-6">
+    <form onSubmit={handleSubmit} className="bg-white/10 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-white/20 space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div><label className="block text-sm font-medium text-gray-700 mb-1">發生日期</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" /></div>
-        <div><label className="block text-sm font-medium text-gray-700 mb-1">歸屬部門</label><select name="department" value={formData.department} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div><label className="block text-sm font-medium text-gray-700 mb-1">回報人員姓名</label><input type="text" name="personName" value={formData.personName} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50" /></div>
-        <div><label className="block text-sm font-medium text-gray-700 mb-1">回報類型</label><select name="issueType" value={formData.issueType} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">{ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-      </div>
-      <div><label className="block text-sm font-medium text-gray-700 mb-1">問題/異常描述</label><textarea name="description" rows="4" value={formData.description} onChange={handleChange} placeholder="請詳細描述異常情況..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea></div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">佐證照片/附件</label>
-        <div className="flex items-center space-x-4">
-          <label className="flex items-center gap-2 cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg transition-colors border border-slate-300"><Upload size={18} /><span>選擇檔案</span><input type="file" onChange={handleFileChange} className="hidden" /></label>
-          {fileName && (<div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full"><span>{fileName}</span><button type="button" onClick={handleRemoveFile} className="hover:text-red-500"><X size={14}/></button></div>)}
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">發生日期</label>
+          <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-slate-400" />
         </div>
-        <p className="text-xs text-slate-500 mt-1">支援圖片、PDF、Word、Excel 等格式，檔案大小限制 10MB</p>
-        {formData.attachment && formData.attachment.startsWith('data:image') && <div className="mt-3"><img src={formData.attachment} alt="Preview" className="h-32 w-auto object-cover rounded-md border border-gray-200" /></div>}
-        {formData.attachment && !formData.attachment.startsWith('data:image') && <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 flex items-center gap-2"><Paperclip size={16} /><span>已上傳: {fileName}</span></div>}
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">歸屬部門</label>
+          <select name="department" value={formData.department} onChange={handleChange} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:ring-2 focus:ring-blue-500 text-white">{DEPARTMENTS.map(d => <option key={d} value={d} className="bg-slate-800">{d}</option>)}</select>
+        </div>
       </div>
-      <div className="flex items-center space-x-6 p-4 bg-gray-50 rounded-lg">
-        <div className="flex items-center"><input type="checkbox" id="isRepeat" name="isRepeat" checked={formData.isRepeat} onChange={handleChange} className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" /><label htmlFor="isRepeat" className="ml-2 text-sm font-medium text-gray-700">是否為重複發生？</label></div>
-        <div className="flex items-center space-x-3"><label className="text-sm font-medium text-gray-700">目前狀態：</label><div className="flex space-x-2">{['未改善', '已改善'].map(status => (<button key={status} type="button" onClick={() => setFormData(prev => ({ ...prev, status }))} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${formData.status === status ? (status === '已改善' ? 'bg-green-100 text-green-800 ring-2 ring-green-500' : 'bg-red-100 text-red-800 ring-2 ring-red-500') : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>{status}</button>))}</div></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">回報人員姓名</label>
+          <input type="text" name="personName" value={formData.personName} onChange={handleChange} className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white/70" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">回報類型</label>
+          <select name="issueType" value={formData.issueType} onChange={handleChange} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:ring-2 focus:ring-blue-500 text-white">{ISSUE_TYPES.map(t => <option key={t} value={t} className="bg-slate-800">{t}</option>)}</select>
+        </div>
       </div>
-      <div className="pt-4 border-t border-gray-100 flex justify-end"><button type="submit" className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md">提交紀錄</button></div>
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-2">問題/異常描述</label>
+        <textarea name="description" rows="4" value={formData.description} onChange={handleChange} placeholder="請詳細描述異常情況..." className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:ring-2 focus:ring-blue-500 text-white placeholder-slate-500 resize-none"></textarea>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-3">佐證照片/附件</label>
+        <div className="flex items-center space-x-4">
+          <label className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/20 text-slate-300 px-5 py-3 rounded-xl transition-all border border-white/20 backdrop-blur"><Upload size={18} /><span>選擇檔案</span><input type="file" onChange={handleFileChange} className="hidden" /></label>
+          {fileName && (<div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/20 px-4 py-2 rounded-xl border border-emerald-500/30"><span>{fileName}</span><button type="button" onClick={handleRemoveFile} className="hover:text-red-400 transition-colors"><X size={14}/></button></div>)}
+        </div>
+        <p className="text-xs text-slate-500 mt-2">支援圖片、PDF、Word、Excel 等格式，檔案大小限制 10MB</p>
+        {formData.attachment && formData.attachment.startsWith('data:image') && <div className="mt-4"><img src={formData.attachment} alt="Preview" className="h-32 w-auto object-cover rounded-xl border border-white/20 shadow-lg" /></div>}
+        {formData.attachment && !formData.attachment.startsWith('data:image') && <div className="mt-4 p-4 bg-blue-500/20 border border-blue-500/30 rounded-xl text-sm text-blue-400 flex items-center gap-2"><Paperclip size={16} /><span>已上傳: {fileName}</span></div>}
+      </div>
+      <div className="flex items-center space-x-6 p-5 bg-white/5 rounded-xl border border-white/10">
+        <div className="flex items-center">
+          <input type="checkbox" id="isRepeat" name="isRepeat" checked={formData.isRepeat} onChange={handleChange} className="w-5 h-5 text-blue-500 rounded border-white/30 bg-white/10 focus:ring-blue-500" />
+          <label htmlFor="isRepeat" className="ml-3 text-sm font-medium text-slate-300">是否為重複發生？</label>
+        </div>
+        <div className="flex items-center space-x-3">
+          <label className="text-sm font-medium text-slate-300">目前狀態：</label>
+          <div className="flex space-x-2">{['未改善', '已改善'].map(status => (<button key={status} type="button" onClick={() => setFormData(prev => ({ ...prev, status }))} className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${formData.status === status ? (status === '已改善' ? 'bg-emerald-500/20 text-emerald-400 ring-2 ring-emerald-500/50' : 'bg-red-500/20 text-red-400 ring-2 ring-red-500/50') : 'bg-white/5 border border-white/20 text-slate-400 hover:bg-white/10'}`}>{status}</button>))}</div>
+        </div>
+      </div>
+      <div className="pt-6 border-t border-white/10 flex justify-end">
+        <button type="submit" className="px-8 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/25 transition-all transform hover:scale-105">
+          提交紀錄
+        </button>
+      </div>
     </form>
   );
 };
@@ -1361,33 +1620,41 @@ const EditRecordModal = ({ record, onClose, onUpdate }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl"><h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Edit size={20} className="text-blue-600"/> 編輯/更新案件紀錄</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={24} /></button></div>
+    <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fadeIn">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col border border-white/10">
+        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+          <h2 className="text-xl font-bold text-white flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl">
+              <Edit size={18} className="text-white"/>
+            </div>
+            編輯/更新案件紀錄
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 hover:bg-white/10 rounded-lg transition-all"><X size={24} /></button>
+        </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="bg-blue-50 p-4 rounded-lg space-y-4">
-             <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wider mb-2">原始問題資訊</h3>
+          <div className="bg-blue-500/10 backdrop-blur p-5 rounded-xl space-y-4 border border-blue-500/20">
+             <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-3">原始問題資訊</h3>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-xs font-semibold text-gray-500 mb-1">發生日期</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full text-sm p-2 border rounded" /></div>
-                <div><label className="block text-xs font-semibold text-gray-500 mb-1">部門</label><select name="department" value={formData.department} onChange={handleChange} className="w-full text-sm p-2 border rounded">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                <div><label className="block text-xs font-semibold text-gray-500 mb-1">人員</label><input type="text" name="personName" value={formData.personName} onChange={handleChange} className="w-full text-sm p-2 border rounded" /></div>
-                <div><label className="block text-xs font-semibold text-gray-500 mb-1">類型</label><select name="issueType" value={formData.issueType} onChange={handleChange} className="w-full text-sm p-2 border rounded">{ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                <div><label className="block text-xs font-semibold text-slate-400 mb-2">發生日期</label><input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full text-sm p-3 bg-white/10 border border-white/20 rounded-xl text-white" /></div>
+                <div><label className="block text-xs font-semibold text-slate-400 mb-2">部門</label><select name="department" value={formData.department} onChange={handleChange} className="w-full text-sm p-3 bg-white/10 border border-white/20 rounded-xl text-white">{DEPARTMENTS.map(d => <option key={d} value={d} className="bg-slate-800">{d}</option>)}</select></div>
+                <div><label className="block text-xs font-semibold text-slate-400 mb-2">人員</label><input type="text" name="personName" value={formData.personName} onChange={handleChange} className="w-full text-sm p-3 bg-white/10 border border-white/20 rounded-xl text-white" /></div>
+                <div><label className="block text-xs font-semibold text-slate-400 mb-2">類型</label><select name="issueType" value={formData.issueType} onChange={handleChange} className="w-full text-sm p-3 bg-white/10 border border-white/20 rounded-xl text-white">{ISSUE_TYPES.map(t => <option key={t} value={t} className="bg-slate-800">{t}</option>)}</select></div>
              </div>
-             <div><label className="block text-xs font-semibold text-gray-500 mb-1">問題描述</label><textarea name="description" rows="2" value={formData.description} onChange={handleChange} className="w-full text-sm p-2 border rounded"></textarea></div>
+             <div><label className="block text-xs font-semibold text-slate-400 mb-2">問題描述</label><textarea name="description" rows="2" value={formData.description} onChange={handleChange} className="w-full text-sm p-3 bg-white/10 border border-white/20 rounded-xl text-white resize-none"></textarea></div>
           </div>
-          <div className="bg-green-50 p-4 rounded-lg space-y-4 border border-green-100">
-             <h3 className="text-sm font-bold text-green-800 uppercase tracking-wider mb-2 flex items-center gap-2"><CheckCircle2 size={16}/> 改善對策與追蹤</h3>
-             <div><label className="block text-sm font-semibold text-gray-700 mb-1">改善對策 (Countermeasure)</label><textarea name="improvementMethod" rows="4" value={formData.improvementMethod} onChange={handleChange} placeholder="請填寫具體的改善方法、預防再發措施..." className="w-full p-3 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 text-sm"></textarea></div>
+          <div className="bg-emerald-500/10 backdrop-blur p-5 rounded-xl space-y-4 border border-emerald-500/20">
+             <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2"><CheckCircle2 size={16}/> 改善對策與追蹤</h3>
+             <div><label className="block text-sm font-semibold text-slate-300 mb-2">改善對策 (Countermeasure)</label><textarea name="improvementMethod" rows="4" value={formData.improvementMethod} onChange={handleChange} placeholder="請填寫具體的改善方法、預防再發措施..." className="w-full p-4 bg-white/10 border border-emerald-500/30 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm text-white placeholder-slate-500 resize-none"></textarea></div>
              
              {/* 上傳檔案區塊 */}
              <div>
-               <label className="block text-sm font-semibold text-gray-700 mb-2">改善輔助資料 (選填)</label>
+               <label className="block text-sm font-semibold text-slate-300 mb-3">改善輔助資料 (選填)</label>
                <div className="flex items-center gap-3">
                  <label className="flex-1 cursor-pointer">
-                   <div className="border-2 border-dashed border-green-300 rounded-lg p-3 hover:border-green-500 transition-colors bg-white">
-                     <div className="flex items-center justify-center gap-2">
-                       <Upload className="w-5 h-5 text-green-500" />
-                       <span className="text-sm text-gray-600">
+                   <div className="border-2 border-dashed border-emerald-500/30 rounded-xl p-4 hover:border-emerald-500/60 transition-all bg-white/5 hover:bg-white/10">
+                     <div className="flex items-center justify-center gap-3">
+                       <Upload className="w-5 h-5 text-emerald-400" />
+                       <span className="text-sm text-slate-400">
                          {formData.improvementAttachmentName || '點擊上傳檔案 (圖片/PDF/Excel)'}
                        </span>
                      </div>
@@ -1403,7 +1670,7 @@ const EditRecordModal = ({ record, onClose, onUpdate }) => {
                    <button
                      type="button"
                      onClick={() => setFormData(prev => ({ ...prev, improvementAttachment: null, improvementAttachmentName: '' }))}
-                     className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                     className="p-3 text-red-400 hover:bg-red-500/20 rounded-xl transition-all"
                      title="移除檔案"
                    >
                      <X className="w-5 h-5" />
@@ -1411,32 +1678,35 @@ const EditRecordModal = ({ record, onClose, onUpdate }) => {
                  )}
                </div>
                {formData.improvementAttachmentName && (
-                 <p className="mt-2 text-sm text-green-600 flex items-center gap-1">
+                 <p className="mt-3 text-sm text-emerald-400 flex items-center gap-2">
                    <CheckCircle2 className="w-4 h-4" />
                    已選擇: {formData.improvementAttachmentName}
                  </p>
                )}
                {/* 顯示已有附件 */}
                {record.improvementAttachment && !formData.improvementAttachmentName && (
-                 <div className="mt-2 p-2 bg-green-100 rounded-lg flex items-center gap-2">
-                   <Paperclip className="w-4 h-4 text-green-600" />
-                   <span className="text-sm text-green-700">已有附件: {record.improvementAttachmentName || '檔案'}</span>
+                 <div className="mt-3 p-3 bg-emerald-500/20 rounded-xl flex items-center gap-2 border border-emerald-500/30">
+                   <Paperclip className="w-4 h-4 text-emerald-400" />
+                   <span className="text-sm text-emerald-300">已有附件: {record.improvementAttachmentName || '檔案'}</span>
                    {record.improvementAttachment.startsWith('data:image') ? (
-                     <a href={record.improvementAttachment} target="_blank" className="text-blue-600 hover:underline text-sm ml-auto">查看</a>
+                     <a href={record.improvementAttachment} target="_blank" className="text-blue-400 hover:text-blue-300 text-sm ml-auto">查看</a>
                    ) : (
-                     <a href={record.improvementAttachment} download={record.improvementAttachmentName} className="text-blue-600 hover:underline text-sm ml-auto">下載</a>
+                     <a href={record.improvementAttachment} download={record.improvementAttachmentName} className="text-blue-400 hover:text-blue-300 text-sm ml-auto">下載</a>
                    )}
                  </div>
                )}
              </div>
              
-             <div><label className="block text-sm font-semibold text-gray-700 mb-1">備註/訊息</label><input type="text" name="note" value={formData.note} onChange={handleChange} placeholder="例如：已通知相關廠商、待主管確認..." className="w-full p-2 border border-green-200 rounded-lg text-sm" /></div>
-             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center pt-2">
-                <div className="flex items-center space-x-2"><label className="text-sm font-bold text-gray-700">目前狀態：</label><select name="status" value={formData.status} onChange={handleChange} className={`text-sm font-bold py-1 px-3 rounded-full border-none ring-2 ${formData.status === '已改善' ? 'bg-green-100 text-green-800 ring-green-400' : 'bg-red-100 text-red-800 ring-red-400'}`}><option value="未改善">未改善</option><option value="已改善">已改善</option></select></div>
-                <div className="flex items-center"><input type="checkbox" id="editIsRepeat" name="isRepeat" checked={formData.isRepeat} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded border-gray-300" /><label htmlFor="editIsRepeat" className="ml-2 text-sm text-gray-600">標記為重複發生</label></div>
+             <div><label className="block text-sm font-semibold text-slate-300 mb-2">備註/訊息</label><input type="text" name="note" value={formData.note} onChange={handleChange} placeholder="例如：已通知相關廠商、待主管確認..." className="w-full p-3 bg-white/10 border border-emerald-500/30 rounded-xl text-sm text-white placeholder-slate-500" /></div>
+             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center pt-3">
+                <div className="flex items-center space-x-3"><label className="text-sm font-bold text-slate-300">目前狀態：</label><select name="status" value={formData.status} onChange={handleChange} className={`text-sm font-bold py-2 px-4 rounded-xl border-none ring-2 ${formData.status === '已改善' ? 'bg-emerald-500/20 text-emerald-400 ring-emerald-500/50' : 'bg-red-500/20 text-red-400 ring-red-500/50'}`}><option value="未改善" className="bg-slate-800">未改善</option><option value="已改善" className="bg-slate-800">已改善</option></select></div>
+                <div className="flex items-center"><input type="checkbox" id="editIsRepeat" name="isRepeat" checked={formData.isRepeat} onChange={handleChange} className="w-5 h-5 text-blue-500 rounded border-white/30 bg-white/10" /><label htmlFor="editIsRepeat" className="ml-3 text-sm text-slate-400">標記為重複發生</label></div>
              </div>
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100"><button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">取消</button><button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-md flex items-center gap-2"><Save size={16} /> 儲存更新</button></div>
+          <div className="flex justify-end gap-3 pt-5 border-t border-white/10">
+            <button type="button" onClick={onClose} className="px-5 py-3 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl text-sm font-medium transition-all">取消</button>
+            <button type="submit" className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-blue-500/25 flex items-center gap-2 transition-all transform hover:scale-105"><Save size={16} /> 儲存更新</button>
+          </div>
         </form>
       </div>
     </div>
@@ -1454,35 +1724,56 @@ const RecordTable = ({ records, onDelete, onViewImage, onEdit, currentUser }) =>
   });
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-4 border-b border-gray-100 flex gap-4 bg-gray-50/50">
-        <div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-2.5 text-gray-400" size={18} /><input type="text" placeholder="搜尋..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className="px-3 py-2 border rounded-lg text-sm"><option value="All">所有部門</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select>
+    <div className="bg-white/5 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
+      <div className="p-5 border-b border-white/10 flex gap-4 bg-white/5">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+          <input type="text" placeholder="搜尋紀錄..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-slate-400" />
+        </div>
+        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white">
+          <option value="All" className="bg-slate-800">所有部門</option>
+          {DEPARTMENTS.map(d => <option key={d} value={d} className="bg-slate-800">{d}</option>)}
+        </select>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left text-gray-600">
-          <thead className="text-xs text-gray-700 uppercase bg-gray-100"><tr><th className="px-6 py-3">日期</th><th className="px-6 py-3">部門</th><th className="px-6 py-3">人員</th><th className="px-6 py-3">描述</th><th className="px-6 py-3 text-center">附件</th><th className="px-6 py-3 text-center">狀態</th><th className="px-6 py-3 text-center">操作</th></tr></thead>
+        <table className="w-full text-sm text-left text-slate-300">
+          <thead className="text-xs text-slate-400 uppercase bg-white/5 border-b border-white/10">
+            <tr>
+              <th className="px-6 py-4 font-semibold">日期</th>
+              <th className="px-6 py-4 font-semibold">部門</th>
+              <th className="px-6 py-4 font-semibold">人員</th>
+              <th className="px-6 py-4 font-semibold">描述</th>
+              <th className="px-6 py-4 text-center font-semibold">附件</th>
+              <th className="px-6 py-4 text-center font-semibold">狀態</th>
+              <th className="px-6 py-4 text-center font-semibold">操作</th>
+            </tr>
+          </thead>
           <tbody>
-            {filteredRecords.map((r) => (
-              <tr key={r.id} className="bg-white border-b hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">{r.date}</td><td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{r.department}</span></td><td className="px-6 py-4">{r.personName}</td><td className="px-6 py-4 max-w-xs truncate">{r.description}</td>
+            {filteredRecords.map((r, idx) => (
+              <tr key={r.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''}`}>
+                <td className="px-6 py-4 whitespace-nowrap text-slate-300">{r.date}</td>
+                <td className="px-6 py-4"><span className="px-3 py-1.5 bg-slate-700/50 rounded-lg text-xs text-slate-300 border border-slate-600/50">{r.department}</span></td>
+                <td className="px-6 py-4 text-slate-300">{r.personName}</td>
+                <td className="px-6 py-4 max-w-xs truncate text-slate-400">{r.description}</td>
                 <td className="px-6 py-4 text-center flex justify-center gap-2">
                   {/* 原始問題附件 */}
-                  {r.attachment ? (r.attachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.attachment)} className="text-blue-500 hover:text-blue-700" title="查看原始附件"><ImageIcon size={18}/></button> : <a href={r.attachment} download className="text-green-500 hover:text-green-700" title="下載原始附件"><Paperclip size={18}/></a>) : null}
+                  {r.attachment ? (r.attachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.attachment)} className="text-blue-400 hover:text-blue-300 p-1.5 hover:bg-blue-500/20 rounded-lg transition-all" title="查看原始附件"><ImageIcon size={18}/></button> : <a href={r.attachment} download className="text-emerald-400 hover:text-emerald-300 p-1.5 hover:bg-emerald-500/20 rounded-lg transition-all" title="下載原始附件"><Paperclip size={18}/></a>) : null}
                   {/* 改善對策附件 */}
-                  {r.improvementAttachment ? (r.improvementAttachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.improvementAttachment)} className="text-purple-500 hover:text-purple-700" title={`查看改善附件: ${r.improvementAttachmentName || '圖片'}`}><ImageIcon size={18}/></button> : <a href={r.improvementAttachment} download={r.improvementAttachmentName || '改善附件'} className="text-orange-500 hover:text-orange-700" title={`下載改善附件: ${r.improvementAttachmentName || '檔案'}`}><Paperclip size={18}/></a>) : null}
+                  {r.improvementAttachment ? (r.improvementAttachment.startsWith('data:image') ? <button onClick={() => onViewImage(r.improvementAttachment)} className="text-purple-400 hover:text-purple-300 p-1.5 hover:bg-purple-500/20 rounded-lg transition-all" title={`查看改善附件: ${r.improvementAttachmentName || '圖片'}`}><ImageIcon size={18}/></button> : <a href={r.improvementAttachment} download={r.improvementAttachmentName || '改善附件'} className="text-orange-400 hover:text-orange-300 p-1.5 hover:bg-orange-500/20 rounded-lg transition-all" title={`下載改善附件: ${r.improvementAttachmentName || '檔案'}`}><Paperclip size={18}/></a>) : null}
                   {/* 都沒有附件時顯示 - */}
-                  {!r.attachment && !r.improvementAttachment && '-'}
+                  {!r.attachment && !r.improvementAttachment && <span className="text-slate-600">-</span>}
                 </td>
-                <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.status === '已改善' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span></td>
-                <td className="px-6 py-4 text-center flex justify-center gap-2">
+                <td className="px-6 py-4 text-center">
+                  <span className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${r.status === '已改善' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>{r.status}</span>
+                </td>
+                <td className="px-6 py-4 text-center flex justify-center gap-1">
                   {/* 編輯權限：管理員 或 新增該紀錄的人 */}
                   {(currentUser.role === 'admin' || r.createdByUser === currentUser.username) && (
-                    <button onClick={() => onEdit(r)} className="text-blue-400 hover:text-blue-600" title="編輯"><Edit size={16} /></button>
+                    <button onClick={() => onEdit(r)} className="text-blue-400 hover:text-blue-300 p-2 hover:bg-blue-500/20 rounded-lg transition-all" title="編輯"><Edit size={16} /></button>
                   )}
                   {/* 刪除權限：僅管理員 */}
                   {currentUser.role === 'admin' && (
-                    <button onClick={() => onDelete(r.id)} className="text-gray-400 hover:text-red-600" title="刪除"><Trash2 size={16} /></button>
+                    <button onClick={() => onDelete(r.id)} className="text-slate-500 hover:text-red-400 p-2 hover:bg-red-500/20 rounded-lg transition-all" title="刪除"><Trash2 size={16} /></button>
                   )}
                 </td>
               </tr>
@@ -3195,18 +3486,19 @@ ${indicatorsText}
 };
 
 const KpiCard = ({ title, value, subtext, icon: Icon, trend }) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-    <div className="flex justify-between items-start">
+  <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-white/10 hover:bg-white/10 transition-all duration-300 group relative overflow-hidden">
+    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-white/5 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+    <div className="flex justify-between items-start relative">
       <div>
-        <p className="text-sm font-medium text-slate-500">{title}</p>
-        <h3 className="text-2xl font-bold text-slate-900 mt-2">{value}</h3>
+        <p className="text-sm font-medium text-slate-400">{title}</p>
+        <h3 className="text-3xl font-bold text-white mt-2">{value}</h3>
       </div>
-      <div className={`p-2 rounded-lg ${trend === 'up' ? 'bg-green-50' : trend === 'down' ? 'bg-red-50' : 'bg-slate-50'}`}>
-        <Icon className={`w-6 h-6 ${trend === 'up' ? 'text-green-600' : trend === 'down' ? 'text-red-600' : 'text-slate-600'}`} />
+      <div className={`p-3 rounded-xl ${trend === 'up' ? 'bg-emerald-500/20 ring-1 ring-emerald-500/30' : trend === 'down' ? 'bg-red-500/20 ring-1 ring-red-500/30' : 'bg-slate-500/20 ring-1 ring-slate-500/30'}`}>
+        <Icon className={`w-6 h-6 ${trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-red-400' : 'text-slate-400'}`} />
       </div>
     </div>
     <div className="mt-4 flex items-center text-sm">
-      <span className={trend === 'up' ? 'text-green-600 font-medium' : 'text-slate-600'}>
+      <span className={`${trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-red-400' : 'text-slate-500'} font-medium`}>
         {subtext}
       </span>
     </div>
@@ -3362,26 +3654,34 @@ const KPIApp = ({ onBackToMenu }) => {
   const filteredData = data.filter(p => (p.name.includes(searchTerm) || p.department.includes(searchTerm)) && (dashboardMonth === 'All' ? true : p.month === dashboardMonth));
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <nav className="bg-slate-900 text-white shadow-lg sticky top-0 z-30">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 font-sans text-slate-900">
+      <nav className="bg-slate-900/50 backdrop-blur-xl text-white shadow-2xl sticky top-0 z-30 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3"><div className="p-2 bg-blue-600 rounded-lg"><Target className="w-6 h-6 text-white"/></div><span className="font-bold text-xl">KPI 績效系統</span></div>
-          <div className="flex space-x-4">
-            <button onClick={() => setActiveTab('dashboard')} className={`px-3 py-2 rounded-md text-sm font-medium flex items-center ${activeTab === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white'}`}><LayoutDashboard className="w-4 h-4 mr-2"/>儀表板</button>
-            <button onClick={() => setActiveTab('analysis')} className={`px-3 py-2 rounded-md text-sm font-medium flex items-center ${activeTab === 'analysis' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white'}`}><LineChartIcon className="w-4 h-4 mr-2"/>個人分析</button>
-            <button onClick={() => setActiveTab('list')} className={`px-3 py-2 rounded-md text-sm font-medium flex items-center ${activeTab === 'list' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white'}`}><FileText className="w-4 h-4 mr-2"/>報表</button>
-            <button onClick={() => setActiveTab('entry')} className={`px-3 py-2 rounded-md text-sm font-medium flex items-center ${activeTab === 'entry' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:text-white'}`}><PlusCircle className="w-4 h-4 mr-2"/>新增</button>
-            <button onClick={onBackToMenu} className="px-3 py-2 rounded-md text-sm font-medium flex items-center bg-red-600 text-white hover:bg-red-700 ml-4"><LogOut className="w-4 h-4 mr-2"/>返回</button>
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl shadow-lg shadow-blue-500/25">
+              <Target className="w-6 h-6 text-white"/>
+            </div>
+            <span className="font-bold text-xl bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">KPI 績效系統</span>
+          </div>
+          <div className="flex space-x-2">
+            <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center transition-all ${activeTab === 'dashboard' ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}><LayoutDashboard className="w-4 h-4 mr-2"/>儀表板</button>
+            <button onClick={() => setActiveTab('analysis')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center transition-all ${activeTab === 'analysis' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}><LineChartIcon className="w-4 h-4 mr-2"/>個人分析</button>
+            <button onClick={() => setActiveTab('list')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center transition-all ${activeTab === 'list' ? 'bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-lg shadow-emerald-500/25' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}><FileText className="w-4 h-4 mr-2"/>報表</button>
+            <button onClick={() => setActiveTab('entry')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center transition-all ${activeTab === 'entry' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}><PlusCircle className="w-4 h-4 mr-2"/>新增</button>
+            <button onClick={onBackToMenu} className="px-4 py-2 rounded-xl text-sm font-medium flex items-center bg-white/10 text-white hover:bg-white/20 ml-4 border border-white/10 transition-all"><LogOut className="w-4 h-4 mr-2"/>返回</button>
           </div>
         </div>
       </nav>
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-8"><h1 className="text-2xl font-bold">{activeTab === 'dashboard' ? '績效儀表板' : activeTab === 'analysis' ? '年度個人分析' : activeTab === 'list' ? '詳細報表' : '資料填寫'}</h1></div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white">{activeTab === 'dashboard' ? '績效儀表板' : activeTab === 'analysis' ? '年度個人分析' : activeTab === 'list' ? '詳細報表' : '資料填寫'}</h1>
+          <p className="text-slate-400 mt-1">即時追蹤與分析員工績效表現</p>
+        </div>
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-              <div className="flex items-center space-x-2"><Calendar className="w-5 h-5 text-blue-600" /><span className="font-bold text-slate-700">數據月份：</span><select value={dashboardMonth} onChange={(e) => setDashboardMonth(e.target.value)} className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg p-2 outline-none font-medium">{MONTH_ORDER.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-              <div className="text-sm text-slate-500">顯示 {dashboardData.length} 筆資料</div>
+            <div className="flex justify-between items-center bg-white/5 backdrop-blur-xl p-5 rounded-2xl shadow-xl border border-white/10">
+              <div className="flex items-center space-x-3"><Calendar className="w-5 h-5 text-blue-400" /><span className="font-bold text-slate-300">數據月份：</span><select value={dashboardMonth} onChange={(e) => setDashboardMonth(e.target.value)} className="bg-white/10 border border-white/20 text-white text-sm rounded-xl p-2.5 outline-none font-medium">{MONTH_ORDER.map(m => <option key={m} value={m} className="bg-slate-800">{m}</option>)}</select></div>
+              <div className="text-sm text-slate-400 px-3 py-1.5 bg-white/5 rounded-lg">顯示 {dashboardData.length} 筆資料</div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <KpiCard title="該月總達成率" value={`${overallRate}%`} subtext="KPI 指標平均" icon={TrendingUp} trend="up" />
@@ -3390,24 +3690,41 @@ const KPIApp = ({ onBackToMenu }) => {
               <KpiCard title="完美達成" value={dashboardData.filter(p => calculateRate(p.metrics) === 100).length.toString()} subtext="達成率 100%" icon={CheckCircle2} trend="up" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2"><h3 className="text-lg font-bold text-slate-800 mb-4">{dashboardMonth} - 部門績效總覽</h3><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={departmentPerformance} layout="vertical" margin={{ left: 40 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" domain={[0, 100]} unit="%" /><YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} /><RechartsTooltip cursor={{fill: '#f8fafc'}} /><Bar dataKey="rate" name="達成率" radius={[0, 4, 4, 0]}>{departmentPerformance.map((entry, index) => (<Cell key={`cell-${index}`} fill={DEPARTMENT_COLORS[entry.name] || '#cbd5e1'} />))}</Bar></BarChart></ResponsiveContainer></div></div>
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100"><h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center text-red-600"><AlertCircle className="w-5 h-5 mr-2" /> {dashboardMonth} 異常項目</h3><div className="space-y-4 max-h-64 overflow-y-auto pr-2">{missedMetrics.length > 0 ? (missedMetrics.map((item, idx) => (<div key={idx} className="p-3 bg-red-50 rounded-lg border border-red-100"><div className="flex justify-between items-center mb-1"><span className="font-bold text-slate-700">{item.person}</span><span className="text-xs text-slate-500 bg-white px-2 py-0.5 rounded border">{item.dept}</span></div><div className="text-sm text-red-700 font-medium">{item.name}</div><div className="text-xs text-red-600 mt-1">目標: {item.target} | 實際: {item.actual}</div></div>))) : (<div className="text-center py-8 text-slate-400">本月無異常項目，表現優異！</div>)}</div></div>
+              <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-white/10 lg:col-span-2">
+                <h3 className="text-lg font-bold text-white mb-4">{dashboardMonth} - 部門績效總覽</h3>
+                <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={departmentPerformance} layout="vertical" margin={{ left: 40 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.1)" /><XAxis type="number" domain={[0, 100]} unit="%" stroke="#94a3b8" /><YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12, fill: '#94a3b8'}} stroke="#94a3b8" /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor:'rgba(30,41,59,0.95)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'12px'}} /><Bar dataKey="rate" name="達成率" radius={[0, 4, 4, 0]}>{departmentPerformance.map((entry, index) => (<Cell key={`cell-${index}`} fill={DEPARTMENT_COLORS[entry.name] || '#cbd5e1'} />))}</Bar></BarChart></ResponsiveContainer></div>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-white/10">
+                <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center"><AlertCircle className="w-5 h-5 mr-2" /> {dashboardMonth} 異常項目</h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">{missedMetrics.length > 0 ? (missedMetrics.map((item, idx) => (<div key={idx} className="p-4 bg-red-500/10 rounded-xl border border-red-500/20"><div className="flex justify-between items-center mb-2"><span className="font-bold text-white">{item.person}</span><span className="text-xs text-slate-400 bg-white/10 px-2 py-1 rounded-lg">{item.dept}</span></div><div className="text-sm text-red-400 font-medium">{item.name}</div><div className="text-xs text-red-300/70 mt-1">目標: {item.target} | 實際: {item.actual}</div></div>))) : (<div className="text-center py-8 text-slate-500">本月無異常項目，表現優異！</div>)}</div>
+              </div>
             </div>
           </div>
         )}
         {activeTab === 'analysis' && (
           <div className="space-y-6 animate-fade-in">
-             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-               <div className="flex flex-col md:flex-row justify-between items-center mb-6"><h3 className="text-lg font-bold text-slate-800 flex items-center mb-4 md:mb-0"><LineChartIcon className="w-6 h-6 mr-2 text-purple-600" />個人年度績效趨勢</h3><div className="flex items-center space-x-3"><span className="text-sm font-medium text-slate-600">選擇分析對象：</span><select value={analysisPerson} onChange={(e) => setAnalysisPerson(e.target.value)} className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg p-2 outline-none font-medium min-w-[150px]">{uniquePeople.map(p => <option key={p} value={p}>{p}</option>)}</select></div></div>
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6"><div className="bg-purple-50 p-4 rounded-lg text-center"><p className="text-xs text-purple-600 font-bold uppercase">年度平均分</p><p className="text-3xl font-bold text-purple-900 mt-1">{analysisStats.avg}</p></div><div className="bg-green-50 p-4 rounded-lg text-center"><p className="text-xs text-green-600 font-bold uppercase">歷史最高分</p><p className="text-3xl font-bold text-green-900 mt-1">{analysisStats.max}</p></div><div className="bg-slate-50 p-4 rounded-lg text-center"><p className="text-xs text-slate-500 font-bold uppercase">歷史最低分</p><p className="text-3xl font-bold text-slate-700 mt-1">{analysisStats.min}</p></div><div className="bg-blue-50 p-4 rounded-lg text-center"><p className="text-xs text-blue-600 font-bold uppercase">所屬部門</p><p className="text-lg font-bold text-blue-900 mt-2">{data.find(d => d.name === analysisPerson)?.department || 'N/A'}</p></div></div>
-               <div className="h-80 w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={analysisChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="month" /><YAxis domain={[0, 100]} /><RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} /><Legend /><Line type="monotone" dataKey="score" name="KPI 達成率" stroke="#8b5cf6" strokeWidth={3} activeDot={{ r: 8 }} connectNulls={true} /></LineChart></ResponsiveContainer></div>
+             <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-white/10">
+               <div className="flex flex-col md:flex-row justify-between items-center mb-6">
+                 <h3 className="text-lg font-bold text-white flex items-center mb-4 md:mb-0"><LineChartIcon className="w-6 h-6 mr-2 text-purple-400" />個人年度績效趨勢</h3>
+                 <div className="flex items-center space-x-3"><span className="text-sm font-medium text-slate-400">選擇分析對象：</span><select value={analysisPerson} onChange={(e) => setAnalysisPerson(e.target.value)} className="bg-white/10 border border-white/20 text-white text-sm rounded-xl p-2.5 outline-none font-medium min-w-[150px]">{uniquePeople.map(p => <option key={p} value={p} className="bg-slate-800">{p}</option>)}</select></div>
+               </div>
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                 <div className="bg-purple-500/10 backdrop-blur p-4 rounded-xl text-center border border-purple-500/20"><p className="text-xs text-purple-400 font-bold uppercase">年度平均分</p><p className="text-3xl font-bold text-white mt-1">{analysisStats.avg}</p></div>
+                 <div className="bg-emerald-500/10 backdrop-blur p-4 rounded-xl text-center border border-emerald-500/20"><p className="text-xs text-emerald-400 font-bold uppercase">歷史最高分</p><p className="text-3xl font-bold text-white mt-1">{analysisStats.max}</p></div>
+                 <div className="bg-slate-500/10 backdrop-blur p-4 rounded-xl text-center border border-slate-500/20"><p className="text-xs text-slate-400 font-bold uppercase">歷史最低分</p><p className="text-3xl font-bold text-white mt-1">{analysisStats.min}</p></div>
+                 <div className="bg-blue-500/10 backdrop-blur p-4 rounded-xl text-center border border-blue-500/20"><p className="text-xs text-blue-400 font-bold uppercase">所屬部門</p><p className="text-lg font-bold text-white mt-2">{data.find(d => d.name === analysisPerson)?.department || 'N/A'}</p></div>
+               </div>
+               <div className="h-80 w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={analysisChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" /><XAxis dataKey="month" stroke="#94a3b8" /><YAxis domain={[0, 100]} stroke="#94a3b8" /><RechartsTooltip contentStyle={{backgroundColor:'rgba(30,41,59,0.95)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'12px'}} /><Legend /><Line type="monotone" dataKey="score" name="KPI 達成率" stroke="#a855f7" strokeWidth={3} activeDot={{ r: 8 }} connectNulls={true} /></LineChart></ResponsiveContainer></div>
              </div>
           </div>
         )}
         {activeTab === 'list' && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4"><h3 className="text-lg font-bold text-slate-800 flex items-center"><span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded mr-2">{dashboardMonth}</span>員工列表</h3><div className="relative w-full sm:w-64"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" /><input type="text" placeholder="搜尋姓名或部門..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div></div>
-            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100"><tr><th className="p-4">姓名</th><th className="p-4">部門</th><th className="p-4">月份</th><th className="p-4 text-center">達成率</th><th className="p-4">狀態</th><th className="p-4">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredData.length > 0 ? filteredData.map((person) => { const rate = calculateRate(person.metrics); return (<tr key={person.id} className="hover:bg-slate-50 transition-colors"><td className="p-4 font-medium text-slate-900">{person.name}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-slate-600 text-xs">{person.department}</span></td><td className="p-4 text-slate-500">{person.month}</td><td className="p-4 text-center"><div className="flex items-center justify-center space-x-2"><div className="w-16 bg-slate-200 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${rate === 100 ? 'bg-green-500' : rate >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${rate}%` }}></div></div><span className="text-xs">{rate}%</span></div></td><td className="p-4">{rate === 100 ? <span className="text-green-600 flex items-center text-xs font-bold"><CheckCircle2 className="w-3 h-3 mr-1"/> 優異</span> : rate < 80 ? <span className="text-red-600 flex items-center text-xs font-bold"><AlertCircle className="w-3 h-3 mr-1"/> 需改善</span> : <span className="text-yellow-600 flex items-center text-xs font-bold"><TrendingUp className="w-3 h-3 mr-1"/> 良好</span>}</td><td className="p-4"><div className="flex items-center gap-2"><button onClick={() => setSelectedPerson(person)} className="text-blue-600 hover:text-blue-800 font-medium text-xs flex items-center">查看 <ChevronRight className="w-3 h-3 ml-1" /></button><button onClick={() => handleDeleteRecord(person)} className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50" title="刪除記錄"><Trash2 className="w-4 h-4" /></button></div></td></tr>); }) : (<tr><td colSpan="6" className="p-8 text-center text-slate-400">沒有找到 {dashboardMonth} 符合條件的資料</td></tr>)}</tbody></table></div>
+          <div className="bg-white/5 backdrop-blur-xl rounded-2xl shadow-xl border border-white/10 overflow-hidden">
+            <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <h3 className="text-lg font-bold text-white flex items-center"><span className="bg-blue-500/20 text-blue-400 text-xs px-3 py-1 rounded-lg mr-3">{dashboardMonth}</span>員工列表</h3>
+              <div className="relative w-full sm:w-64"><Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" /><input type="text" placeholder="搜尋姓名或部門..." className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+            </div>
+            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-white/5 text-slate-400 font-semibold border-b border-white/10"><tr><th className="p-4">姓名</th><th className="p-4">部門</th><th className="p-4">月份</th><th className="p-4 text-center">達成率</th><th className="p-4">狀態</th><th className="p-4">操作</th></tr></thead><tbody className="divide-y divide-white/5">{filteredData.length > 0 ? filteredData.map((person) => { const rate = calculateRate(person.metrics); return (<tr key={person.id} className="hover:bg-white/5 transition-colors"><td className="p-4 font-medium text-white">{person.name}</td><td className="p-4"><span className="px-3 py-1.5 bg-slate-700/50 rounded-lg text-slate-300 text-xs border border-slate-600/50">{person.department}</span></td><td className="p-4 text-slate-400">{person.month}</td><td className="p-4 text-center"><div className="flex items-center justify-center space-x-2"><div className="w-16 bg-slate-700 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${rate === 100 ? 'bg-emerald-500' : rate >= 80 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${rate}%` }}></div></div><span className="text-xs text-slate-300">{rate}%</span></div></td><td className="p-4">{rate === 100 ? <span className="text-emerald-400 flex items-center text-xs font-bold"><CheckCircle2 className="w-3 h-3 mr-1"/> 優異</span> : rate < 80 ? <span className="text-red-400 flex items-center text-xs font-bold"><AlertCircle className="w-3 h-3 mr-1"/> 需改善</span> : <span className="text-amber-400 flex items-center text-xs font-bold"><TrendingUp className="w-3 h-3 mr-1"/> 良好</span>}</td><td className="p-4"><div className="flex items-center gap-2"><button onClick={() => setSelectedPerson(person)} className="text-blue-400 hover:text-blue-300 font-medium text-xs flex items-center px-3 py-1.5 bg-blue-500/10 rounded-lg hover:bg-blue-500/20 transition-all">查看 <ChevronRight className="w-3 h-3 ml-1" /></button><button onClick={() => handleDeleteRecord(person)} className="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-500/20 transition-all" title="刪除記錄"><Trash2 className="w-4 h-4" /></button></div></td></tr>); }) : (<tr><td colSpan="6" className="p-8 text-center text-slate-500">沒有找到 {dashboardMonth} 符合條件的資料</td></tr>)}</tbody></table></div>
           </div>
         )}
         {activeTab === 'entry' && (
@@ -3626,16 +3943,21 @@ const TQMApp = ({ appUser, onLogout, onBackToMenu }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex font-sans text-slate-900">
       {viewImage && <ImageModal src={viewImage} onClose={() => setViewImage(null)} />}
       {editingRecord && <EditRecordModal record={editingRecord} onClose={() => setEditingRecord(null)} onUpdate={handleUpdateRecord} />}
 
-      <aside className="w-64 bg-slate-900 text-white flex-shrink-0 hidden md:flex flex-col">
-        <div className="p-6 border-b border-slate-700">
-          <h1 className="text-xl font-bold flex items-center gap-2"><CheckCircle2 className="text-blue-400" />TQM 管理系統</h1>
-          <div className="mt-4 flex items-center gap-3 bg-slate-800 p-3 rounded-lg">
-             <div className="bg-blue-600 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">{appUser.displayName[0]}</div>
-             <div><p className="text-sm font-medium">{appUser.displayName}</p><p className="text-xs text-slate-400 flex items-center gap-1">{appUser.role === 'admin' ? <Shield size={10} className="text-purple-400"/> : <User size={10}/>}{appUser.role === 'admin' ? '系統管理員' : '一般使用者'}</p></div>
+      <aside className="w-72 bg-slate-900/50 backdrop-blur-xl text-white flex-shrink-0 hidden md:flex flex-col border-r border-white/10">
+        <div className="p-6 border-b border-white/10">
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl shadow-lg shadow-blue-500/25">
+              <CheckCircle2 className="w-5 h-5 text-white" />
+            </div>
+            <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">TQM 管理系統</span>
+          </h1>
+          <div className="mt-5 flex items-center gap-3 bg-white/5 backdrop-blur p-4 rounded-2xl border border-white/10">
+             <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl w-10 h-10 flex items-center justify-center text-sm font-bold shadow-lg">{appUser.displayName[0]}</div>
+             <div><p className="text-sm font-semibold text-white">{appUser.displayName}</p><p className="text-xs text-slate-400 flex items-center gap-1">{appUser.role === 'admin' ? <Shield size={10} className="text-purple-400"/> : <User size={10}/>}{appUser.role === 'admin' ? '系統管理員' : '一般使用者'}</p></div>
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">
@@ -3643,28 +3965,31 @@ const TQMApp = ({ appUser, onLogout, onBackToMenu }) => {
           <NavButton active={activeTab === 'entry'} onClick={() => setActiveTab('entry')} icon={PlusCircle} label="新增紀錄" />
           <NavButton active={activeTab === 'list'} onClick={() => setActiveTab('list')} icon={List} label="紀錄清單" />
           <NavButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={BarChart3} label="統計分析" />
-          {appUser.role === 'admin' && (<><div className="border-t border-slate-700 my-2 pt-2 text-xs text-slate-500 px-3">管理功能</div><NavButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="帳號管理" /></>)}
+          {appUser.role === 'admin' && (<><div className="border-t border-white/10 my-3 pt-3 text-xs text-slate-500 px-3 uppercase tracking-wider">管理功能</div><NavButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="帳號管理" /></>)}
         </nav>
-        <div className="p-4 border-t border-slate-800 space-y-2">
-          <button onClick={handleExportDB} className="w-full flex items-center justify-center gap-2 text-green-400 hover:text-green-300 transition-colors py-2 text-sm border border-slate-700 rounded hover:bg-slate-800">
+        <div className="p-4 border-t border-white/10 space-y-2">
+          <button onClick={handleExportDB} className="w-full flex items-center justify-center gap-2 text-emerald-400 hover:text-white hover:bg-emerald-500/20 transition-all py-3 text-sm border border-emerald-500/30 rounded-xl backdrop-blur">
              <FileJson size={16} /> 匯出資料庫 (備份)
           </button>
         </div>
       </aside>
 
-      <div className="md:hidden fixed top-0 w-full bg-slate-900 text-white z-50 p-4 flex justify-between items-center">
-        <span className="font-bold">TQM System</span>
-        <button onClick={handleLogout}><LogOut size={20} /></button>
+      <div className="md:hidden fixed top-0 w-full bg-slate-900/90 backdrop-blur-xl text-white z-50 p-4 flex justify-between items-center border-b border-white/10">
+        <span className="font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">TQM System</span>
+        <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><LogOut size={20} /></button>
       </div>
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto mt-12 md:mt-0">
         {activeTab === 'dashboard' && (
           <div className="space-y-6 max-w-7xl mx-auto">
              <header className="flex justify-between items-center mb-6">
-               <h2 className="text-2xl font-bold text-slate-800">年度 TQM 總覽</h2>
+               <div>
+                 <h2 className="text-3xl font-bold text-white mb-1">年度 TQM 總覽</h2>
+                 <p className="text-slate-400">即時監控品質管理數據</p>
+               </div>
                <div className="flex items-center gap-3">
-                 <button onClick={handleExportCSV} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"><Download size={16} /> 匯出報表</button>
-                 <button onClick={onBackToMenu} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"><LogOut size={16} /> 返回</button>
+                 <button onClick={handleExportCSV} className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-5 py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/25"><Download size={16} /> 匯出報表</button>
+                 <button onClick={onBackToMenu} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm transition-all backdrop-blur border border-white/10"><LogOut size={16} /> 返回</button>
                </div>
              </header>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -3674,28 +3999,38 @@ const TQMApp = ({ appUser, onLogout, onBackToMenu }) => {
               <StatCard title="待處理案件" value={stats.unresolved} subtext="需追蹤進度" icon={Filter} colorClass="bg-orange-500 text-orange-600" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80"><ResponsiveContainer><LineChart data={chartData.trendData}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name"/><YAxis/><Tooltip/><Legend/><Line type="monotone" dataKey="案件數" stroke="#3b82f6"/><Line type="monotone" dataKey="重複" stroke="#ef4444"/></LineChart></ResponsiveContainer></div>
-               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80"><ResponsiveContainer><PieChart><Pie data={chartData.typeData} cx="50%" cy="50%" outerRadius={80} fill="#8884d8" dataKey="value" label>{chartData.typeData.map((e,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer></div>
+               <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-white/10 h-80">
+                 <h3 className="text-white font-semibold mb-4">月度趨勢</h3>
+                 <ResponsiveContainer><LineChart data={chartData.trendData}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)"/><XAxis dataKey="name" stroke="#94a3b8"/><YAxis stroke="#94a3b8"/><Tooltip contentStyle={{backgroundColor:'rgba(30,41,59,0.95)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'12px'}}/><Legend/><Line type="monotone" dataKey="案件數" stroke="#3b82f6" strokeWidth={2}/><Line type="monotone" dataKey="重複" stroke="#ef4444" strokeWidth={2}/></LineChart></ResponsiveContainer>
+               </div>
+               <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-white/10 h-80">
+                 <h3 className="text-white font-semibold mb-4">問題類型分佈</h3>
+                 <ResponsiveContainer><PieChart><Pie data={chartData.typeData} cx="50%" cy="50%" outerRadius={80} fill="#8884d8" dataKey="value" label>{chartData.typeData.map((e,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip contentStyle={{backgroundColor:'rgba(30,41,59,0.95)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'12px'}}/></PieChart></ResponsiveContainer>
+               </div>
             </div>
           </div>
         )}
-        {activeTab === 'entry' && (<div className="max-w-2xl mx-auto"><h2 className="text-2xl font-bold text-slate-800 mb-6">新增 TQM 紀錄</h2><EntryForm onSubmit={handleAddRecord} currentUser={appUser} /></div>)}
+        {activeTab === 'entry' && (<div className="max-w-2xl mx-auto"><h2 className="text-2xl font-bold text-white mb-6">新增 TQM 紀錄</h2><EntryForm onSubmit={handleAddRecord} currentUser={appUser} /></div>)}
         {activeTab === 'list' && (
           <div className="max-w-7xl mx-auto space-y-6">
-            <div className="flex justify-between items-end"><h2 className="text-2xl font-bold text-slate-800">歷史紀錄清單</h2>
+            <div className="flex justify-between items-end">
+              <div>
+                <h2 className="text-2xl font-bold text-white">歷史紀錄清單</h2>
+                <p className="text-slate-400 text-sm mt-1">管理與追蹤所有品質問題紀錄</p>
+              </div>
             <div className="flex items-center gap-2">
-              <select value={importEncoding} onChange={e=>setImportEncoding(e.target.value)} className="text-sm border border-gray-300 rounded-lg p-2 bg-white">
-                <option value="UTF-8">UTF-8</option>
-                <option value="Big5">Big5 (Excel)</option>
+              <select value={importEncoding} onChange={e=>setImportEncoding(e.target.value)} className="text-sm border border-white/20 rounded-xl p-2.5 bg-white/10 text-white backdrop-blur">
+                <option value="UTF-8" className="bg-slate-800">UTF-8</option>
+                <option value="Big5" className="bg-slate-800">Big5 (Excel)</option>
               </select>
-              <label className="flex items-center gap-2 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm transition-colors border border-blue-200 shadow-sm"><Import size={16} /><span>匯入舊資料 (CSV)</span><input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" /></label>
+              <label className="flex items-center gap-2 cursor-pointer bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-4 py-2.5 rounded-xl text-sm transition-all border border-blue-500/30 shadow-lg backdrop-blur"><Import size={16} /><span>匯入舊資料 (CSV)</span><input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" /></label>
             </div></div>
             <RecordTable records={records} onDelete={handleDelete} onViewImage={setViewImage} onEdit={setEditingRecord} currentUser={appUser} />
           </div>
         )}
         {activeTab === 'analysis' && (
            <div className="max-w-7xl mx-auto space-y-6">
-             <h2 className="text-2xl font-bold text-slate-800 mb-6">進階統計分析</h2>
+             <h2 className="text-2xl font-bold text-white mb-6">進階統計分析</h2>
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-96"><h3 className="mb-4 font-bold">部門案件統計</h3><ResponsiveContainer><BarChart data={chartData.deptData} layout="vertical"><CartesianGrid horizontal vertical={false}/><XAxis type="number"/><YAxis dataKey="name" type="category" width={80}/><Tooltip/><Bar dataKey="value" fill="#6366f1"/></BarChart></ResponsiveContainer></div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-96 overflow-y-auto"><h3 className="mb-4 font-bold">類型排行</h3><table className="w-full text-sm text-left"><thead><tr className="bg-gray-50"><th className="p-2">類型</th><th className="p-2">數量</th></tr></thead><tbody>{chartData.typeData.sort((a,b)=>b.value-a.value).map(d=><tr key={d.name} className="border-b"><td className="p-2">{d.name}</td><td className="p-2">{d.value}</td></tr>)}</tbody></table></div>
@@ -5044,54 +5379,63 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-           {filteredMachines.map(machine => (
+           {filteredMachines.map((machine, index) => (
              <div 
                 key={machine.id} 
                 onClick={() => onSelect(machine)}
-                className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group relative"
+                className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 cursor-pointer group relative animate-fadeIn"
+                style={{ animationDelay: `${index * 50}ms` }}
              >
-                <div className="absolute top-3 right-3 z-10 flex gap-2">
+                <div className="absolute top-4 right-4 z-10 flex gap-2">
                     <button 
                         onClick={(e) => handleOpenEdit(machine, e)}
-                        className="p-1.5 bg-white/90 backdrop-blur rounded-full text-slate-500 hover:text-blue-600 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-2 bg-white/95 backdrop-blur-sm rounded-xl text-slate-500 hover:text-blue-600 shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
                         title="編輯"
                     >
-                        <Edit size={14} />
+                        <Edit size={16} />
                     </button>
                 </div>
 
-                <div className="h-40 bg-slate-100 relative overflow-hidden">
-                   <img src={machine.image} alt={machine.name} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                   <div className={`absolute top-3 left-3 px-2 py-1 rounded text-xs font-bold shadow-sm ${
-                      machine.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                <div className="h-44 bg-gradient-to-br from-slate-100 to-slate-200 relative overflow-hidden">
+                   <img src={machine.image} alt={machine.name} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" />
+                   <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                   <div className={`absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg backdrop-blur-sm ${
+                      machine.status === 'Active' ? 'bg-emerald-500/90 text-white' : 'bg-amber-500/90 text-white'
                    }`}>
-                      {machine.status}
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                        {machine.status === 'Active' ? '運作中' : '需關注'}
+                      </span>
                    </div>
                 </div>
                 <div className="p-5">
-                   <h3 className="font-bold text-lg text-slate-800 mb-1 truncate" title={machine.name}>{machine.name}</h3>
-                   <p className="text-xs text-slate-500 mb-4">Code: {machine.code}</p>
+                   <h3 className="font-bold text-lg text-slate-800 mb-1 truncate group-hover:text-blue-600 transition-colors" title={machine.name}>{machine.name}</h3>
+                   <p className="text-xs text-slate-400 mb-4 font-medium">代碼: {machine.code}</p>
                    
                    <div className="flex justify-between items-center text-sm text-slate-600 mb-2">
-                      <span>專案進度</span>
-                      <span className="font-bold">{machine.progress}%</span>
+                      <span className="font-medium">專案進度</span>
+                      <span className="font-bold text-slate-800">{machine.progress}%</span>
                    </div>
-                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${machine.progress > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${machine.progress}%` }}></div>
+                   <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-500 ${
+                        machine.progress >= 80 ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 
+                        machine.progress >= 50 ? 'bg-gradient-to-r from-blue-400 to-blue-600' : 
+                        'bg-gradient-to-r from-amber-400 to-amber-600'
+                      }`} style={{ width: `${machine.progress}%` }}></div>
                    </div>
                    
-                   <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                   <div className="mt-5 pt-4 border-t border-slate-100 flex justify-between items-center">
                       <div className="flex-1">
                         {machine.members ? (
                           <>
-                            <div className="flex -space-x-2 mb-1">
+                            <div className="flex -space-x-2 mb-1.5">
                               {machine.members.split(',').slice(0, 4).map((member, i) => (
-                                <div key={i} className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white flex items-center justify-center text-white text-xs font-bold" title={member.trim()}>
+                                <div key={i} className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-2 border-white flex items-center justify-center text-white text-xs font-bold shadow-sm" title={member.trim()}>
                                   {member.trim().charAt(0)}
                                 </div>
                               ))}
                               {machine.members.split(',').length > 4 && (
-                                <div className="w-6 h-6 rounded-full bg-slate-300 border-2 border-white flex items-center justify-center text-slate-600 text-xs font-bold">
+                                <div className="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-slate-600 text-xs font-bold">
                                   +{machine.members.split(',').length - 4}
                                 </div>
                               )}
@@ -5105,8 +5449,8 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
                           <p className="text-xs text-slate-400">未設定成員</p>
                         )}
                       </div>
-                      <span className="text-blue-600 text-sm font-medium group-hover:underline flex items-center ml-2">
-                         進入專案 <ChevronRight size={16} />
+                      <span className="text-blue-600 text-sm font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
+                         進入 <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
                       </span>
                    </div>
                 </div>
@@ -5115,10 +5459,13 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
            
            <div 
               onClick={handleOpenAdd}
-              className="bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-6 text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors cursor-pointer h-full min-h-[300px]"
+              className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-8 text-slate-400 hover:border-blue-400 hover:text-blue-600 hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 cursor-pointer h-full min-h-[300px] group"
            >
-              <PlusCircle size={48} className="mb-4 opacity-50" />
-              <span className="font-medium">新增機台專案</span>
+              <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                <PlusCircle size={40} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <span className="font-semibold text-lg">新增機台專案</span>
+              <span className="text-sm mt-1">點擊開始建立</span>
            </div>
         </div>
 
@@ -7540,61 +7887,71 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     }
   };
 
-  const NavItem = ({ id, icon: Icon, label }) => (
-    <button
-      onClick={() => setCurrentView(id)}
-      className={`w-full flex items-center px-4 py-3 mb-1 rounded-lg transition-all ${
-        currentView === id || (currentView === 'detail' && id === 'list')
-          ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
-          : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
-      }`}
-    >
-      <Icon size={20} className="mr-3" />
-      <span className="font-medium text-sm">{label}</span>
-    </button>
-  );
+  const NavItem = ({ id, icon: Icon, label }) => {
+    const isActive = currentView === id || (currentView === 'detail' && id === 'list');
+    return (
+      <button
+        onClick={() => setCurrentView(id)}
+        className={`w-full flex items-center px-4 py-3.5 mb-2 rounded-xl transition-all duration-200 group ${
+          isActive
+            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30' 
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+        }`}
+      >
+        <div className={`p-2 rounded-lg mr-3 transition-all ${
+          isActive ? 'bg-white/20' : 'bg-slate-100 group-hover:bg-slate-200'
+        }`}>
+          <Icon size={18} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-700'} />
+        </div>
+        <span className="font-medium text-sm">{label}</span>
+        {isActive && <ChevronRight size={16} className="ml-auto" />}
+      </button>
+    );
+  };
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-800 font-sans">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col">
-        <div className="p-6">
-          <div className="flex items-center gap-2 text-blue-700 font-bold text-xl">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-              <Activity size={20} />
+    <div className="flex h-screen bg-gradient-to-br from-slate-100 to-slate-50 text-slate-800 font-sans">
+      {/* Sidebar - 美化版 */}
+      <aside className="w-72 bg-white/80 backdrop-blur-xl border-r border-slate-200/50 hidden md:flex flex-col shadow-xl">
+        <div className="p-6 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+              <Activity size={24} />
             </div>
-            R&D Nexus
+            <div>
+              <div className="font-bold text-xl bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent">R&D Nexus</div>
+              <p className="text-xs text-slate-400">研發進度追蹤系統</p>
+            </div>
           </div>
-          <p className="text-xs text-slate-400 mt-1 pl-10">研發進度追蹤系統</p>
           {machine && (
-             <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                <div className="text-xs text-slate-400 mb-1">Current Machine</div>
-                <div className="font-bold text-slate-700 text-sm flex items-center gap-2">
-                   <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+             <div className="mt-5 p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-2xl border border-slate-200/50">
+                <div className="text-xs text-slate-500 mb-1 font-medium">目前機台</div>
+                <div className="font-bold text-slate-700 flex items-center gap-2">
+                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50"></div>
                    {machine.name}
                 </div>
              </div>
           )}
         </div>
 
-        <nav className="flex-1 px-4 py-4 overflow-y-auto">
-          <div className="mb-6">
-            <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">管理中心</p>
+        <nav className="flex-1 px-3 py-6 overflow-y-auto">
+          <div className="mb-8">
+            <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">管理中心</p>
             <NavItem id="dashboard" icon={LayoutDashboard} label="總覽儀表板" />
             <NavItem id="list" icon={ListTodo} label="專案列表" />
             <NavItem id="analytics" icon={BarChart3} label="分析報告" />
             <NavItem id="spec-discussion" icon={ExternalLink} label="專案規格討論歷程" />
           </div>
           
-          <div className="mb-6">
-            <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">個人專區</p>
+          <div className="mb-8">
+            <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">個人專區</p>
             <NavItem id="engineer" icon={UserCircle} label="我的績效與任務" />
           </div>
         </nav>
 
-        <div className="p-4 border-t border-slate-100 space-y-2">
-          <button className="flex items-center px-4 py-3 text-slate-400 hover:text-slate-600 w-full rounded-lg hover:bg-slate-50 transition-colors">
-            <Settings size={20} className="mr-3" />
+        <div className="p-4 border-t border-slate-100">
+          <button className="flex items-center px-4 py-3 text-slate-500 hover:text-slate-700 w-full rounded-xl hover:bg-slate-100 transition-all group">
+            <Settings size={20} className="mr-3 group-hover:rotate-90 transition-transform duration-300" />
             <span className="font-medium text-sm">系統設定</span>
           </button>
         </div>
@@ -7603,33 +7960,41 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Header (Mobile Only / Utility) */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 md:hidden">
-          <div className="font-bold text-lg text-slate-800">R&D Nexus</div>
-          <button className="p-2 text-slate-500"><MoreVertical /></button>
+        <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 flex items-center justify-between px-6 md:hidden shadow-sm">
+          <div className="font-bold text-lg bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent">R&D Nexus</div>
+          <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"><MoreVertical /></button>
         </header>
         
-        <header className="hidden md:flex h-16 bg-white border-b border-slate-200 items-center justify-between px-8">
-            <div className="flex items-center text-slate-400 text-sm">
-                <span className="mr-2">最後更新時間: 2025-08-20 10:00</span>
-                <button className="text-blue-600 hover:underline">重新整理</button>
+        <header className="hidden md:flex h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 items-center justify-between px-8 shadow-sm">
+            <div className="flex items-center gap-4 text-slate-500 text-sm">
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl">
+                  <Clock size={16} />
+                  <span>最後更新時間: {new Date().toLocaleString('zh-TW')}</span>
+                </div>
+                <button className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-3 py-2 hover:bg-blue-50 rounded-lg transition-colors">
+                  <RefreshCw size={14} />
+                  重新整理
+                </button>
             </div>
-            <div className="flex items-center gap-4">
-                 <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm border border-indigo-200">
-                    {user?.displayName?.[0] || 'A'}
+            <div className="flex items-center gap-5">
+                 <div className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-indigo-500/30">
+                       {user?.displayName?.[0] || 'A'}
+                    </div>
+                    <div className="text-sm">
+                       <p className="font-bold text-slate-700">{user?.displayName || 'Admin User'}</p>
+                       <p className="text-xs text-slate-500">{user?.department || '研發部經理'}</p>
+                    </div>
                  </div>
-                 <div className="text-sm">
-                    <p className="font-bold text-slate-700">{user?.displayName || 'Admin User'}</p>
-                    <p className="text-xs text-slate-500">{user?.department || '研發部經理'}</p>
-                 </div>
-                 <button onClick={onBackToMachines} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
+                 <button onClick={onBackToMachines} className="flex items-center gap-2 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white px-5 py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-red-500/30 font-medium">
                     <LogOut size={16} /> 返回
                  </button>
             </div>
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-7xl mx-auto">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-gradient-to-br from-slate-50 to-slate-100">
+          <div className="max-w-7xl mx-auto animate-fadeIn">
             {renderContent()}
           </div>
         </div>
@@ -10431,38 +10796,53 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   };
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-6xl w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">歡迎回來，{user.displayName}</h1>
-          <p className="text-slate-500 text-lg">請選擇您要進入的系統</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-6 relative overflow-hidden">
+      {/* 背景動態效果 */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style={{animationDelay: '1s'}}></div>
+        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-cyan-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style={{animationDelay: '2s'}}></div>
+      </div>
+      
+      <div className="relative max-w-6xl w-full">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full text-blue-300 text-sm mb-4">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            系統連線正常
+          </div>
+          <h1 className="text-5xl font-bold text-white mb-3">
+            歡迎回來，<span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{user.displayName}</span>
+          </h1>
+          <p className="text-slate-400 text-lg">請選擇您要進入的系統模組</p>
         </div>
         
-        {/* 🔥 任務跑馬燈 - 永久顯示 */}
-        <div className="mb-8 bg-white rounded-2xl shadow-lg border-2 border-blue-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-white text-sm font-medium">
-              <Activity className="w-4 h-4 animate-pulse" />
+        {/* 🔥 任務跑馬燈 - 美化版 */}
+        <div className="mb-10 bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3 text-white font-medium">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Activity className="w-5 h-5" />
+              </div>
               <span>R&D Nexus 任務提醒</span>
             </div>
             {marqueeMessages.length > 0 ? (
-              <div className="flex items-center gap-3 text-white text-xs">
-                <span className="bg-white/20 px-2 py-1 rounded-full">
+              <div className="flex items-center gap-3 text-white text-sm">
+                <span className="bg-white/20 px-3 py-1.5 rounded-full font-medium">
                   共 {marqueeMessages.length} 項待辦
                 </span>
                 {marqueeMessages.filter(m => m.type === 'overdue').length > 0 && (
-                  <span className="bg-red-500 px-2 py-1 rounded-full font-bold animate-pulse">
-                    {marqueeMessages.filter(m => m.type === 'overdue').length} 逾期
+                  <span className="bg-red-500 px-3 py-1.5 rounded-full font-bold animate-pulse">
+                    ⚠️ {marqueeMessages.filter(m => m.type === 'overdue').length} 逾期
                   </span>
                 )}
               </div>
             ) : (
-              <div className="text-white text-xs bg-white/20 px-2 py-1 rounded-full">
+              <div className="text-white text-sm bg-white/20 px-3 py-1.5 rounded-full">
                 ✅ 目前無待辦任務
               </div>
             )}
           </div>
-          <div className="relative overflow-hidden bg-gradient-to-r from-slate-50 to-blue-50 py-4">
+          <div className="relative overflow-hidden bg-white/5 py-5">
             {marqueeMessages.length > 0 ? (
               <>
                 <style dangerouslySetInnerHTML={{__html: `
@@ -10492,7 +10872,7 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                   }
                   .task-item:hover {
                     transform: scale(1.08);
-                    box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
                     z-index: 10;
                   }
                 `}} />
@@ -10501,14 +10881,14 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                     <span 
                       key={idx} 
                       onClick={() => handleTaskClick(msg.projectId)}
-                      className={`task-item ${msg.color} flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border-l-4 ${
+                      className={`task-item flex items-center gap-2 px-5 py-3 bg-white rounded-xl shadow-lg border-l-4 ${
                         msg.type === 'overdue' ? 'border-red-500 hover:bg-red-50' :
                         msg.type === 'new' ? 'border-blue-500 hover:bg-blue-50' :
                         'border-orange-500 hover:bg-orange-50'
                       }`}
                       title={`點擊查看專案詳情 - 任務 ID: ${msg.taskId || 'N/A'}`}
                     >
-                      {msg.text}
+                      <span className={msg.color}>{msg.text}</span>
                     </span>
                   ))}
                   {/* 重複一次以實現無縫循環 */}
@@ -10516,20 +10896,20 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                     <span 
                       key={`dup-${idx}`} 
                       onClick={() => handleTaskClick(msg.projectId)}
-                      className={`task-item ${msg.color} flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md border-l-4 ${
+                      className={`task-item flex items-center gap-2 px-5 py-3 bg-white rounded-xl shadow-lg border-l-4 ${
                         msg.type === 'overdue' ? 'border-red-500 hover:bg-red-50' :
                         msg.type === 'new' ? 'border-blue-500 hover:bg-blue-50' :
                         'border-orange-500 hover:bg-orange-50'
                       }`}
                       title={`點擊查看專案詳情 - 任務 ID: ${msg.taskId || 'N/A'}`}
                     >
-                      {msg.text}
+                      <span className={msg.color}>{msg.text}</span>
                     </span>
                   ))}
                 </div>
               </>
             ) : (
-              <div className="text-center py-2 text-slate-500 text-sm">
+              <div className="text-center py-3 text-slate-300 text-sm">
                 <span className="animate-pulse">🎉 太棒了！目前沒有待處理的任務，保持這個狀態！</span>
               </div>
             )}
@@ -10540,95 +10920,96 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
           {hasPermission('TQM') && (
           <button 
             onClick={() => onSelect('TQM')}
-            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
+            className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/10 group text-left hover:bg-white/15"
           >
-            <div className="bg-blue-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors">
-              <CheckCircle2 className="w-8 h-8 text-blue-600 group-hover:text-white" />
+            <div className="bg-gradient-to-br from-blue-500 to-blue-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
+              <CheckCircle2 className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">TQM 品質管理</h2>
-            <p className="text-slate-500 text-sm">管理異常紀錄、追蹤改善進度、統計分析報表。</p>
+            <h2 className="text-xl font-bold text-white mb-2">TQM 品質管理</h2>
+            <p className="text-slate-400 text-sm">管理異常紀錄、追蹤改善進度、統計分析報表。</p>
           </button>
           )}
 
           {hasPermission('KPI_PERSONAL') && (
           <button 
             onClick={() => onSelect('KPI_PERSONAL')}
-            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-blue-200 group text-left relative overflow-hidden"
+            className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-cyan-500/30 group text-left relative overflow-hidden hover:bg-white/15"
           >
-            <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">簡化版</div>
-            <div className="bg-gradient-to-br from-blue-100 to-indigo-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-blue-600 group-hover:to-indigo-600 transition-all">
-              <User className="w-8 h-8 text-blue-600 group-hover:text-white" />
+            <div className="absolute top-4 right-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-xs px-3 py-1.5 rounded-full font-bold shadow-lg">簡化版</div>
+            <div className="bg-gradient-to-br from-cyan-500 to-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-cyan-500/30 group-hover:scale-110 transition-transform">
+              <User className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 個人填寫</h2>
-            <p className="text-slate-500 text-sm">5分鐘快速填寫,只記錄工作內容,不用算分數。</p>
+            <h2 className="text-xl font-bold text-white mb-2">KPI 個人填寫</h2>
+            <p className="text-slate-400 text-sm">5分鐘快速填寫,只記錄工作內容,不用算分數。</p>
           </button>
           )}
 
           {hasPermission('KPI') && (
           <button 
             onClick={() => onSelect('KPI')}
-            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
+            className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/10 group text-left hover:bg-white/15"
           >
-            <div className="bg-purple-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-purple-600 transition-colors">
-              <Target className="w-8 h-8 text-purple-600 group-hover:text-white" />
+            <div className="bg-gradient-to-br from-purple-500 to-purple-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform">
+              <Target className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 管理儀表板</h2>
-            <p className="text-slate-500 text-sm">主管專用:評核員工表現、年度趨勢分析。</p>
+            <h2 className="text-xl font-bold text-white mb-2">KPI 管理儀表板</h2>
+            <p className="text-slate-400 text-sm">主管專用:評核員工表現、年度趨勢分析。</p>
           </button>
           )}
 
           {hasPermission('PROJECT') && (
           <button 
             onClick={() => onSelect('PROJECT')}
-            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
+            className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/10 group text-left hover:bg-white/15"
           >
-            <div className="bg-indigo-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-indigo-600 transition-colors">
-              <Activity className="w-8 h-8 text-indigo-600 group-hover:text-white" />
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-transform">
+              <Activity className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">R&D Nexus</h2>
-            <p className="text-slate-500 text-sm">研發專案進度追蹤、甘特圖管理、資源負載分析。</p>
+            <h2 className="text-xl font-bold text-white mb-2">R&D Nexus</h2>
+            <p className="text-slate-400 text-sm">研發專案進度追蹤、甘特圖管理、資源負載分析。</p>
           </button>
           )}
 
           {hasPermission('KPI_REPORT') && (
           <button 
             onClick={() => onSelect('KPI_REPORT')}
-            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-green-200 group text-left relative overflow-hidden"
+            className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/10 group text-left hover:bg-white/15 relative overflow-hidden"
           >
-            <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold">NEW</div>
-            <div className="bg-gradient-to-br from-green-100 to-emerald-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-green-600 group-hover:to-emerald-600 transition-all">
-              <BarChart3 className="w-8 h-8 text-green-600 group-hover:text-white" />
+            <div className="absolute top-3 right-3 bg-gradient-to-r from-emerald-400 to-green-500 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg animate-pulse">NEW</div>
+            <div className="bg-gradient-to-br from-emerald-500 to-green-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
+              <BarChart3 className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">KPI 整合報告</h2>
-            <p className="text-slate-500 text-sm">研發部門綜合評分、五大指標整合分析。</p>
+            <h2 className="text-xl font-bold text-white mb-2">KPI 整合報告</h2>
+            <p className="text-slate-400 text-sm">研發部門綜合評分、五大指標整合分析。</p>
           </button>
           )}
 
           {hasPermission('WAR_ROOM') && (
           <button 
             onClick={() => onSelect('PRODUCT_WAR_ROOM')}
-            className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-cyan-200 group text-left relative overflow-hidden"
+            className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/10 group text-left hover:bg-white/15 relative overflow-hidden"
           >
-            <div className="absolute top-2 right-2 bg-cyan-500 text-white text-xs px-2 py-1 rounded-full font-bold">戰情</div>
-            <div className="bg-gradient-to-br from-cyan-100 to-blue-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-cyan-600 group-hover:to-blue-600 transition-all">
-              <Cpu className="w-8 h-8 text-cyan-600 group-hover:text-white" />
+            <div className="absolute top-3 right-3 bg-gradient-to-r from-cyan-400 to-blue-500 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg">戰情</div>
+            <div className="bg-gradient-to-br from-cyan-500 to-blue-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-cyan-500/30 group-hover:scale-110 transition-transform">
+              <Cpu className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">產品開發戰情室</h2>
-            <p className="text-slate-500 text-sm">料號分析、開發趨勢、單據追蹤、戰情匯報。</p>
+            <h2 className="text-xl font-bold text-white mb-2">產品開發戰情室</h2>
+            <p className="text-slate-400 text-sm">料號分析、開發趨勢、單據追蹤、戰情匯報。</p>
           </button>
           )}
 
           {hasPermission('APPRAISAL') && (
             <button 
               onClick={() => onSelect('APPRAISAL')}
-              className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-slate-200 group text-left"
+              className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/10 group text-left hover:bg-white/15 relative overflow-hidden"
             >
-              <div className="bg-amber-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-600 transition-colors">
-                <Shield className="w-8 h-8 text-amber-600 group-hover:text-white" />
+              <div className="absolute top-3 right-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg">限定</div>
+              <div className="bg-gradient-to-br from-amber-500 to-orange-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-amber-500/30 group-hover:scale-110 transition-transform">
+                <Shield className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-xl font-bold text-slate-800 mb-2">Appraisal 儀表板</h2>
-              <p className="text-slate-500 text-sm">上傳 Excel 考核檔並快速生成分析儀表板。</p>
-              <div className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-amber-500 uppercase tracking-wide">
+              <h2 className="text-xl font-bold text-white mb-2">Appraisal 儀表板</h2>
+              <p className="text-slate-400 text-sm">上傳 Excel 考核檔並快速生成分析儀表板。</p>
+              <div className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wide">
                 <Shield className="w-3 h-3"/>管理員限定
               </div>
             </button>
@@ -10637,34 +11018,37 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
           {user.role === 'admin' && (
             <button 
               onClick={() => onSelect('ADMIN')}
-              className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border-2 border-red-200 group text-left relative overflow-hidden"
+              className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-red-500/30 group text-left hover:bg-red-500/10 relative overflow-hidden"
             >
-              <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">限定</div>
-              <div className="bg-gradient-to-br from-red-100 to-pink-100 w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:from-red-600 group-hover:to-pink-600 transition-all">
-                <Shield className="w-8 h-8 text-red-600 group-hover:text-white" />
+              <div className="absolute top-3 right-3 bg-gradient-to-r from-red-500 to-pink-600 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg animate-pulse">ADMIN</div>
+              <div className="bg-gradient-to-br from-red-500 to-pink-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-red-500/30 group-hover:scale-110 transition-transform">
+                <Shield className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-xl font-bold text-slate-800 mb-2">🔑 管理員功能</h2>
-              <p className="text-slate-500 text-sm">帳號管理、權限設定、資料庫匯出入。</p>
+              <h2 className="text-xl font-bold text-white mb-2">🔑 管理員功能</h2>
+              <p className="text-slate-400 text-sm">帳號管理、權限設定、資料庫匯出入。</p>
             </button>
           )}
         </div>
 
-        <div className="mt-12 flex flex-col items-center gap-4">
+        <div className="mt-16 flex flex-col items-center gap-6">
           <div className="flex items-center gap-4">
             <button 
               onClick={onExportDB}
-              className="flex items-center gap-2 px-4 py-2 text-green-600 hover:text-white hover:bg-green-600 rounded-lg transition-all border border-green-300 hover:border-green-600 shadow-sm hover:shadow-md"
+              className="flex items-center gap-2 px-6 py-3 text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-gradient-to-r hover:from-emerald-500 hover:to-green-600 rounded-xl transition-all border border-emerald-500/30 hover:border-transparent shadow-lg hover:shadow-emerald-500/25 backdrop-blur-sm"
             >
-              <FileJson size={16} /> 匯出資料庫備份
+              <FileJson size={18} /> 匯出資料庫備份
             </button>
             <button 
               onClick={onLogout} 
-              className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-600 rounded-lg transition-all border border-slate-300 hover:border-slate-600 shadow-sm hover:shadow-md"
+              className="flex items-center gap-2 px-6 py-3 text-slate-400 hover:text-white bg-slate-500/10 hover:bg-gradient-to-r hover:from-slate-600 hover:to-slate-700 rounded-xl transition-all border border-slate-500/30 hover:border-transparent shadow-lg hover:shadow-slate-500/25 backdrop-blur-sm"
             >
-              <LogOut size={16} /> 登出帳號
+              <LogOut size={18} /> 登出帳號
             </button>
           </div>
-          <p className="text-xs text-slate-400">💾 定期備份資料庫以保護您的資料安全</p>
+          <p className="text-sm text-slate-500 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            定期備份資料庫以保護您的資料安全
+          </p>
         </div>
       </div>
     </div>
