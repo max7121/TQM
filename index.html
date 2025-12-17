@@ -428,6 +428,24 @@ class FirebaseDB {
     this.cacheTimeout = 5 * 60 * 1000; // 快取 5 分鐘
     this.retryAttempts = 3; // 重試次數
     this.retryDelay = 1000; // 重試延遲（毫秒）
+    this.isOnline = navigator.onLine;
+    this.pendingRequests = new Map(); // 追蹤進行中的請求，避免重複
+    this.subscriptionRetryCount = {}; // 追蹤訂閱重試次數
+    this.activeSubscriptions = new Map(); // 追蹤活躍的訂閱
+    
+    // 監聽網路狀態變化
+    window.addEventListener('online', () => {
+      console.log('🌐 網路已連線');
+      this.isOnline = true;
+      this.refreshAllSubscriptions();
+    });
+    window.addEventListener('offline', () => {
+      console.log('📴 網路已斷線');
+      this.isOnline = false;
+    });
+    
+    // 從 localStorage 載入持久化快取
+    this.loadPersistentCache();
     
     try {
         this.app = window.firebase.initializeApp(firebaseConfig);
@@ -439,6 +457,55 @@ class FirebaseDB {
     } catch (e) {
         console.error("Firebase 初始化失敗:", e);
         alert("資料庫連線失敗，請檢查網路。");
+    }
+  }
+  
+  // 從 localStorage 載入快取
+  loadPersistentCache() {
+    try {
+      const cached = localStorage.getItem('tqm_db_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // 只使用未過期的快取（最多 30 分鐘）
+        const maxAge = 30 * 60 * 1000;
+        for (const [key, value] of Object.entries(parsed)) {
+          if (Date.now() - value.timestamp < maxAge) {
+            this.cache[key] = value;
+            console.log(`📦 從本地快取載入 ${key} (${value.data?.length || 0} 筆)`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('載入持久化快取失敗:', e);
+    }
+  }
+  
+  // 儲存快取到 localStorage
+  savePersistentCache() {
+    try {
+      // 只儲存重要的集合
+      const importantCollections = ['rd_machines', 'rd_projects', 'tqm_users'];
+      const toSave = {};
+      for (const col of importantCollections) {
+        if (this.cache[col]) {
+          toSave[col] = this.cache[col];
+        }
+      }
+      localStorage.setItem('tqm_db_cache', JSON.stringify(toSave));
+    } catch (e) {
+      console.warn('儲存持久化快取失敗:', e);
+    }
+  }
+  
+  // 刷新所有訂閱（網路恢復時使用）
+  refreshAllSubscriptions() {
+    console.log('🔄 刷新所有訂閱...');
+    for (const [collectionName, sub] of this.activeSubscriptions) {
+      if (sub.callback) {
+        this.getDocs(collectionName).then(data => {
+          sub.callback(data);
+        }).catch(e => console.warn(`刷新 ${collectionName} 失敗:`, e));
+      }
     }
   }
 
@@ -457,106 +524,209 @@ class FirebaseDB {
       } catch (e) { console.warn("檢查管理員帳號錯誤:", e); }
   }
 
-  // 優化的訂閱方法，加入錯誤處理
+  // 優化的訂閱方法，加入錯誤處理和重試機制
   subscribe(collectionName, callback) {
-    // 先從快取載入（如果有）
+    // 記錄活躍的訂閱
+    this.activeSubscriptions.set(collectionName, { callback });
+    
+    // 先從快取載入（如果有），提供即時響應
     if (this.cache[collectionName]) {
-      console.log(`📦 從快取載入 ${collectionName}`);
-      callback(this.cache[collectionName].data);
+      console.log(`📦 從快取載入 ${collectionName} (${this.cache[collectionName].data?.length || 0} 筆)`);
+      // 使用 setTimeout 確保非同步執行，避免阻塞
+      setTimeout(() => callback(this.cache[collectionName].data), 0);
     }
 
-    // 設定超時處理 - 15 秒後如果還沒載入成功，使用快取或空陣列
+    // 如果離線，只使用快取
+    if (!this.isOnline) {
+      console.warn(`📴 離線模式，${collectionName} 使用快取`);
+      return () => this.activeSubscriptions.delete(collectionName);
+    }
+
+    // 設定超時處理 - 10 秒後如果還沒載入成功，使用快取或空陣列
     let timeoutId = setTimeout(() => {
       if (this.cache[collectionName]) {
-        console.warn(`⏰ ${collectionName} 載入超時，使用快取數據`);
-        // 不要阻止後續真實數據的到來
-        callback(this.cache[collectionName].data);
+        console.warn(`⏰ ${collectionName} 載入超時，繼續使用快取數據`);
       } else {
-        console.warn(`⏰ ${collectionName} 載入超時且無快取，使用空陣列`);
-        // 不要阻止後續真實數據的到來
+        console.warn(`⏰ ${collectionName} 載入超時且無快取`);
         callback([]);
       }
-    }, 15000);
+    }, 10000);
 
+    let unsubscribe = () => {};
+    
     try {
-      const unsubscribe = window.firebase.onSnapshot(
+      unsubscribe = window.firebase.onSnapshot(
         window.firebase.collection(this.db, collectionName),
+        { includeMetadataChanges: false }, // 減少不必要的更新
         (snapshot) => {
-          // 清除超時計時器
           clearTimeout(timeoutId);
+          this.subscriptionRetryCount[collectionName] = 0; // 重置重試計數
           
           const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+          
           // 更新快取
           this.cache[collectionName] = {
             data: data,
             timestamp: Date.now()
           };
+          
+          // 儲存到持久化快取
+          this.savePersistentCache();
+          
           console.log(`✅ ${collectionName} 訂閱成功 (${data.length} 筆)`);
           callback(data);
         },
         (error) => {
-          // 清除超時計時器
           clearTimeout(timeoutId);
-          
           console.error(`❌ ${collectionName} 訂閱錯誤:`, error.message || error);
-          // 如果有快取，使用快取
+          
+          // 使用快取作為備用
           if (this.cache[collectionName]) {
             console.log(`📦 錯誤後使用 ${collectionName} 快取數據`);
             callback(this.cache[collectionName].data);
           } else {
-            // 只在真正錯誤時才使用空陣列
-            console.warn(`⚠️ ${collectionName} 無快取，使用空陣列`);
             callback([]);
+          }
+          
+          // 嘗試重新訂閱（最多 3 次）
+          const retryCount = this.subscriptionRetryCount[collectionName] || 0;
+          if (retryCount < 3 && this.isOnline) {
+            this.subscriptionRetryCount[collectionName] = retryCount + 1;
+            console.log(`🔄 ${collectionName} 將在 ${(retryCount + 1) * 2} 秒後重試訂閱...`);
+            setTimeout(() => {
+              if (this.activeSubscriptions.has(collectionName)) {
+                this.subscribe(collectionName, callback);
+              }
+            }, (retryCount + 1) * 2000);
           }
         }
       );
-      return unsubscribe;
     } catch (error) {
       clearTimeout(timeoutId);
       console.error(`❌ ${collectionName} 訂閱失敗:`, error.message || error);
       
-      // 使用快取或空陣列
       if (this.cache[collectionName]) {
-        console.log(`📦 異常後使用 ${collectionName} 快取數據`);
         callback(this.cache[collectionName].data);
       } else {
         callback([]);
       }
-      return () => {};
     }
+    
+    // 返回取消訂閱函數
+    return () => {
+      this.activeSubscriptions.delete(collectionName);
+      unsubscribe();
+    };
+  }
+  
+  // 批次訂閱多個集合（優化效能）
+  subscribeMultiple(collections, callbacks) {
+    const unsubscribes = [];
+    
+    // 先立即從快取載入所有數據
+    for (let i = 0; i < collections.length; i++) {
+      const col = collections[i];
+      if (this.cache[col]) {
+        callbacks[i](this.cache[col].data);
+      }
+    }
+    
+    // 然後並行訂閱
+    for (let i = 0; i < collections.length; i++) {
+      const unsub = this.subscribe(collections[i], callbacks[i]);
+      unsubscribes.push(unsub);
+    }
+    
+    return () => unsubscribes.forEach(unsub => unsub());
   }
 
   async addDoc(collectionName, data) {
-    if (data.id) {
-        // 確保 ID 是字串類型
+    const tempId = data.id ? String(data.id) : `temp_${Date.now()}`;
+    
+    // 樂觀更新：先更新本地快取
+    if (this.cache[collectionName]) {
+      const newData = { ...data, id: tempId };
+      this.cache[collectionName].data = [...this.cache[collectionName].data, newData];
+    }
+    
+    try {
+      if (data.id) {
         const docId = String(data.id);
         await window.firebase.setDoc(window.firebase.doc(this.db, collectionName, docId), data);
-        // 清除快取
-        delete this.cache[collectionName];
         return data;
-    } else {
+      } else {
         const docRef = await window.firebase.addDoc(window.firebase.collection(this.db, collectionName), data);
         await window.firebase.updateDoc(docRef, { id: docRef.id });
-        // 清除快取
-        delete this.cache[collectionName];
+        
+        // 更新快取中的臨時 ID
+        if (this.cache[collectionName]) {
+          const idx = this.cache[collectionName].data.findIndex(d => d.id === tempId);
+          if (idx !== -1) {
+            this.cache[collectionName].data[idx].id = docRef.id;
+          }
+        }
+        
         return { ...data, id: docRef.id };
+      }
+    } catch (error) {
+      // 回滾樂觀更新
+      if (this.cache[collectionName]) {
+        this.cache[collectionName].data = this.cache[collectionName].data.filter(d => d.id !== tempId);
+      }
+      throw error;
     }
   }
 
   async updateDoc(collectionName, id, data) {
-    // 確保 ID 是字串類型
     const docId = String(id);
-    await window.firebase.updateDoc(window.firebase.doc(this.db, collectionName, docId), data);
-    // 清除快取
-    delete this.cache[collectionName];
+    
+    // 樂觀更新：先更新本地快取
+    let originalData = null;
+    if (this.cache[collectionName]) {
+      const idx = this.cache[collectionName].data.findIndex(d => d.id === docId);
+      if (idx !== -1) {
+        originalData = { ...this.cache[collectionName].data[idx] };
+        this.cache[collectionName].data[idx] = { ...this.cache[collectionName].data[idx], ...data };
+      }
+    }
+    
+    try {
+      await window.firebase.updateDoc(window.firebase.doc(this.db, collectionName, docId), data);
+    } catch (error) {
+      // 回滾樂觀更新
+      if (originalData && this.cache[collectionName]) {
+        const idx = this.cache[collectionName].data.findIndex(d => d.id === docId);
+        if (idx !== -1) {
+          this.cache[collectionName].data[idx] = originalData;
+        }
+      }
+      throw error;
+    }
   }
 
   async deleteDoc(collectionName, id) {
-    // 確保 ID 是字串類型
     const docId = String(id);
-    await window.firebase.deleteDoc(window.firebase.doc(this.db, collectionName, docId));
-    // 清除快取
-    delete this.cache[collectionName];
+    
+    // 樂觀更新：先從本地快取移除
+    let deletedData = null;
+    let deletedIndex = -1;
+    if (this.cache[collectionName]) {
+      deletedIndex = this.cache[collectionName].data.findIndex(d => d.id === docId);
+      if (deletedIndex !== -1) {
+        deletedData = this.cache[collectionName].data[deletedIndex];
+        this.cache[collectionName].data.splice(deletedIndex, 1);
+      }
+    }
+    
+    try {
+      await window.firebase.deleteDoc(window.firebase.doc(this.db, collectionName, docId));
+    } catch (error) {
+      // 回滾樂觀更新
+      if (deletedData && this.cache[collectionName]) {
+        this.cache[collectionName].data.splice(deletedIndex, 0, deletedData);
+      }
+      throw error;
+    }
   }
 
   // 優化的 getDocs 方法，加入快取和重試機制
@@ -618,6 +788,56 @@ class FirebaseDB {
     return [];
   }
   
+  // 並行載入多個集合（優化效能）
+  async getDocsParallel(collectionNames) {
+    console.log(`🚀 並行載入 ${collectionNames.length} 個集合...`);
+    const startTime = Date.now();
+    
+    const promises = collectionNames.map(col => 
+      this.getDocs(col).catch(e => {
+        console.warn(`⚠️ ${col} 載入失敗:`, e);
+        return this.cache[col]?.data || [];
+      })
+    );
+    
+    const results = await Promise.all(promises);
+    
+    const resultMap = {};
+    collectionNames.forEach((col, i) => {
+      resultMap[col] = results[i];
+    });
+    
+    console.log(`✅ 並行載入完成，耗時 ${Date.now() - startTime}ms`);
+    return resultMap;
+  }
+  
+  // 預載入常用集合
+  async preloadCommonCollections() {
+    const commonCollections = ['rd_machines', 'rd_projects', 'rd_tasks', 'tqm_users'];
+    console.log('🔄 預載入常用集合...');
+    return this.getDocsParallel(commonCollections);
+  }
+  
+  // 清除所有快取
+  clearCache() {
+    this.cache = {};
+    localStorage.removeItem('tqm_db_cache');
+    console.log('🗑️ 快取已清除');
+  }
+  
+  // 取得快取狀態
+  getCacheStatus() {
+    const status = {};
+    for (const [key, value] of Object.entries(this.cache)) {
+      status[key] = {
+        count: value.data?.length || 0,
+        age: Math.round((Date.now() - value.timestamp) / 1000) + '秒',
+        fresh: Date.now() - value.timestamp < this.cacheTimeout
+      };
+    }
+    return status;
+  }
+  
   // 為了相容你的匯入匯出功能
   async importData(data) {
     if (!confirm("確定匯入至雲端？")) return;
@@ -633,7 +853,11 @@ class FirebaseDB {
   async exportData() {
      const exportObj = { version: '3.0', exportedAt: new Date().toISOString() };
      const collections = ['tqm_users', 'tqm_records', 'rd_machines', 'rd_projects', 'rd_tasks', 'rd_changes', 'rd_history', 'rd_messages', 'spec_discussion_urls'];
-     for (const col of collections) exportObj[col] = await this.getDocs(col);
+     // 使用並行載入加速匯出
+     const data = await this.getDocsParallel(collections);
+     for (const col of collections) {
+       exportObj[col] = data[col] || [];
+     }
      return exportObj;
   }
 }
@@ -4041,7 +4265,7 @@ const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
   }
 
   // 點擊甘特圖項目跳轉到專案/任務看板
-  const handleItemClick = (item) => {
+  const handleItemClick = async (item) => {
     if (item.type === '專案') {
       // 找到專案對應的機台
       const project = allProjects.find(p => p.id === item.id.replace('project-', ''));
@@ -4092,7 +4316,19 @@ const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
             alert('找不到對應的機台');
           }
         } else {
-          alert('找不到對應的專案');
+          // 專案不存在或沒有 machineId，這是孤兒任務
+          const deleteOrphan = confirm(`此任務「${task.title || task.name || '未命名'}」的專案已被刪除。\n\n是否要刪除這個孤兒任務？`);
+          if (deleteOrphan) {
+            try {
+              await db.deleteDoc('rd_tasks', task.id);
+              alert('已刪除孤兒任務');
+              // 更新任務列表
+              const tasks = await db.getDocs('rd_tasks');
+              setAllTasks(tasks || []);
+            } catch (e) {
+              alert('刪除失敗: ' + e.message);
+            }
+          }
         }
       } else {
         alert('找不到對應的任務資料');
@@ -4168,17 +4404,59 @@ const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
     task.responsiblePerson === currentUser.displayName
   );
   
+  // 找出孤兒任務（projectId 對應的專案不存在）
+  const projectIds = allProjects.map(p => p.id);
+  const orphanTasks = allTasks.filter(task => task.projectId && !projectIds.includes(task.projectId));
+  
+  // 過濾掉孤兒任務，只顯示有效的任務
+  const validUserTasks = userTasks.filter(task => {
+    // 如果任務沒有 projectId，保留它
+    if (!task.projectId) return true;
+    // 如果任務的 projectId 存在於專案列表中，保留它
+    return projectIds.includes(task.projectId);
+  });
+  
+  // 清理孤兒任務的函數
+  const handleCleanOrphanTasks = async () => {
+    if (orphanTasks.length === 0) {
+      alert('沒有需要清理的孤兒任務');
+      return;
+    }
+    
+    const confirmMsg = `發現 ${orphanTasks.length} 個孤兒任務（專案已被刪除）：\n\n` +
+      orphanTasks.slice(0, 5).map(t => `• ${t.title || t.name || '未命名'}`).join('\n') +
+      (orphanTasks.length > 5 ? `\n... 還有 ${orphanTasks.length - 5} 個` : '') +
+      `\n\n確定要刪除這些任務嗎？`;
+    
+    if (confirm(confirmMsg)) {
+      try {
+        for (const task of orphanTasks) {
+          await db.deleteDoc('rd_tasks', task.id);
+        }
+        alert(`已成功刪除 ${orphanTasks.length} 個孤兒任務`);
+        // 重新載入任務
+        const tasks = await db.getDocs('rd_tasks');
+        setAllTasks(tasks || []);
+      } catch (e) {
+        console.error('刪除孤兒任務失敗:', e);
+        alert('刪除失敗: ' + e.message);
+      }
+    }
+  };
+  
   // 調試信息
   console.log('👤 當前使用者:', currentUser);
   console.log('📁 所有專案數:', allProjects.length);
   console.log('📋 所有任務數:', allTasks.length);
   console.log('✅ 使用者專案:', userProjects);
   console.log('✅ 使用者任務:', userTasks);
+  console.log('⚠️ 孤兒任務數:', orphanTasks.length);
+  console.log('✅ 有效任務數:', validUserTasks.length);
   if (allTasks.length > 0) {
     console.log('📝 任務樣本:', allTasks[0]);
   }
   
-  // 合併專案和任務，轉換為甘特圖所需的格式
+  // 合併專案和任務，轉換為甘特圖所需的格式（使用過濾後的有效任務）
   const ganttItems = [
     ...userProjects.map(project => ({
       id: `project-${project.id}`,
@@ -4191,7 +4469,7 @@ const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
       machine: machines.find(m => m.id === project.machineId)?.name || project.machineName || '未指定',
       color: 'blue'
     })),
-    ...userTasks.map(task => ({
+    ...validUserTasks.map(task => ({
       id: `task-${task.id}`,
       name: task.title || task.name || '未命名任務',
       type: '任務',
@@ -4439,14 +4717,27 @@ const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
         {/* 甘特圖 - 美化版本 */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
           <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-6 border-b border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-500 p-2 rounded-lg">
-                <GanttChartIcon size={24} className="text-white" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-500 p-2 rounded-lg">
+                  <GanttChartIcon size={24} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800">專案與任務甘特圖</h2>
+                  <p className="text-slate-500 text-sm mt-1">📊 時間軸視圖顯示所有相關項目的進度與時程安排</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800">專案與任務甘特圖</h2>
-                <p className="text-slate-500 text-sm mt-1">📊 時間軸視圖顯示所有相關項目的進度與時程安排</p>
-              </div>
+              {/* 孤兒任務清理按鈕 */}
+              {orphanTasks.length > 0 && (
+                <button
+                  onClick={handleCleanOrphanTasks}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors text-sm font-medium"
+                  title={`發現 ${orphanTasks.length} 個孤兒任務（專案已被刪除）`}
+                >
+                  <Trash2 size={16} />
+                  清理孤兒任務 ({orphanTasks.length})
+                </button>
+              )}
             </div>
           </div>
           
@@ -5647,13 +5938,15 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
           <button className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50">
             產生報告
           </button>
-          <button
-            onClick={() => onDeleteProject(project.id)}
-            className="px-4 py-2 border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 flex items-center gap-2"
-          >
-            <Trash2 size={16} />
-            刪除專案
-          </button>
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => onDeleteProject(project.id)}
+              className="px-4 py-2 border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 flex items-center gap-2"
+            >
+              <Trash2 size={16} />
+              刪除專案
+            </button>
+          )}
         </div>
       </div>
 
