@@ -67,6 +67,33 @@
     }
     </script>
     <style>
+        /* === 主題變數 === */
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --bg-card: rgba(255, 255, 255, 0.1);
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --shadow-color: rgba(0, 0, 0, 0.3);
+        }
+        
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #e2e8f0;
+            --bg-tertiary: #cbd5e1;
+            --bg-card: rgba(255, 255, 255, 0.9);
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --border-color: rgba(0, 0, 0, 0.1);
+            --glass-bg: rgba(255, 255, 255, 0.8);
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+        
         /* === 全域樣式優化 === */
         * {
             box-sizing: border-box;
@@ -76,6 +103,95 @@
             background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
             min-height: 100vh;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        
+        /* 主題切換按鈕樣式 */
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px var(--shadow-color);
+        }
+        
+        .theme-toggle.dark {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+        }
+        
+        .theme-toggle.light {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            color: #1e293b;
+        }
+        
+        .theme-toggle:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px var(--shadow-color);
+        }
+        
+        .theme-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+        
+        /* 明亮主題覆蓋樣式 */
+        [data-theme="light"] .bg-gradient-to-br.from-slate-900 {
+            background: linear-gradient(to bottom right, #f1f5f9, #e2e8f0, #f1f5f9) !important;
+        }
+        
+        [data-theme="light"] .bg-slate-900\/50 {
+            background: rgba(241, 245, 249, 0.95) !important;
+        }
+        
+        [data-theme="light"] .text-white {
+            color: #1e293b !important;
+        }
+        
+        [data-theme="light"] .text-slate-400 {
+            color: #475569 !important;
+        }
+        
+        [data-theme="light"] .text-slate-300 {
+            color: #64748b !important;
+        }
+        
+        [data-theme="light"] .text-slate-500 {
+            color: #64748b !important;
+        }
+        
+        [data-theme="light"] .bg-white\/10 {
+            background: rgba(255, 255, 255, 0.9) !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08) !important;
+        }
+        
+        [data-theme="light"] .bg-white\/5 {
+            background: rgba(255, 255, 255, 0.7) !important;
+        }
+        
+        [data-theme="light"] .border-white\/10 {
+            border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        [data-theme="light"] .bg-gradient-to-r.from-blue-400.to-cyan-400 {
+            background: linear-gradient(to right, #3b82f6, #06b6d4) !important;
+            -webkit-background-clip: text !important;
+            background-clip: text !important;
+        }
+        
+        [data-theme="light"] .backdrop-blur-xl {
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
         }
         
         /* 滾動條美化 */
@@ -297,7 +413,9 @@ import {
   Link as LinkIcon,
   Calculator,
   GanttChart,
-  BarChart3 as GanttChartIcon
+  BarChart3 as GanttChartIcon,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -13141,10 +13259,52 @@ const AppraisalWithDashboard = ({ onBackToMenu, user }) => {
 };
 
 // --- Root App Component ---
+// 主題切換按鈕組件
+const ThemeToggle = ({ theme, toggleTheme }) => {
+  return (
+    <button
+      onClick={toggleTheme}
+      className={`theme-toggle ${theme}`}
+      title={theme === 'dark' ? '切換至明亮模式' : '切換至深色模式'}
+    >
+      {theme === 'dark' ? (
+        <>
+          <Sun />
+          <span>明亮</span>
+        </>
+      ) : (
+        <>
+          <Moon />
+          <span>深色</span>
+        </>
+      )}
+    </button>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [system, setSystem] = useState(null); // 'TQM', 'KPI', 'PROJECT'
   const [loading, setLoading] = useState(true);
+  
+  // 主題狀態管理
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem('tqm_theme');
+    return savedTheme || 'dark';
+  });
+  
+  // 切換主題
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('tqm_theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
+  
+  // 初始化主題
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, []);
 
   useEffect(() => {
     const savedUser = sessionStorage.getItem('tqm_user');
@@ -13207,46 +13367,69 @@ export default function App() {
     }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center text-slate-500">系統載入中...</div>;
+  if (loading) return (
+    <>
+      <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+      <div className="h-screen flex items-center justify-center text-slate-500">系統載入中...</div>
+    </>
+  );
 
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} loading={false} onImportDB={handleImportDB} onExportDB={handleExportDB} />;
+    return (
+      <>
+        <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+        <LoginScreen onLogin={handleLogin} loading={false} onImportDB={handleImportDB} onExportDB={handleExportDB} />
+      </>
+    );
   }
 
   if (!system) {
-    return <SystemSelector onSelect={setSystem} onLogout={handleLogout} user={user} onExportDB={handleExportDB} />;
+    return (
+      <>
+        <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+        <SystemSelector onSelect={setSystem} onLogout={handleLogout} user={user} onExportDB={handleExportDB} />
+      </>
+    );
   }
 
+  // 包裝系統組件以加入主題切換按鈕
+  const renderWithThemeToggle = (component) => (
+    <>
+      <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+      {component}
+    </>
+  );
+
   if (system === 'TQM') {
-    return <TQMApp appUser={user} onLogout={handleLogout} onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<TQMApp appUser={user} onLogout={handleLogout} onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'KPI_PERSONAL') {
-    return <KPIPersonalEntryApp user={user} onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<KPIPersonalEntryApp user={user} onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'KPI') {
-    return <KPIApp onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<KPIApp onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'PROJECT') {
-    return <RDNexusSystem key="rdnexus" user={user} onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<RDNexusSystem key="rdnexus" user={user} onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'KPI_REPORT') {
-    return <KPIReportSystem user={user} onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<KPIReportSystem user={user} onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'APPRAISAL') {
-    return <AppraisalWithDashboard user={user} onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<AppraisalWithDashboard user={user} onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'PRODUCT_WAR_ROOM') {
-    return <ProductWarRoom onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<ProductWarRoom onBackToMenu={() => setSystem(null)} />);
   }
   
   if (system === 'ADMIN') {
-    return <UserManagement currentUser={user} onBackToMenu={() => setSystem(null)} />;
+    return renderWithThemeToggle(<UserManagement currentUser={user} onBackToMenu={() => setSystem(null)} />);
   }
 
   return null;
