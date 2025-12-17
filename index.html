@@ -138,7 +138,9 @@ import {
   Presentation,
   ExternalLink,
   Link as LinkIcon,
-  Calculator
+  Calculator,
+  GanttChart,
+  BarChart3 as GanttChartIcon
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -418,10 +420,15 @@ const firebaseConfig = {
   measurementId: "G-T9PL70TLJ2"
 };
 
-// --- Firebase Database Implementation ---
+// --- Firebase Database Implementation with Cache ---
 class FirebaseDB {
   constructor() {
     console.log("正在初始化 Firebase...");
+    this.cache = {}; // 本地快取
+    this.cacheTimeout = 5 * 60 * 1000; // 快取 5 分鐘
+    this.retryAttempts = 3; // 重試次數
+    this.retryDelay = 1000; // 重試延遲（毫秒）
+    
     try {
         this.app = window.firebase.initializeApp(firebaseConfig);
         this.db = window.firebase.getFirestore(this.app);
@@ -450,10 +457,57 @@ class FirebaseDB {
       } catch (e) { console.warn("檢查管理員帳號錯誤:", e); }
   }
 
+  // 優化的訂閱方法，加入錯誤處理
   subscribe(collectionName, callback) {
-    return window.firebase.onSnapshot(window.firebase.collection(this.db, collectionName), (snapshot) => {
-        callback(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
+    // 先從快取載入（如果有）
+    if (this.cache[collectionName]) {
+      console.log(`📦 從快取載入 ${collectionName}`);
+      callback(this.cache[collectionName].data);
+    }
+
+    // 設定超時處理 - 增加到 10 秒
+    const timeoutId = setTimeout(() => {
+      if (!this.cache[collectionName]) {
+        console.warn(`⚠️ ${collectionName} 載入超時，繼續等待...`);
+        // 不要返回空陣列，繼續等待
+      }
+    }, 10000);
+
+    try {
+      const unsubscribe = window.firebase.onSnapshot(
+        window.firebase.collection(this.db, collectionName),
+        (snapshot) => {
+          clearTimeout(timeoutId);
+          const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+          // 更新快取
+          this.cache[collectionName] = {
+            data: data,
+            timestamp: Date.now()
+          };
+          console.log(`✅ ${collectionName} 訂閱成功 (${data.length} 筆)`);
+          callback(data);
+        },
+        (error) => {
+          clearTimeout(timeoutId);
+          console.error(`❌ ${collectionName} 訂閱錯誤:`, error);
+          // 如果有快取，使用快取
+          if (this.cache[collectionName]) {
+            console.log(`📦 使用 ${collectionName} 快取數據`);
+            callback(this.cache[collectionName].data);
+          } else {
+            // 只在真正錯誤時才使用空陣列
+            console.warn(`⚠️ ${collectionName} 無快取，使用空陣列`);
+            callback([]);
+          }
+        }
+      );
+      return unsubscribe;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error(`❌ ${collectionName} 訂閱失敗:`, error);
+      callback([]);
+      return () => {};
+    }
   }
 
   async addDoc(collectionName, data) {
@@ -461,10 +515,14 @@ class FirebaseDB {
         // 確保 ID 是字串類型
         const docId = String(data.id);
         await window.firebase.setDoc(window.firebase.doc(this.db, collectionName, docId), data);
+        // 清除快取
+        delete this.cache[collectionName];
         return data;
     } else {
         const docRef = await window.firebase.addDoc(window.firebase.collection(this.db, collectionName), data);
         await window.firebase.updateDoc(docRef, { id: docRef.id });
+        // 清除快取
+        delete this.cache[collectionName];
         return { ...data, id: docRef.id };
     }
   }
@@ -473,19 +531,75 @@ class FirebaseDB {
     // 確保 ID 是字串類型
     const docId = String(id);
     await window.firebase.updateDoc(window.firebase.doc(this.db, collectionName, docId), data);
+    // 清除快取
+    delete this.cache[collectionName];
   }
 
   async deleteDoc(collectionName, id) {
     // 確保 ID 是字串類型
     const docId = String(id);
     await window.firebase.deleteDoc(window.firebase.doc(this.db, collectionName, docId));
+    // 清除快取
+    delete this.cache[collectionName];
   }
 
+  // 優化的 getDocs 方法，加入快取和重試機制
   async getDocs(collectionName, queryFn) {
-    const snapshot = await window.firebase.getDocs(window.firebase.collection(this.db, collectionName));
-    let list = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-    if (queryFn) list = list.filter(queryFn);
-    return list;
+    // 檢查快取
+    const cached = this.cache[collectionName];
+    if (cached && (Date.now() - cached.timestamp < this.cacheTimeout)) {
+      console.log(`📦 從快取載入 ${collectionName} (${cached.data.length} 筆)`);
+      let list = cached.data;
+      if (queryFn) list = list.filter(queryFn);
+      return list;
+    }
+
+    // 帶重試的載入邏輯
+    for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
+      try {
+        console.log(`🔄 載入 ${collectionName} (嘗試 ${attempt}/${this.retryAttempts})`);
+        
+        const snapshot = await Promise.race([
+          window.firebase.getDocs(window.firebase.collection(this.db, collectionName)),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('請求超時')), 5000)
+          )
+        ]);
+        
+        let list = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+        
+        // 更新快取
+        this.cache[collectionName] = {
+          data: list,
+          timestamp: Date.now()
+        };
+        
+        console.log(`✅ ${collectionName} 載入成功 (${list.length} 筆)`);
+        
+        if (queryFn) list = list.filter(queryFn);
+        return list;
+        
+      } catch (error) {
+        console.warn(`⚠️ ${collectionName} 載入失敗 (嘗試 ${attempt}/${this.retryAttempts}):`, error.message);
+        
+        // 如果不是最後一次嘗試，等待後重試
+        if (attempt < this.retryAttempts) {
+          await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
+        } else {
+          // 最後一次失敗，嘗試使用舊快取
+          if (cached) {
+            console.log(`📦 使用舊快取 ${collectionName} (${cached.data.length} 筆)`);
+            let list = cached.data;
+            if (queryFn) list = list.filter(queryFn);
+            return list;
+          }
+          console.error(`❌ ${collectionName} 載入完全失敗，返回空陣列`);
+          return [];
+        }
+      }
+    }
+    
+    return [];
   }
   
   // 為了相容你的匯入匯出功能
@@ -3885,9 +3999,656 @@ const MachineForm = ({ initialData, onSubmit, onCancel }) => {
   );
 };
 
+// 個人戰情室組件 - 優化版本（分批載入）
+const PersonalDashboard = ({ onBack, machines, onSelectMachine }) => {
+  const [showAllTasks, setShowAllTasks] = React.useState(false);
+  const [allProjects, setAllProjects] = React.useState([]);
+  const [allTasks, setAllTasks] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadingStage, setLoadingStage] = React.useState('準備中...');
+  const [progressPercent, setProgressPercent] = React.useState(0);
+  
+  // 安全地解析 currentUser - 從 sessionStorage 獲取
+  let currentUser = { username: '未知使用者', displayName: '未知使用者' };
+  try {
+    const userStr = sessionStorage.getItem('tqm_user');
+    if (userStr) {
+      const parsed = JSON.parse(userStr);
+      currentUser = {
+        username: parsed.username || parsed.displayName || '未知使用者',
+        displayName: parsed.displayName || parsed.username || '未知使用者',
+        ...parsed
+      };
+    }
+  } catch (e) {
+    console.error('解析 currentUser 失敗:', e);
+  }
+
+  // 點擊甘特圖項目跳轉到專案/任務看板
+  const handleItemClick = (item) => {
+    if (item.type === '專案') {
+      // 找到專案對應的機台
+      const project = allProjects.find(p => p.id === item.id.replace('project-', ''));
+      if (project && project.machineId) {
+        const machine = machines.find(m => m.id === project.machineId);
+        if (machine) {
+          // 設定要自動打開的專案
+          sessionStorage.setItem('openProjectId', project.id);
+          console.log('🎯 直接選擇機台並打開專案:', { 
+            machineId: machine.id, 
+            machineName: machine.name,
+            projectId: project.id, 
+            projectName: project.name 
+          });
+          // 直接選擇機台（會觸發 ProjectApp 渲染，然後 ProjectApp 會檢查 sessionStorage 並自動打開專案）
+          if (onSelectMachine) {
+            onSelectMachine(machine);
+          }
+        } else {
+          alert('找不到對應的機台');
+        }
+      } else {
+        alert('找不到對應的專案資料');
+      }
+    } else if (item.type === '任務') {
+      // 找到任務對應的專案
+      const task = allTasks.find(t => t.id === item.id.replace('task-', ''));
+      if (task && task.projectId) {
+        const project = allProjects.find(p => p.id === task.projectId);
+        if (project && project.machineId) {
+          const machine = machines.find(m => m.id === project.machineId);
+          if (machine) {
+            // 設定要自動打開的專案
+            sessionStorage.setItem('openProjectId', project.id);
+            console.log('🎯 直接選擇機台並打開專案 (從任務):', { 
+              machineId: machine.id, 
+              machineName: machine.name,
+              projectId: project.id, 
+              projectName: project.name,
+              taskId: task.id,
+              taskName: task.name
+            });
+            // 直接選擇機台（會觸發 ProjectApp 渲染，然後 ProjectApp 會檢查 sessionStorage 並自動打開專案）
+            if (onSelectMachine) {
+              onSelectMachine(machine);
+            }
+          } else {
+            alert('找不到對應的機台');
+          }
+        } else {
+          alert('找不到對應的專案');
+        }
+      } else {
+        alert('找不到對應的任務資料');
+      }
+    }
+  };
+
+  // 分批載入數據 - 優化版本
+  React.useEffect(() => {
+    const fetchDataInBatches = async () => {
+      try {
+        setLoading(true);
+        setLoadingStage('正在載入專案資料...');
+        setProgressPercent(10);
+        
+        // 先載入專案數據
+        const projectsPromise = db.getDocs('rd_projects');
+        
+        setProgressPercent(30);
+        const projects = await projectsPromise;
+        setAllProjects(projects || []);
+        
+        setLoadingStage('正在載入任務資料...');
+        setProgressPercent(50);
+        
+        // 再載入任務數據
+        const tasksPromise = db.getDocs('rd_tasks');
+        
+        setProgressPercent(70);
+        const tasks = await tasksPromise;
+        setAllTasks(tasks || []);
+        
+        setProgressPercent(90);
+        setLoadingStage('資料處理中...');
+        
+        // 給一點時間讓 React 渲染
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        setProgressPercent(100);
+        setLoadingStage('完成！');
+        
+      } catch (e) {
+        console.error('獲取數據失敗:', e);
+        setLoadingStage('載入失敗');
+      } finally {
+        setTimeout(() => {
+          setLoading(false);
+        }, 200);
+      }
+    };
+    
+    fetchDataInBatches();
+  }, []);
+  
+  // 過濾與當前用戶相關的專案和任務
+  const userProjects = showAllTasks ? allProjects : allProjects.filter(project => 
+    project.members?.includes(currentUser.username) || 
+    project.members?.includes(currentUser.displayName) ||
+    project.owner === currentUser.username ||
+    project.owner === currentUser.displayName ||
+    project.createdBy === currentUser.username ||
+    project.createdBy === currentUser.displayName
+  );
+  
+  const userTasks = showAllTasks ? allTasks : allTasks.filter(task => 
+    task.assignee === currentUser.username || 
+    task.assignee === currentUser.displayName ||
+    task.owner === currentUser.username ||
+    task.owner === currentUser.displayName ||
+    task.assignedTo === currentUser.username ||
+    task.assignedTo === currentUser.displayName ||
+    task.responsiblePerson === currentUser.username ||
+    task.responsiblePerson === currentUser.displayName
+  );
+  
+  // 調試信息
+  console.log('👤 當前使用者:', currentUser);
+  console.log('📁 所有專案數:', allProjects.length);
+  console.log('📋 所有任務數:', allTasks.length);
+  console.log('✅ 使用者專案:', userProjects);
+  console.log('✅ 使用者任務:', userTasks);
+  if (allTasks.length > 0) {
+    console.log('📝 任務樣本:', allTasks[0]);
+  }
+  
+  // 合併專案和任務，轉換為甘特圖所需的格式
+  const ganttItems = [
+    ...userProjects.map(project => ({
+      id: `project-${project.id}`,
+      name: project.name || project.title,
+      type: '專案',
+      startDate: project.startDate || project.createdAt || new Date().toISOString(),
+      endDate: project.endDate || project.deadline || new Date(Date.now() + 7*24*60*60*1000).toISOString(),
+      progress: project.progress || 0,
+      status: project.status || 'active',
+      machine: machines.find(m => m.id === project.machineId)?.name || project.machineName || '未指定',
+      color: 'blue'
+    })),
+    ...userTasks.map(task => ({
+      id: `task-${task.id}`,
+      name: task.title || task.name || '未命名任務',
+      type: '任務',
+      startDate: task.startDate || task.createdAt || task.createTime || new Date().toISOString(),
+      endDate: task.endDate || task.deadline || task.dueDate || new Date(Date.now() + 7*24*60*60*1000).toISOString(),
+      progress: task.status === 'completed' || task.status === 'Done' ? 100 : 
+                task.status === 'in-progress' || task.status === 'Doing' ? 50 : 0,
+      status: task.status,
+      machine: task.machine || task.machineName || task.projectName || '未指定',
+      color: 'green'
+    }))
+  ].filter(item => item.name && item.startDate && item.endDate)
+   .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+  
+  console.log('📊 甘特圖項目數:', ganttItems.length);
+  console.log('📊 甘特圖項目:', ganttItems);
+  
+  // 計算日期範圍
+  const getDateRange = () => {
+    if (ganttItems.length === 0) return [];
+    
+    const today = new Date();
+    const startDate = new Date(Math.min(
+      ...ganttItems.map(item => new Date(item.startDate).getTime()),
+      today.getTime()
+    ));
+    const endDate = new Date(Math.max(
+      ...ganttItems.map(item => new Date(item.endDate).getTime()),
+      today.getTime()
+    ));
+    
+    // 擴展範圍以顯示更多天數
+    startDate.setDate(startDate.getDate() - 7);
+    endDate.setDate(endDate.getDate() + 14);
+    
+    const dates = [];
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  };
+  
+  const dateRange = getDateRange();
+  const totalDays = dateRange.length;
+  
+  // 計算項目在時間軸上的位置
+  const getItemPosition = (item) => {
+    const start = new Date(item.startDate);
+    const end = new Date(item.endDate);
+    const rangeStart = dateRange[0];
+    
+    const startOffset = Math.floor((start - rangeStart) / (1000 * 60 * 60 * 24));
+    const duration = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+    
+    return {
+      left: `${(startOffset / totalDays) * 100}%`,
+      width: `${(duration / totalDays) * 100}%`
+    };
+  };
+
+  // 載入動畫組件
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-8 flex items-center justify-center">
+        <div className="max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-2xl p-8">
+            {/* 標題 */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                <GanttChartIcon size={32} className="text-blue-600 animate-pulse" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">載入個人戰情室</h2>
+              <p className="text-slate-500 text-sm">{loadingStage}</p>
+            </div>
+
+            {/* 進度條 */}
+            <div className="mb-6">
+              <div className="flex justify-between text-xs text-slate-600 mb-2">
+                <span>載入進度</span>
+                <span className="font-semibold">{progressPercent}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                >
+                  <div className="h-full w-full bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* 載入步驟指示 */}
+            <div className="space-y-3">
+              <div className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                progressPercent >= 10 ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-400'
+              }`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  progressPercent >= 30 ? 'bg-blue-500 text-white' : progressPercent >= 10 ? 'bg-blue-200 text-blue-600' : 'bg-slate-300'
+                }`}>
+                  {progressPercent >= 30 ? '✓' : '1'}
+                </div>
+                <span className="text-sm font-medium">載入專案資料</span>
+              </div>
+              
+              <div className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                progressPercent >= 50 ? 'bg-green-50 text-green-700' : 'bg-slate-50 text-slate-400'
+              }`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  progressPercent >= 70 ? 'bg-green-500 text-white' : progressPercent >= 50 ? 'bg-green-200 text-green-600' : 'bg-slate-300'
+                }`}>
+                  {progressPercent >= 70 ? '✓' : '2'}
+                </div>
+                <span className="text-sm font-medium">載入任務資料</span>
+              </div>
+              
+              <div className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                progressPercent >= 90 ? 'bg-purple-50 text-purple-700' : 'bg-slate-50 text-slate-400'
+              }`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  progressPercent >= 100 ? 'bg-purple-500 text-white' : progressPercent >= 90 ? 'bg-purple-200 text-purple-600' : 'bg-slate-300'
+                }`}>
+                  {progressPercent >= 100 ? '✓' : '3'}
+                </div>
+                <span className="text-sm font-medium">資料處理與渲染</span>
+              </div>
+            </div>
+
+            {/* 載入提示 */}
+            <div className="mt-6 text-center">
+              <p className="text-xs text-slate-400">
+                💡 首次載入可能需要幾秒鐘，請稍候...
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-8 animate-fade-in">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+              <GanttChartIcon size={32} className="text-blue-600" />
+              個人戰情室
+            </h1>
+            <p className="text-slate-500 mt-1">
+              使用者：{currentUser.displayName} ({currentUser.username}) | 所有相關專案與任務總覽
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+              <input 
+                type="checkbox" 
+                checked={showAllTasks}
+                onChange={(e) => setShowAllTasks(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm text-slate-700">顯示所有任務</span>
+            </label>
+            <button 
+              onClick={onBack} 
+              className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"
+            >
+              <LogOut size={16} /> 返回
+            </button>
+          </div>
+        </div>
+
+        {/* 統計卡片 - 美化版本 */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-100 text-sm font-medium mb-1">總專案數</p>
+                  <p className="text-4xl font-bold text-white mt-2">{userProjects.length}</p>
+                  <p className="text-blue-200 text-xs mt-2">進行中的專案</p>
+                </div>
+                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <Briefcase className="text-white" size={32} />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="relative overflow-hidden bg-gradient-to-br from-green-500 to-emerald-600 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-100 text-sm font-medium mb-1">總任務數</p>
+                  <p className="text-4xl font-bold text-white mt-2">{userTasks.length}</p>
+                  <p className="text-green-200 text-xs mt-2">待完成的任務</p>
+                </div>
+                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <ListTodo className="text-white" size={32} />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="relative overflow-hidden bg-gradient-to-br from-amber-500 to-orange-600 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-amber-100 text-sm font-medium mb-1">進行中</p>
+                  <p className="text-4xl font-bold text-white mt-2">
+                    {ganttItems.filter(item => item.status === 'in-progress' || item.status === 'active').length}
+                  </p>
+                  <p className="text-amber-200 text-xs mt-2">正在執行中</p>
+                </div>
+                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <Activity className="text-white" size={32} />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-emerald-100 text-sm font-medium mb-1">已完成</p>
+                  <p className="text-4xl font-bold text-white mt-2">
+                    {ganttItems.filter(item => item.status === 'completed').length}
+                  </p>
+                  <p className="text-emerald-200 text-xs mt-2">成功完成</p>
+                </div>
+                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <CheckCircle className="text-white" size={32} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 甘特圖 - 美化版本 */}
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-6 border-b border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <GanttChartIcon size={24} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800">專案與任務甘特圖</h2>
+                <p className="text-slate-500 text-sm mt-1">📊 時間軸視圖顯示所有相關項目的進度與時程安排</p>
+              </div>
+            </div>
+          </div>
+          
+          {ganttItems.length === 0 ? (
+            <div className="p-12 text-center">
+              <GanttChartIcon size={48} className="text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500 mb-2">目前沒有相關的專案或任務</p>
+              <p className="text-slate-400 text-sm">
+                使用者：{currentUser.displayName} ({currentUser.username}) | 
+                專案總數：{allProjects.length} | 
+                任務總數：{allTasks.length}
+              </p>
+              {allTasks.length > 0 && !showAllTasks && (
+                <div className="mt-4">
+                  <p className="text-xs text-slate-400 mb-3">
+                    💡 系統找到 {allTasks.length} 個任務，但沒有分配給您。
+                  </p>
+                  <button
+                    onClick={() => setShowAllTasks(true)}
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
+                  >
+                    顯示所有任務
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-6 overflow-x-auto">
+              {/* 時間軸標題 - 美化版本 */}
+              <div className="flex mb-6">
+                <div className="w-64 flex-shrink-0 pr-4">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">項目名稱</div>
+                </div>
+                <div className="flex-1 relative h-20 bg-gradient-to-b from-slate-50 to-white rounded-t-lg border-b-2 border-slate-300">
+                  {dateRange.map((date, index) => {
+                    if (index % 7 === 0 || index === dateRange.length - 1) {
+                      const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                      return (
+                        <div 
+                          key={index} 
+                          className="absolute top-0 text-xs"
+                          style={{ left: `${(index / totalDays) * 100}%` }}
+                        >
+                          <div className="transform -translate-x-1/2">
+                            <div className={`font-bold text-sm mb-1 ${
+                              isWeekend ? 'text-red-500' : 'text-slate-700'
+                            }`}>
+                              {date.getMonth() + 1}/{date.getDate()}
+                            </div>
+                            <div className={`text-xs px-2 py-0.5 rounded ${
+                              isWeekend ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {['日', '一', '二', '三', '四', '五', '六'][date.getDay()]}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              </div>
+
+              {/* 今天標記線 */}
+              <div className="relative">
+                <div className="flex">
+                  <div className="w-64 flex-shrink-0"></div>
+                  <div className="flex-1 relative">
+                    {(() => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const rangeStart = dateRange[0];
+                      const todayOffset = Math.floor((today - rangeStart) / (1000 * 60 * 60 * 24));
+                      if (todayOffset >= 0 && todayOffset < totalDays) {
+                        return (
+                          <div 
+                            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+                            style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                          >
+                            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-red-500 font-semibold whitespace-nowrap">
+                              今天
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                </div>
+
+                {/* 甘特圖項目 - 美化版本 */}
+                {ganttItems.map((item, index) => {
+                  const position = getItemPosition(item);
+                  const statusColors = {
+                    'completed': 'from-emerald-400 to-emerald-600',
+                    'in-progress': 'from-blue-400 to-blue-600',
+                    'active': 'from-blue-400 to-blue-600',
+                    'pending': 'from-slate-300 to-slate-500',
+                    'todo': 'from-slate-300 to-slate-500',
+                    'Doing': 'from-blue-400 to-blue-600',
+                    'Done': 'from-emerald-400 to-emerald-600',
+                    'To Do': 'from-slate-300 to-slate-500'
+                  };
+                  const isEven = index % 2 === 0;
+                  
+                  return (
+                    <div 
+                      key={item.id} 
+                      className={`flex items-center mb-2 group ${
+                        isEven ? 'bg-slate-50/50' : ''
+                      } p-3 rounded-lg hover:bg-blue-50/50 transition-colors duration-200 cursor-pointer`}
+                      onClick={() => handleItemClick(item)}
+                    >
+                      <div className="w-64 flex-shrink-0 pr-4">
+                        <div className="text-sm font-semibold text-slate-800 truncate group-hover:text-blue-700 transition-colors flex items-center gap-2">
+                          {item.name}
+                          <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                            點擊查看 →
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`text-xs px-2.5 py-1 rounded-full font-medium shadow-sm ${
+                            item.type === '專案' 
+                              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' 
+                              : 'bg-gradient-to-r from-green-500 to-green-600 text-white'
+                          }`}>
+                            {item.type === '專案' ? '📁' : '✓'} {item.type}
+                          </span>
+                          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                            🏢 {item.machine}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-1 relative h-12">
+                        {/* 背景網格線 */}
+                        <div className="absolute inset-0 flex">
+                          {[...Array(10)].map((_, i) => (
+                            <div key={i} className="flex-1 border-r border-slate-100"></div>
+                          ))}
+                        </div>
+                        
+                        {/* 進度條 */}
+                        <div 
+                          className={`absolute top-1/2 transform -translate-y-1/2 h-9 rounded-lg bg-gradient-to-r ${
+                            statusColors[item.status] || 'from-slate-300 to-slate-500'
+                          } shadow-md group-hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden group-hover:scale-105`}
+                          style={position}
+                          title={`點擊查看詳情\n${item.name}\n開始: ${new Date(item.startDate).toLocaleDateString()}\n結束: ${new Date(item.endDate).toLocaleDateString()}\n進度: ${item.progress}%`}
+                        >
+                          {/* 光澤效果 */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-transparent via-white/20 to-transparent"></div>
+                          
+                          {/* 進度條內部填充 */}
+                          <div 
+                            className="absolute inset-0 bg-white/30 transition-all duration-500"
+                            style={{ width: `${item.progress}%` }}
+                          ></div>
+                          
+                          {/* 文字標籤 */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs text-white font-bold px-3 truncate drop-shadow-md">
+                              {item.progress}%
+                            </span>
+                          </div>
+                          
+                          {/* 懸停時顯示詳細信息 */}
+                          <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs p-3 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20 pointer-events-none">
+                            <div className="font-semibold mb-1 text-blue-300">👆 點擊查看詳情</div>
+                            <div className="font-semibold mb-1">{item.name}</div>
+                            <div>📅 {new Date(item.startDate).toLocaleDateString()} - {new Date(item.endDate).toLocaleDateString()}</div>
+                            <div>📊 進度: {item.progress}%</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 圖例 - 美化版本 */}
+        <div className="mt-8 bg-gradient-to-r from-slate-50 to-blue-50 p-6 rounded-2xl shadow-lg border border-slate-200">
+          <div className="flex items-center gap-8 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-bold text-slate-700">狀態圖例</span>
+            </div>
+            <div className="h-6 w-px bg-slate-300"></div>
+            <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-blue-600 rounded-lg shadow-sm"></div>
+              <span className="text-sm font-medium text-slate-700">進行中</span>
+            </div>
+            <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-6 h-6 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-lg shadow-sm"></div>
+              <span className="text-sm font-medium text-slate-700">已完成</span>
+            </div>
+            <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-6 h-6 bg-gradient-to-r from-slate-300 to-slate-500 rounded-lg shadow-sm"></div>
+              <span className="text-sm font-medium text-slate-700">待處理</span>
+            </div>
+            <div className="h-6 w-px bg-slate-300"></div>
+            <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg shadow-sm">
+              <div className="w-1 h-6 bg-red-500 rounded-full shadow-sm"></div>
+              <span className="text-sm font-medium text-red-600">📍 今天</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpdateMachine }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState(null);
+  const [showPersonalDashboard, setShowPersonalDashboard] = useState(false);
 
   const handleOpenAdd = () => {
     setEditingMachine(null);
@@ -3909,6 +4670,15 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
     setIsModalOpen(false);
   };
 
+  // 如果顯示個人戰情室，返回該視圖
+  if (showPersonalDashboard) {
+    return <PersonalDashboard 
+      onBack={() => setShowPersonalDashboard(false)} 
+      machines={machines} 
+      onSelectMachine={onSelect} 
+    />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-8 animate-fade-in">
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingMachine ? "編輯機台專案" : "新增機台專案"}>
@@ -3922,6 +4692,12 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
             <p className="text-slate-500 mt-1">請選擇要管理的產品機台專案 (Product Machine Project)</p>
           </div>
           <div className="flex gap-3 items-center">
+             <button 
+                onClick={() => setShowPersonalDashboard(true)} 
+                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm"
+             >
+                <GanttChartIcon size={16} /> 個人戰情室
+             </button>
              <button onClick={onBack} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors shadow-sm">
               <LogOut size={16} /> 返回
             </button>
@@ -4925,7 +5701,17 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-blue-600">{item.version}</span>
-                        <span className="text-sm text-slate-500">{item.date}</span>
+                        <span className="text-sm text-slate-500">
+                          {item.createdAt ? new Date(item.createdAt).toLocaleString('zh-TW', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                          }) : item.date}
+                        </span>
                         {item.autoGenerated && (
                           <span className="px-2 py-0.5 bg-purple-200 text-purple-700 rounded text-xs font-medium">
                             🤖 自動記錄
@@ -5598,6 +6384,7 @@ const HistoryForm = ({ onSubmit, onCancel }) => {
   const [formData, setFormData] = useState({
     version: '',
     date: new Date().toISOString().split('T')[0],
+    createdAt: new Date().toISOString(), // 完整時間戳記
     author: '陳建宏', // Default user
     action: '',
     desc: '',
@@ -6025,7 +6812,16 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     const unsubProjects = db.subscribe('rd_projects', (data) => setProjects(data.filter(p => p.machineId === machine.id)));
     const unsubTasks = db.subscribe('rd_tasks', (data) => setTasks(data));
     const unsubChanges = db.subscribe('rd_changes', (data) => setChanges(data));
-    const unsubHistory = db.subscribe('rd_history', (data) => setHistory(data));
+    // 訂閱 history 並按時間排序（越新的越上面）
+    const unsubHistory = db.subscribe('rd_history', (data) => {
+      const sortedData = [...data].sort((a, b) => {
+        // 優先使用 createdAt，其次使用 date
+        const timeA = new Date(a.createdAt || a.date || 0).getTime();
+        const timeB = new Date(b.createdAt || b.date || 0).getTime();
+        return timeB - timeA; // 降序排列（新的在前）
+      });
+      setHistory(sortedData);
+    });
     const unsubMessages = db.subscribe('rd_messages', (data) => setMessages(data));
     
     return () => {
@@ -6040,6 +6836,11 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   // 🔥 檢查是否有從跑馬燈點擊跳轉的專案
   useEffect(() => {
     const openProjectId = sessionStorage.getItem('openProjectId');
+    console.log('🔍 ProjectApp 檢查 sessionStorage:', { 
+      openProjectId, 
+      projectsCount: projects.length,
+      projectIds: projects.map(p => p.id)
+    });
     if (openProjectId && projects.length > 0) {
       const targetProject = projects.find(p => p.id === openProjectId);
       if (targetProject) {
@@ -6048,6 +6849,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         // 清除 sessionStorage
         sessionStorage.removeItem('openProjectId');
         console.log('🎯 自動打開專案:', targetProject.name);
+      } else {
+        console.warn('⚠️ 找不到專案 ID:', openProjectId);
       }
     }
   }, [projects]);
@@ -6061,12 +6864,14 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     const projectId = await db.addDoc('rd_projects', { ...newProject, machineId: machine.id });
     
     // 🆕 自動記錄專案新增到產品履歷
-    const timestamp = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const timestamp = now.toISOString().split('T')[0];
     const author = user?.displayName || '系統';
     
     const historyEntry = {
       version: 'Auto',
       date: timestamp,
+      createdAt: now.toISOString(), // 完整時間戳記
       action: `新增專案：${newProject.name}`,
       desc: `負責人: ${newProject.owner}；類別: ${newProject.category}；狀態: ${newProject.status}；進度: ${newProject.progress}%`,
       status: 'Pending',
@@ -6089,7 +6894,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     // 🆕 自動記錄專案異動到產品履歷
     if (originalProject) {
       const changes = [];
-      const timestamp = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const timestamp = now.toISOString().split('T')[0];
       const author = user?.displayName || '系統';
       
       // 檢測狀態變更
@@ -6144,6 +6950,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         const historyEntry = {
           version: 'Auto',
           date: timestamp,
+          createdAt: now.toISOString(), // 完整時間戳記
           action: `專案更新：${updatedProject.name}`,
           desc: changeDesc,
           status: 'Pending',
@@ -6173,12 +6980,14 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     const taskId = await db.addDoc('rd_tasks', newTask);
     
     // 🆕 自動記錄任務新增到產品履歷
-    const timestamp = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const timestamp = now.toISOString().split('T')[0];
     const author = user?.displayName || '系統';
     
     const historyEntry = {
       version: 'Auto',
       date: timestamp,
+      createdAt: now.toISOString(), // 完整時間戳記
       action: `新增任務：${newTask.title}`,
       desc: `負責人: ${newTask.owner}；優先級: ${newTask.priority}；狀態: ${newTask.status}`,
       status: 'Pending',
@@ -6202,7 +7011,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     // 🆕 自動記錄任務異動到產品履歷
     if (originalTask) {
       const changes = [];
-      const timestamp = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const timestamp = now.toISOString().split('T')[0];
       const author = user?.displayName || '系統';
       
       // 檢測狀態變更
@@ -6249,6 +7059,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         const historyEntry = {
           version: 'Auto',
           date: timestamp,
+          createdAt: now.toISOString(), // 完整時間戳記
           action: `任務更新：${taskName}`,
           desc: changeDesc,
           status: 'Pending',
@@ -9467,27 +10278,59 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   );
 };
 
-// --- R&D Nexus System Wrapper ---
+// --- R&D Nexus System Wrapper - 優化載入 ---
 const RDNexusSystem = ({ onBackToMenu, user }) => {
     const [selectedMachine, setSelectedMachine] = useState(null);
     const [machines, setMachines] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // 設定初始載入超時保護
+        const loadingTimeout = setTimeout(() => {
+            if (loading) {
+                console.warn('載入超時，強制結束載入狀態');
+                setLoading(false);
+            }
+        }, 5000);
+
+        console.log('🚀 RDNexus 初始化，檢查 sessionStorage:', {
+            openMachineId: sessionStorage.getItem('openMachineId'),
+            openProjectId: sessionStorage.getItem('openProjectId')
+        });
+
         const unsubscribe = db.subscribe('rd_machines', (data) => {
             setMachines(data);
+            setLoading(false);
+            clearTimeout(loadingTimeout);
+            console.log('📦 機台載入完成:', data.length, '台');
         });
-        return () => unsubscribe();
+        
+        return () => {
+            unsubscribe();
+            clearTimeout(loadingTimeout);
+        };
     }, []);
     
     // 🔥 檢查是否有從跑馬燈跳轉的機台ID，自動選擇機台
     useEffect(() => {
         const targetMachineId = sessionStorage.getItem('openMachineId');
+        console.log('🔍 RDNexus 檢查 sessionStorage:', { 
+            targetMachineId, 
+            machinesCount: machines.length,
+            machineIds: machines.map(m => m.id)
+        });
+        // 只有當機台列表已載入且找到目標機台時才處理
         if (targetMachineId && machines.length > 0) {
             const machine = machines.find(m => m.id === targetMachineId);
             if (machine) {
                 setSelectedMachine(machine);
+                // 成功選擇後才清除 sessionStorage
                 sessionStorage.removeItem('openMachineId');
                 console.log('🎯 自動選擇機台:', machine.name);
+            } else {
+                console.warn('⚠️ 找不到機台 ID:', targetMachineId);
+                // 找不到機台時也要清除，避免無限等待
+                sessionStorage.removeItem('openMachineId');
             }
         }
     }, [machines]);
@@ -9499,6 +10342,25 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
     const handleUpdateMachine = async (updatedMachine) => {
         await db.updateDoc('rd_machines', updatedMachine.id, updatedMachine);
     };
+
+    // 顯示載入動畫
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4 animate-pulse">
+                        <LayoutDashboard size={32} className="text-blue-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">載入機台資料中...</h2>
+                    <div className="flex items-center gap-2 justify-center">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (selectedMachine) {
         return <ProjectApp machine={selectedMachine} user={user} onBackToMachines={() => setSelectedMachine(null)} />;
@@ -10121,7 +10983,7 @@ export default function App() {
   }
 
   if (system === 'PROJECT') {
-    return <RDNexusSystem user={user} onBackToMenu={() => setSystem(null)} />;
+    return <RDNexusSystem key="rdnexus" user={user} onBackToMenu={() => setSystem(null)} />;
   }
 
   if (system === 'KPI_REPORT') {
