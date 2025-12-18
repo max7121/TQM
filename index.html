@@ -6208,7 +6208,7 @@ const ProjectListView = ({ onViewDetails, projects, onAddProject, onUpdateProjec
   );
 };
 
-const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpdateTask, changes: allChanges, onAddChange, history: allHistory, onAddHistory, messages: allMessages, onAddMessage, meetings: allMeetings, onAddMeeting, onUpdateMeeting, onDeleteMeeting, notifications: allNotifications, onAddNotification, allUsers, onUpdateProject, onDeleteProject, user }) => {
+const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTask, onUpdateTask, changes: allChanges, onAddChange, history: allHistory, onAddHistory, messages: allMessages, onAddMessage, meetings: allMeetings, onAddMeeting, onUpdateMeeting, onDeleteMeeting, notifications: allNotifications, onAddNotification, allUsers, onUpdateProject, onDeleteProject, user }) => {
   const tasks = allTasks.filter(t => t.projectId === project.id);
   const changes = allChanges.filter(c => c.projectId === project.id);
   const history = allHistory.filter(h => h.projectId === project.id);
@@ -6234,7 +6234,19 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
       sessionStorage.removeItem('openProjectTab');
       console.log('🎯 自動切換到頁籤:', targetTab);
     }
-  }, []);
+    
+    // 🔥 檢查是否需要打開特定任務
+    const targetTaskId = sessionStorage.getItem('openTaskId');
+    if (targetTaskId) {
+      const task = tasks.find(t => t.id === targetTaskId);
+      if (task) {
+        setEditingTask(task);
+        setIsTaskModalOpen(true);
+        console.log('🎯 自動打開任務:', task.title);
+      }
+      sessionStorage.removeItem('openTaskId');
+    }
+  }, [tasks]);
   
   // 🔥 自動計算專案進度（混合計算法）
   useEffect(() => {
@@ -6489,6 +6501,8 @@ const ProjectDetailView = ({ project, onBack, tasks: allTasks, onAddTask, onUpda
       <Modal isOpen={isNotificationModalOpen} onClose={() => setIsNotificationModalOpen(false)} title="📢 發送專案通知">
         <NotificationForm 
           project={project}
+          machine={machine}
+          projectTasks={tasks}
           allUsers={allUsers || []}
           currentUser={user}
           onSubmit={(data) => { 
@@ -7861,6 +7875,18 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
 
 const EngineerDashboardView = ({ tasks = [], onUpdateTask, user }) => {
     const [editingTask, setEditingTask] = useState(null);
+    const [highlightTaskId, setHighlightTaskId] = useState(null);
+
+    // 🔥 檢查是否需要高亮特定任務
+    useEffect(() => {
+        const taskId = sessionStorage.getItem('highlightTaskId');
+        if (taskId) {
+            setHighlightTaskId(taskId);
+            sessionStorage.removeItem('highlightTaskId');
+            // 3秒後取消高亮
+            setTimeout(() => setHighlightTaskId(null), 3000);
+        }
+    }, []);
 
     // Filter tasks for the current user
     const userName = user?.displayName || '陳建宏';
@@ -7915,7 +7941,13 @@ const EngineerDashboardView = ({ tasks = [], onUpdateTask, user }) => {
                         <div className="p-8 text-center text-slate-500">目前沒有指派給您的任務</div>
                     ) : (
                         myTasks.map(task => (
-                            <div key={task.id} className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-all" onClick={() => setEditingTask(task)}>
+                            <div 
+                                key={task.id} 
+                                className={`p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-all ${
+                                    highlightTaskId === task.id ? 'bg-blue-500/20 ring-2 ring-blue-400 animate-pulse' : ''
+                                }`}
+                                onClick={() => setEditingTask(task)}
+                            >
                                 <div className="flex items-center gap-3">
                                     <div className={`w-2 h-2 rounded-full ${task.priority === 'P1' ? 'bg-rose-500' : 'bg-blue-500'}`}></div>
                                     <span className="text-white font-medium">{task.title}</span>
@@ -8331,7 +8363,7 @@ const MeetingForm = ({ onSubmit, onCancel, initialData }) => {
 };
 
 // --- 專案通知表單組件 ---
-const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }) => {
+const NotificationForm = ({ onSubmit, onCancel, project, machine, allUsers, currentUser, projectTasks }) => {
   const [formData, setFormData] = useState({
     title: '',
     type: 'general', // general, meeting, urgent
@@ -8339,7 +8371,9 @@ const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }
     meetingDate: '',
     meetingTime: '09:00',
     meetingLocation: '',
-    recipients: []
+    recipients: [],
+    taskId: '', // 🔥 關聯的任務ID
+    taskName: '' // 🔥 關聯的任務名稱
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -8393,6 +8427,7 @@ const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }
       ...formData,
       projectId: project.id,
       projectName: project.name,
+      machineName: machine?.name || '未指定機台', // 🔥 使用machine.name
       sender: currentUser?.displayName || 'System',
       senderUsername: currentUser?.username || 'system',
       createdAt: new Date().toISOString(),
@@ -8429,6 +8464,34 @@ const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }
         </div>
       </div>
 
+      {/* 關聯任務（可選）*/}
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">關聯任務（可選）</label>
+        <select
+          name="taskId"
+          value={formData.taskId}
+          onChange={(e) => {
+            const selectedTask = projectTasks?.find(t => t.id === e.target.value);
+            setFormData(prev => ({
+              ...prev,
+              taskId: e.target.value,
+              taskName: selectedTask?.title || ''
+            }));
+          }}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+        >
+          <option value="" className="bg-slate-800">無關聯任務</option>
+          {projectTasks && projectTasks.map(task => (
+            <option key={task.id} value={task.id} className="bg-slate-800">
+              {task.title} ({task.status})
+            </option>
+          ))}
+        </select>
+        {formData.taskId && (
+          <p className="text-xs text-slate-400 mt-1.5">✨ 標題將自動顯示為「{project.name} - {formData.taskName}」</p>
+        )}
+      </div>
+
       {/* 標題 */}
       <div>
         <label className="block text-sm font-medium text-slate-300 mb-1.5">通知標題 *</label>
@@ -8438,8 +8501,8 @@ const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }
           value={formData.title}
           onChange={handleChange}
           className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all"
-          placeholder="例如：專案進度更新通知"
-          required
+          placeholder={formData.taskId ? "可留空，將自動使用任務名稱" : "例如：專案進度更新通知"}
+          required={!formData.taskId}
         />
       </div>
 
@@ -8504,6 +8567,36 @@ const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }
             選擇通知對象 * <span className="text-slate-500">（已選 {formData.recipients.length} 人）</span>
           </label>
           <div className="flex gap-2">
+            {/* 🔥 專案成員快速選擇 */}
+            <button 
+              type="button" 
+              onClick={() => {
+                // 根據專案負責人和任務成員筛選
+                const projectMembers = new Set();
+                // 添加專案負責人
+                if (project.owner) {
+                  const owner = allUsers.find(u => u.displayName === project.owner);
+                  if (owner) projectMembers.add(owner.username);
+                }
+                // 添加所有任務的負責人
+                if (projectTasks && projectTasks.length > 0) {
+                  projectTasks.forEach(task => {
+                    if (task.owner) {
+                      const taskOwner = allUsers.find(u => u.displayName === task.owner);
+                      if (taskOwner) projectMembers.add(taskOwner.username);
+                    }
+                  });
+                }
+                // 轉換為 recipients 格式
+                const members = allUsers.filter(u => projectMembers.has(u.username))
+                  .map(u => ({ username: u.username, displayName: u.displayName }));
+                setFormData(prev => ({ ...prev, recipients: members }));
+              }}
+              className="text-xs px-2.5 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full hover:from-purple-600 hover:to-pink-600 transition-all font-medium flex items-center gap-1"
+            >
+              <Users size={12} />
+              專案成員
+            </button>
             <button 
               type="button" 
               onClick={handleSelectAll}
@@ -8539,7 +8632,7 @@ const NotificationForm = ({ onSubmit, onCancel, project, allUsers, currentUser }
           
           {/* 用戶下拉選單 */}
           {showUserDropdown && availableUsers.length > 0 && (
-            <div className="absolute z-20 w-full mt-2 bg-slate-800 border border-white/10 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+            <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-white/10 rounded-xl shadow-xl max-h-48 overflow-y-auto">
               {availableUsers.slice(0, 10).map(user => (
                 <button
                   key={user.username}
@@ -8933,11 +9026,13 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   // 🔥 檢查是否有從跑馬燈點擊跳轉的專案
   useEffect(() => {
     const openProjectId = sessionStorage.getItem('openProjectId');
+    
     console.log('🔍 ProjectApp 檢查 sessionStorage:', { 
       openProjectId, 
       projectsCount: projects.length,
       projectIds: projects.map(p => p.id)
     });
+    
     if (openProjectId && projects.length > 0) {
       const targetProject = projects.find(p => p.id === openProjectId);
       if (targetProject) {
@@ -9259,6 +9354,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         return (
           <ProjectDetailView 
             project={selectedProject} 
+            machine={machine}
             onBack={() => setCurrentView('list')} 
             tasks={tasks}
             onAddTask={handleAddTask}
@@ -9372,12 +9468,12 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
         {/* Header (Mobile Only / Utility) */}
-        <header className="h-16 bg-white/5 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 md:hidden">
+        <header className="h-16 bg-white/5 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 md:hidden relative z-30">
           <div className="font-bold text-lg text-white">R&D Nexus</div>
           <button className="p-2 text-slate-400 hover:bg-white/10 rounded-lg"><MoreVertical /></button>
         </header>
         
-        <header className="hidden md:flex h-20 bg-white/5 backdrop-blur-xl border-b border-white/10 items-center justify-between px-8">
+        <header className="hidden md:flex h-20 bg-white/5 backdrop-blur-xl border-b border-white/10 items-center justify-between px-8 relative z-20">
             <div className="flex items-center gap-4 text-slate-400 text-sm">
                 <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/10">
                   <Clock size={16} />
@@ -12088,12 +12184,48 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   
   // 刪除通知（僅發送者可刪除）
   const deleteNotification = async (notificationId) => {
+    console.log('🗑️ 準備刪除通知:', notificationId, typeof notificationId);
+    if (!notificationId) {
+      alert('❌ 無法刪除：通知 ID 不存在');
+      console.error('通知 ID 為空或未定義');
+      return;
+    }
     if (confirm('確定要刪除此通知嗎？')) {
       try {
         await db.deleteDoc('rd_notifications', notificationId);
+        console.log('✅ 通知已成功刪除:', notificationId);
       } catch (e) {
-        console.error('刪除通知失敗:', e);
+        console.error('❌ 刪除通知失敗:', e);
+        alert('刪除失敗：' + e.message);
       }
+    }
+  };
+  
+  // 🔥 強制刪除所有通知
+  const deleteAllNotifications = async () => {
+    if (myNotifications.length === 0) {
+      alert('📭 目前沒有任何通知');
+      return;
+    }
+    
+    const confirmMsg = `⚠️ 確定要刪除全部 ${myNotifications.length} 則通知嗎？\n\n此操作無法復原！`;
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+      console.log('🗑️ 開始批量刪除通知，共', myNotifications.length, '則');
+      
+      // 批量刪除所有通知
+      const deletePromises = myNotifications.map(notification => 
+        db.deleteDoc('rd_notifications', notification.id)
+      );
+      
+      await Promise.all(deletePromises);
+      
+      console.log('✅ 已成功刪除全部通知');
+      alert('✅ 已成功刪除全部 ' + myNotifications.length + ' 則通知');
+    } catch (e) {
+      console.error('❌ 批量刪除通知失敗:', e);
+      alert('❌ 刪除失敗：' + e.message);
     }
   };
   
@@ -12386,13 +12518,23 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                 </div>
                 <span>📬 R&D Nexus 專案通知</span>
               </div>
-              <button 
-                onClick={() => setShowNotificationPanel(!showNotificationPanel)}
-                className="text-white text-sm bg-white/20 px-4 py-1.5 rounded-full hover:bg-white/30 transition-all flex items-center gap-2"
-              >
-                {showNotificationPanel ? '收起通知' : `展開查看 (${myNotifications.length})`}
-                {showNotificationPanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={deleteAllNotifications}
+                  className="text-white text-sm bg-red-500/80 hover:bg-red-600 px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 shadow-lg hover:scale-105"
+                  title="刪除全部通知"
+                >
+                  <Trash2 size={14} />
+                  刪除全部
+                </button>
+                <button 
+                  onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+                  className="text-white text-sm bg-white/20 px-4 py-1.5 rounded-full hover:bg-white/30 transition-all flex items-center gap-2"
+                >
+                  {showNotificationPanel ? '收起通知' : `展開查看 (${myNotifications.length})`}
+                  {showNotificationPanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
             </div>
             
             {showNotificationPanel && (
@@ -12401,6 +12543,27 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                   const isRead = notification.isRead && notification.isRead[user?.username];
                   const isUrgent = notification.type === 'urgent';
                   const isMeeting = notification.type === 'meeting';
+                  
+                  // 🔥 處理跳轉到專案任務看板頁面
+                  const handleJumpToProject = (e) => {
+                    e.stopPropagation();
+                    if (notification.projectId) {
+                      // 🔥 跳轉到專案詳情的任務看板
+                      sessionStorage.setItem('openProjectId', notification.projectId);
+                      sessionStorage.setItem('openProjectTab', 'kanban');
+                      // 如果有任務ID，也存儲任務ID以便打開任務詳情
+                      if (notification.taskId) {
+                        sessionStorage.setItem('openTaskId', notification.taskId);
+                      }
+                      // 跳轉到 R&D Nexus
+                      onSelect('PROJECT');
+                    }
+                  };
+                  
+                  // 🔥 顯示標題：格式為「機台名稱 - 專案名稱 - 任務名稱」
+                  const displayTitle = notification.taskName 
+                    ? `${notification.machineName || '未指定機台'} - ${notification.projectName} - ${notification.taskName}`
+                    : notification.title || `${notification.machineName || '未指定機台'} - ${notification.projectName}`;
                   
                   return (
                     <div 
@@ -12413,10 +12576,11 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                           ? 'bg-purple-500/10 border-purple-500/30 hover:bg-purple-500/20'
                           : 'bg-white/5 border-white/10 hover:bg-white/10'
                       } ${!isRead ? 'ring-2 ring-amber-400/50' : ''}`}
+                      data-notification-id={notification.id}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
                             {/* 通知類型標籤 */}
                             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                               isUrgent 
@@ -12427,9 +12591,9 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                             }`}>
                               {isUrgent ? '🚨 緊急' : isMeeting ? '📅 開會' : '📢 通知'}
                             </span>
-                            {/* 專案名稱 */}
-                            <span className="text-xs text-slate-400 bg-white/10 px-2 py-0.5 rounded">
-                              {notification.projectName}
+                            {/* 機台名稱 - 更明顯的樣式 */}
+                            <span className="text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-blue-500 px-3 py-1 rounded-full shadow-lg">
+                              🔧 {notification.machineName || notification.projectName}
                             </span>
                             {/* 未讀標記 */}
                             {!isRead && (
@@ -12437,10 +12601,13 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                             )}
                           </div>
                           
-                          {/* 標題 */}
+                          {/* 標題 - 顯示專案名稱-任務名稱 */}
                           <h4 className={`font-bold mb-1 ${isUrgent ? 'text-red-300' : 'text-white'}`}>
-                            {notification.title}
+                            {displayTitle}
                           </h4>
+                          {notification.title && notification.taskName && (
+                            <p className="text-xs text-slate-500 mb-2">📝 {notification.title}</p>
+                          )}
                           
                           {/* 開會資訊 */}
                           {isMeeting && notification.meetingDate && (
@@ -12468,13 +12635,29 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
                             <span>時間：{new Date(notification.createdAt).toLocaleString('zh-TW')}</span>
                             <span>收件人：{notification.recipients?.length || 0} 人</span>
                           </div>
+                          
+                          {/* 🔥 跳轉到專案任務看板按鈕 */}
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <button
+                              onClick={handleJumpToProject}
+                              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-lg text-sm font-medium shadow-lg shadow-blue-500/25 transition-all flex items-center gap-2 hover:scale-105"
+                            >
+                              <ArrowRight size={16} />
+                              {notification.taskId ? '前往查看此任務' : '前往專案任務看板'}
+                            </button>
+                          </div>
                         </div>
                         
                         {/* 操作按鈕 */}
                         <div className="flex flex-col gap-2">
                           {notification.senderUsername === user?.username && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); deleteNotification(notification.id); }}
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                console.log('🔍 通知資料:', notification);
+                                console.log('🔍 通知 ID:', notification.id);
+                                deleteNotification(notification.id); 
+                              }}
                               className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
                               title="刪除通知"
                             >
@@ -12639,6 +12822,7 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
 const RDNexusSystem = ({ onBackToMenu, user }) => {
     const [selectedMachine, setSelectedMachine] = useState(null);
     const [machines, setMachines] = useState([]);
+    const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -12662,20 +12846,51 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
             console.log('📦 機台載入完成:', data.length, '台');
         });
         
+        // 🔥 訂閱專案資料以便找到專案所屬的機台
+        const unsubProjects = db.subscribe('rd_projects', (data) => {
+            setProjects(data);
+        });
+        
         return () => {
             unsubscribe();
+            unsubProjects();
             clearTimeout(loadingTimeout);
         };
     }, []);
     
-    // 🔥 檢查是否有從跑馬燈跳轉的機台ID，自動選擇機台
+    // 🔥 檢查是否有從跑馬燈或通知跳轉，自動選擇機台
     useEffect(() => {
         const targetMachineId = sessionStorage.getItem('openMachineId');
+        const targetProjectId = sessionStorage.getItem('openProjectId');
+        
         console.log('🔍 RDNexus 檢查 sessionStorage:', { 
-            targetMachineId, 
+            targetMachineId,
+            targetProjectId, 
             machinesCount: machines.length,
+            projectsCount: projects.length,
             machineIds: machines.map(m => m.id)
         });
+        
+        // 🔥 如果有專案ID，先找到專案所屬的機台
+        if (targetProjectId && projects.length > 0 && machines.length > 0) {
+            const project = projects.find(p => p.id === targetProjectId);
+            if (project && project.machineId) {
+                const machine = machines.find(m => m.id === project.machineId);
+                if (machine) {
+                    setSelectedMachine(machine);
+                    console.log('🎯 從專案ID自動選擇機台:', machine.name, '專案:', project.name);
+                    // 不清除 openProjectId，讓 ProjectApp 處理
+                    return;
+                } else {
+                    console.warn('⚠️ 找不到專案所屬的機台 ID:', project.machineId);
+                    sessionStorage.removeItem('openProjectId');
+                }
+            } else {
+                console.warn('⚠️ 找不到專案或專案沒有機台ID:', targetProjectId);
+                sessionStorage.removeItem('openProjectId');
+            }
+        }
+        
         // 只有當機台列表已載入且找到目標機台時才處理
         if (targetMachineId && machines.length > 0) {
             const machine = machines.find(m => m.id === targetMachineId);
@@ -12690,7 +12905,7 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
                 sessionStorage.removeItem('openMachineId');
             }
         }
-    }, [machines]);
+    }, [machines, projects]);
 
     const handleAddMachine = async (newMachine) => {
         await db.addDoc('rd_machines', { ...newMachine, id: 'M' + Date.now() });
