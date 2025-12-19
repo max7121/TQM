@@ -119,7 +119,7 @@
         /* 主題切換按鈕樣式 */
         .theme-toggle {
             position: fixed;
-            top: 20px;
+            top: 80px;
             right: 20px;
             z-index: 9999;
             display: flex;
@@ -455,7 +455,17 @@ import {
   GanttChart,
   BarChart3 as GanttChartIcon,
   Sun,
-  Moon
+  Moon,
+  Package,
+  QrCode,
+  Tag,
+  Type,
+  Globe,
+  Edit3,
+  Settings2,
+  History,
+  Check,
+  Hash
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -1492,7 +1502,7 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     username: '', password: '', displayName: '', department: DEPARTMENTS[0], role: 'user',
-    permissions: ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL'] // 預設全部權限
+    permissions: ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL', 'ELEC_SPEC'] // 預設全部權限
   });
   const [editId, setEditId] = useState(null);
   
@@ -1504,7 +1514,8 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
     { id: 'PROJECT', name: 'R&D Nexus 專案管理' },
     { id: 'KPI_REPORT', name: 'KPI 整合報告' },
     { id: 'WAR_ROOM', name: '產品開發戰情室' },
-    { id: 'APPRAISAL', name: 'Appraisal 績效表' }
+    { id: 'APPRAISAL', name: 'Appraisal 績效表' },
+    { id: 'ELEC_SPEC', name: '電規追蹤系統' }
   ];
 
   useEffect(() => {
@@ -1550,7 +1561,7 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
       displayName: user.displayName, 
       department: user.department, 
       role: user.role,
-      permissions: user.permissions || ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL']
+      permissions: user.permissions || ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL', 'ELEC_SPEC']
     });
     setIsModalOpen(true);
   };
@@ -1563,7 +1574,7 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
       displayName: '', 
       department: DEPARTMENTS[0], 
       role: 'user',
-      permissions: ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL']
+      permissions: ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL', 'ELEC_SPEC']
     });
   };
   
@@ -13023,7 +13034,7 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
   };
   
   // 🔥 檢查用戶權限
-  const userPermissions = user.permissions || ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL'];
+  const userPermissions = user.permissions || ['TQM', 'KPI_PERSONAL', 'KPI', 'PROJECT', 'KPI_REPORT', 'WAR_ROOM', 'APPRAISAL', 'ELEC_SPEC'];
   const hasPermission = (moduleId) => {
     // 管理員擁有所有權限
     if (user.role === 'admin') return true;
@@ -13425,6 +13436,20 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
               </div>
             </button>
           )}
+
+          {hasPermission('ELEC_SPEC') && (
+            <button 
+              onClick={() => onSelect('ELEC_SPEC')}
+              className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-teal-500/30 group text-left hover:bg-teal-500/10 relative overflow-hidden"
+            >
+              <div className="absolute top-3 right-3 bg-gradient-to-r from-teal-400 to-cyan-500 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg">電規</div>
+              <div className="bg-gradient-to-br from-teal-500 to-cyan-700 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-teal-500/30 group-hover:scale-110 transition-transform">
+                <Cpu className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">電規追蹤系統</h2>
+              <p className="text-slate-400 text-sm">機台電規登記、零件序號追溯、履歷管理。</p>
+            </button>
+          )}
           
           {user.role === 'admin' && (
             <button 
@@ -13603,6 +13628,1017 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
             user={user}
         />
     );
+};
+
+// ============================================================
+// 電規追蹤系統 (Electrical Spec Tracking System)
+// ============================================================
+
+// --- 動態載入 XLSX 函式庫 ---
+const loadXLSXForSpec = () => {
+  return new Promise((resolve) => {
+    if (window.XLSX) return resolve(window.XLSX);
+    const script = document.createElement('script');
+    script.src = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    document.head.appendChild(script);
+  });
+};
+
+// --- 進階資料解析引擎：支援原始格式與匯出格式 ---
+const processSpecRawData = (dataMatrix, fileName) => {
+  if (!dataMatrix || dataMatrix.length < 1) return [];
+
+  const firstRow = dataMatrix[0].map(c => String(c || '').trim());
+  const isExportedSummary = firstRow.includes("機台 ID") && firstRow.includes("遊戲序號");
+  const isExportedDetails = firstRow.includes("唯一序號 (S/N)") || firstRow.includes("零件名稱 (中)");
+
+  if (isExportedSummary) {
+    return dataMatrix.slice(1).map(row => {
+      const obj = {};
+      firstRow.forEach((header, idx) => {
+        if (header === "機台 ID") obj.id = row[idx];
+        if (header === "遊戲序號") obj.gameSerial = row[idx];
+        if (header === "訂單編號") obj.orderNo = row[idx];
+        if (header === "PO 編號") obj.poNo = row[idx];
+        if (header === "出貨日期") obj.shipDate = row[idx];
+        if (header === "資料來源") obj.importSource = row[idx];
+      });
+      return { ...obj, parts: [], timestamp: new Date().getTime() };
+    }).filter(m => m.id);
+  }
+
+  if (isExportedDetails) {
+    const machineMap = {};
+    dataMatrix.slice(1).forEach(row => {
+      const mid = row[firstRow.indexOf("機台 ID")];
+      if (!mid) return;
+      if (!machineMap[mid]) {
+        machineMap[mid] = {
+          id: mid,
+          gameSerial: row[firstRow.indexOf("遊戲序號")] || '',
+          shipDate: row[firstRow.indexOf("出貨日期")] || '',
+          orderNo: '來源自明細匯入',
+          parts: [],
+          importSource: fileName,
+          timestamp: new Date().getTime()
+        };
+      }
+      machineMap[mid].parts.push({
+        category: row[firstRow.indexOf("零件區域")] || row[firstRow.indexOf("區域")] || '未分類',
+        name: row[firstRow.indexOf("零件名稱 (中)")] || row[firstRow.indexOf("中文名稱")] || '',
+        desc: row[firstRow.indexOf("零件名稱 (英)")] || row[firstRow.indexOf("英文名稱")] || '',
+        sn: row[firstRow.indexOf("唯一序號 (S/N)")] || ''
+      });
+    });
+    return Object.values(machineMap);
+  }
+
+  let orderNo = "未知訂單";
+  let poNo = "未知 PO";
+  let idRowIdx = -1;
+  let gameSerialRowIdx = -1;
+  let partsStartRowIdx = -1;
+
+  for (let i = 0; i < Math.min(dataMatrix.length, 30); i++) {
+    const row = dataMatrix[i] || [];
+    const rowStr = row.join('|');
+    if (rowStr.includes('訂單')) {
+      const foundOrder = row.find(c => String(c).includes('2210-') || String(c).includes('2230-'));
+      if (foundOrder) orderNo = foundOrder;
+    }
+    if (rowStr.includes('PO#')) poNo = row[0] || "未知 PO";
+    if (rowStr.includes('Feiloli機台電規')) idRowIdx = i;
+    if (rowStr.includes('Game Serial #')) gameSerialRowIdx = i;
+    if (rowStr.includes('Chinese Description') || rowStr.includes('Description')) partsStartRowIdx = i + 1;
+  }
+
+  if (idRowIdx === -1) return [];
+
+  const machines = [];
+  const headerRow = dataMatrix[idRowIdx];
+  const dataRow = dataMatrix[idRowIdx + 1]; 
+  const colCount = headerRow.length;
+  
+  for (let j = 2; j < colCount; j++) {
+    const machineId = dataRow?.[j];
+    if (!machineId || machineId === "" || machineId === "x") continue;
+
+    const currentShipDate = dataRow?.[1] || "";
+    const gameSerial = (gameSerialRowIdx !== -1 && dataMatrix[gameSerialRowIdx + 1]) 
+      ? dataMatrix[gameSerialRowIdx + 1][j] 
+      : "";
+
+    const machineData = {
+      id: machineId,
+      importSource: fileName,
+      orderNo: orderNo,
+      poNo: poNo,
+      shipDate: currentShipDate,
+      gameSerial: String(gameSerial || "").trim(),
+      parts: [],
+      timestamp: new Date().getTime()
+    };
+
+    if (partsStartRowIdx !== -1) {
+      let currentCategory = "一般零件";
+      for (let i = partsStartRowIdx; i < dataMatrix.length; i++) {
+        const row = dataMatrix[i];
+        const chineseName = row?.[0];
+        const englishName = row?.[1];
+        const serial = row?.[j];
+
+        if (!chineseName && !englishName) continue;
+        if (String(serial).trim() === "Serial#") {
+          currentCategory = chineseName;
+          continue;
+        }
+        if (!serial || serial === "" || String(serial).toLowerCase() === "x") continue;
+        
+        machineData.parts.push({
+          category: currentCategory,
+          name: chineseName,
+          desc: englishName,
+          sn: String(serial).trim()
+        });
+      }
+    }
+    machines.push(machineData);
+  }
+  return machines;
+};
+
+// --- 匯出中心彈窗組件 ---
+const SpecExportCenterModal = ({ isOpen, onClose, machines, onExport }) => {
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [includeParts, setIncludeParts] = useState(true);
+  const [fields, setFields] = useState({
+    id: true, gameSerial: true, orderNo: true, poNo: true, shipDate: true, partsCount: true, source: false
+  });
+
+  useEffect(() => { if (isOpen) setSelectedIds(machines.map(m => m.id)); }, [isOpen, machines]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl">
+      <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-white/20">
+        {/* 頂部標題區 - 升級版 */}
+        <div className="relative p-8 border-b border-slate-100 flex justify-between items-center bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 text-white overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full -mr-32 -mt-32 opacity-20 blur-[80px]"></div>
+          <div className="absolute bottom-0 left-1/3 w-48 h-48 bg-emerald-500 rounded-full opacity-10 blur-[60px]"></div>
+          <div className="relative z-10">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-500/30">
+                <Settings2 size={26} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-white tracking-tight">自訂匯出設定</h2>
+                <p className="text-sm text-blue-300/80 font-medium mt-1 uppercase tracking-widest">Custom Export Configuration</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="relative z-10 p-3 hover:bg-white/10 rounded-xl transition-all text-white/60 hover:text-white border border-white/10 hover:border-white/20">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 lg:grid-cols-5 gap-8 bg-gradient-to-b from-slate-50 to-white">
+          {/* 左側：機台選擇 */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex justify-between items-center">
+              <div className="font-bold text-slate-800 text-sm flex items-center">
+                <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center mr-2">
+                  <span className="text-blue-600 font-black text-xs">1</span>
+                </div>
+                選取機台範圍
+                <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">{selectedIds.length}</span>
+              </div>
+              <div className="flex space-x-3">
+                <button onClick={() => setSelectedIds(machines.map(m => m.id))} className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors px-3 py-1 rounded-lg hover:bg-blue-50">全選</button>
+                <button onClick={() => setSelectedIds([])} className="text-xs font-bold text-slate-400 hover:text-rose-500 transition-colors px-3 py-1 rounded-lg hover:bg-rose-50">清除</button>
+              </div>
+            </div>
+            <div className="border-2 border-slate-100 rounded-2xl overflow-hidden bg-white p-3 max-h-[350px] overflow-y-auto shadow-inner">
+              {machines.map(m => (
+                <label key={m.id} className={`flex items-center px-4 py-3.5 rounded-xl mb-2 last:mb-0 cursor-pointer transition-all duration-300 ${selectedIds.includes(m.id) ? 'bg-gradient-to-r from-blue-50 to-indigo-50 shadow-md border border-blue-200' : 'hover:bg-slate-50 opacity-60 border border-transparent'}`}>
+                  <div className={`w-6 h-6 rounded-lg border-2 mr-4 flex items-center justify-center transition-all duration-300 ${selectedIds.includes(m.id) ? 'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-white border-slate-300'}`}>
+                    {selectedIds.includes(m.id) && <Check size={14} strokeWidth={4} />}
+                  </div>
+                  <input type="checkbox" className="hidden" checked={selectedIds.includes(m.id)} onChange={() => setSelectedIds(prev => prev.includes(m.id) ? prev.filter(i => i !== m.id) : [...prev, m.id])} />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-slate-800">{m.id}</span>
+                    <span className="text-xs text-slate-400 font-mono">{m.gameSerial || 'NO SN'}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 右側：欄位選擇 */}
+          <div className="lg:col-span-3 space-y-8">
+            <div>
+              <div className="font-bold text-slate-800 text-sm flex items-center mb-5">
+                <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center mr-2">
+                  <span className="text-emerald-600 font-black text-xs">2</span>
+                </div>
+                選取導出欄位
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { id: 'id', label: 'Feiloli ID', icon: QrCode },
+                  { id: 'gameSerial', label: '遊戲序號 (SN)', icon: Hash },
+                  { id: 'orderNo', label: '訂單編號', icon: FileText },
+                  { id: 'poNo', label: 'PO 號碼', icon: FileText },
+                  { id: 'shipDate', label: '出貨日期', icon: Calendar },
+                  { id: 'partsCount', label: '零件總數', icon: Package }
+                ].map(f => (
+                  <label key={f.id} className={`flex items-center p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${fields[f.id] ? 'bg-gradient-to-r from-emerald-50 to-white border-emerald-400 shadow-lg shadow-emerald-500/10' : 'bg-slate-50/50 border-slate-100 text-slate-400 hover:border-slate-200 hover:bg-white'}`}>
+                    <div className={`w-5 h-5 rounded-lg flex items-center justify-center mr-3 transition-all duration-300 ${fields[f.id] ? 'bg-gradient-to-br from-emerald-400 to-emerald-500 text-white shadow-md' : 'bg-slate-200 text-transparent'}`}>
+                      <Check size={12} strokeWidth={4} />
+                    </div>
+                    <input type="checkbox" className="hidden" checked={fields[f.id]} onChange={() => setFields({...fields, [f.id]: !fields[f.id]})} />
+                    <span className="text-sm font-bold">{f.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative p-6 bg-gradient-to-br from-indigo-600 via-blue-600 to-blue-700 rounded-2xl text-white shadow-2xl shadow-blue-500/20 overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+              <div className="relative z-10">
+                <div className="flex items-center mb-4">
+                  <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center mr-2">
+                    <span className="text-white font-black text-xs">3</span>
+                  </div>
+                  <h3 className="font-bold uppercase text-sm tracking-widest">數據明細模式</h3>
+                </div>
+                <label className="flex items-center cursor-pointer group">
+                  <div className={`w-7 h-7 rounded-xl border-2 border-white/40 mr-4 flex items-center justify-center transition-all duration-300 ${includeParts ? 'bg-white text-blue-600 scale-110 shadow-xl border-white' : 'bg-transparent text-transparent'}`}>
+                     <Check size={16} strokeWidth={4} />
+                  </div>
+                  <input type="checkbox" className="hidden" checked={includeParts} onChange={() => setIncludeParts(!includeParts)} />
+                  <div className="flex flex-col">
+                    <span className="text-base font-bold">包含「零件全明細分頁」</span>
+                    <p className="text-sm opacity-70 mt-1">建立零件 ID 關聯表，供庫存追蹤與故障盤點</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 底部操作區 */}
+        <div className="p-8 border-t border-slate-100 flex items-center justify-between bg-white">
+          <div className="bg-gradient-to-r from-slate-100 to-slate-50 px-5 py-3 rounded-xl border border-slate-200 shadow-inner">
+            <span className="text-xs font-bold text-slate-400 uppercase">已選取: </span>
+            <span className="text-lg font-black text-blue-600">{selectedIds.length}</span>
+            <span className="text-sm font-bold text-slate-400 ml-1">台機台</span>
+          </div>
+          <div className="flex space-x-4">
+            <button onClick={onClose} className="px-6 py-3.5 font-bold text-sm text-slate-500 hover:text-slate-900 transition-colors rounded-xl hover:bg-slate-100">取消</button>
+            <button 
+              onClick={() => { const s = machines.filter(m => selectedIds.includes(m.id)); onExport(s, fields, includeParts); onClose(); }}
+              disabled={selectedIds.length === 0}
+              className="group px-8 py-3.5 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-xl font-bold text-sm hover:from-blue-600 hover:to-blue-700 transition-all duration-300 shadow-xl hover:shadow-blue-500/25 hover:-translate-y-0.5 disabled:opacity-30 disabled:translate-y-0 disabled:hover:from-slate-800 disabled:hover:to-slate-900 flex items-center"
+            >
+              <Download size={18} className="mr-2 group-hover:animate-bounce" /> 生成報表
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 儀表板視圖 ---
+const SpecDashboardView = ({ stats, onUpload, onNavigate, onOpenExport }) => (
+  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    {/* 統計卡片區 */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* 機台總數卡片 */}
+      <div className="relative bg-gradient-to-br from-white to-slate-50 p-8 rounded-3xl shadow-lg border border-slate-100/80 overflow-hidden group hover:shadow-xl transition-all duration-500">
+        <div className="absolute -right-8 -top-8 w-32 h-32 bg-gradient-to-br from-blue-500/20 to-indigo-500/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+        <div className="absolute right-4 bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+          <Activity size={100} />
+        </div>
+        <div className="relative z-10">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl flex items-center justify-center mb-5 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
+            <Activity size={28} />
+          </div>
+          <p className="text-slate-400 text-[11px] font-bold uppercase tracking-[0.2em] mb-2">Total Machines</p>
+          <p className="text-5xl font-black text-slate-900 tracking-tight">{stats.total}</p>
+          <div className="mt-5 flex items-center text-emerald-600 text-xs font-bold bg-emerald-50 w-fit px-3 py-1.5 rounded-full border border-emerald-100">
+            <CheckCircle2 size={14} className="mr-1.5" /> 系統運行正常
+          </div>
+        </div>
+      </div>
+      
+      {/* 型號分佈卡片 */}
+      <div className="relative bg-gradient-to-br from-white to-slate-50 p-8 rounded-3xl shadow-lg border border-slate-100/80 overflow-hidden group hover:shadow-xl transition-all duration-500">
+        <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-gradient-to-br from-emerald-500/20 to-teal-500/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+        <div className="relative z-10">
+          <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl flex items-center justify-center mb-5 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
+            <Layers size={28} />
+          </div>
+          <p className="text-slate-400 text-[11px] font-bold uppercase tracking-[0.2em] mb-4">Model Distribution</p>
+          <div className="flex flex-wrap gap-2 max-h-[100px] overflow-y-auto custom-scrollbar">
+            {Object.entries(stats.models).map(([model, count]) => (
+              <div key={model} className="bg-white hover:bg-emerald-50 px-3 py-2 rounded-xl border border-slate-100 hover:border-emerald-200 transition-all flex items-center shadow-sm cursor-default">
+                <span className="w-2 h-2 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 mr-2 shadow-sm"></span>
+                <span className="text-xs font-bold text-slate-700">{model}</span>
+                <span className="ml-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{count}</span>
+              </div>
+            ))}
+            {stats.total === 0 && <p className="text-slate-300 italic text-sm py-4">等待資料匯入...</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* 匯出中心卡片 */}
+      <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-8 rounded-3xl shadow-2xl overflow-hidden group hover:shadow-indigo-500/20 transition-all duration-500">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMyIgc3Ryb2tlLXdpZHRoPSIwLjUiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-10"></div>
+        <div className="absolute right-0 bottom-0 opacity-10 group-hover:opacity-20 group-hover:scale-125 transition-all duration-700">
+           <FileSpreadsheet size={140} />
+        </div>
+        <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500 rounded-full -mr-20 -mt-20 opacity-20 blur-3xl"></div>
+        <div className="relative z-10 flex flex-col h-full justify-between">
+          <div>
+            <div className="inline-flex items-center px-3 py-1 bg-white/10 backdrop-blur-sm rounded-full text-xs font-bold text-blue-300 uppercase tracking-widest mb-4 border border-white/10">
+              <Settings2 size={12} className="mr-1.5" /> Export Center
+            </div>
+            <h4 className="text-xl font-black text-white mb-2">資料匯出報表</h4>
+            <p className="text-sm text-slate-400 leading-relaxed">支援自訂機台、欄位選擇與零件明細匯出至 Excel。</p>
+          </div>
+          <button onClick={onOpenExport} className="mt-6 bg-white/10 hover:bg-white text-white hover:text-slate-900 px-5 py-3.5 rounded-2xl font-bold text-sm transition-all flex items-center justify-center border border-white/20 backdrop-blur-sm shadow-lg hover:shadow-xl group-hover:scale-[1.02]">
+            <Download size={18} className="mr-2" /> 前往匯出中心
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* 下方區塊 */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 上傳區塊 */}
+      <div className="relative bg-gradient-to-br from-white to-blue-50/30 p-10 rounded-3xl shadow-lg border-2 border-dashed border-slate-200 hover:border-blue-400 transition-all duration-500 group overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <div className="relative z-10 flex flex-col items-center justify-center text-center">
+          <div className="w-24 h-24 bg-gradient-to-br from-slate-100 to-slate-50 text-slate-300 rounded-3xl flex items-center justify-center mb-6 group-hover:bg-gradient-to-br group-hover:from-blue-100 group-hover:to-indigo-100 group-hover:text-blue-500 transition-all duration-500 shadow-inner group-hover:shadow-lg group-hover:scale-110">
+            <Upload size={44} strokeWidth={1.5} />
+          </div>
+          <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">匯入電規檔案</h3>
+          <p className="text-slate-400 text-sm mb-8 max-w-sm leading-relaxed">支援原始工廠 CSV/XLSX 檔案或本系統匯出之報表檔案，系統將自動解析合併數據。</p>
+          <label className="relative bg-gradient-to-r from-slate-900 to-slate-800 hover:from-blue-600 hover:to-indigo-600 text-white px-10 py-4 rounded-2xl font-bold cursor-pointer transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 text-sm uppercase tracking-widest group/btn">
+            <span className="flex items-center">
+              <Upload size={18} className="mr-2 group-hover/btn:animate-bounce" /> 選取檔案開始
+            </span>
+            <input type="file" multiple accept=".xlsx,.xls,.csv" className="hidden" onChange={onUpload} />
+          </label>
+        </div>
+      </div>
+
+      {/* 最近紀錄 */}
+      <div className="bg-white p-8 rounded-3xl shadow-lg border border-slate-100/80 overflow-hidden">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+             <div className="w-10 h-10 bg-gradient-to-br from-amber-100 to-orange-100 text-amber-600 rounded-xl flex items-center justify-center mr-3 shadow-sm"><History size={20} /></div>
+             <div>
+               <h3 className="text-lg font-black text-slate-800">最近更新紀錄</h3>
+               <p className="text-xs text-slate-400">Recent Activities</p>
+             </div>
+          </div>
+          <div className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-500">{stats.recent.length} 筆</div>
+        </div>
+        <div className="space-y-3 max-h-[320px] overflow-y-auto custom-scrollbar pr-2">
+          {stats.recent.map((m, idx) => (
+            <div key={m.id} className="p-4 bg-gradient-to-r from-slate-50 to-white hover:from-blue-50 hover:to-white rounded-2xl flex items-center justify-between group cursor-pointer border border-transparent hover:border-blue-100 hover:shadow-lg transition-all duration-300" onClick={() => onNavigate(m)}>
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
+                    {m.id.charAt(0)}
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold border-2 border-white shadow">{idx + 1}</div>
+                </div>
+                <div>
+                  <p className="font-black text-slate-800 group-hover:text-blue-600 transition-colors">{m.id}</p>
+                  <div className="flex items-center space-x-2 mt-1">
+                     <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase">{m.orderNo}</span>
+                     <span className="text-[10px] font-bold text-blue-500 font-mono bg-blue-50 px-2 py-0.5 rounded">SN: {m.gameSerial || '---'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="p-2.5 bg-white rounded-xl text-slate-300 group-hover:text-white group-hover:bg-blue-500 group-hover:shadow-lg transition-all">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          ))}
+          {stats.recent.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-300 mb-4">
+                <FileText size={32} />
+              </div>
+              <p className="text-slate-400 font-bold">尚未匯入任何資料</p>
+              <p className="text-slate-300 text-sm mt-1">開始匯入您的第一筆電規資料</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// --- 機台列表視圖 ---
+const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, onClear, onOpenExport }) => (
+  <div className="bg-white rounded-3xl shadow-xl border border-slate-100/80 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+    {/* 搜尋工具列 */}
+    <div className="p-6 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-gradient-to-r from-slate-50/80 to-white">
+      <div className="relative flex-1 max-w-2xl group">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 group-focus-within:bg-blue-100 rounded-xl flex items-center justify-center transition-colors">
+          <Search className="text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
+        </div>
+        <input 
+          type="text" 
+          placeholder="搜尋機台 ID、序號、訂單編號或特定零件 S/N..." 
+          className="w-full pl-16 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all font-medium text-slate-700 shadow-sm placeholder:text-slate-300"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        {searchTerm && (
+          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 bg-slate-100 hover:bg-rose-100 rounded-lg text-slate-400 hover:text-rose-500 transition-all">
+            <X size={16} />
+          </button>
+        )}
+      </div>
+      <div className="flex space-x-3">
+        <button onClick={onOpenExport} className="px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-2xl font-bold text-xs transition-all flex items-center shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:-translate-y-0.5 uppercase tracking-widest">
+          <Download size={16} className="mr-2" /> 匯出報表
+        </button>
+        <button onClick={onClear} className="p-3.5 text-rose-500 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:border-rose-500 rounded-2xl transition-all shadow-sm hover:shadow-lg">
+          <Trash2 size={20} />
+        </button>
+      </div>
+    </div>
+    
+    {/* 表格 */}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border-collapse">
+        <thead>
+          <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50">
+            <th className="px-8 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">機台 ID 編號</th>
+            <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">遊戲機 SN</th>
+            <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">訂單資訊</th>
+            <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em] text-center">電規項數</th>
+            <th className="px-6 py-5"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50">
+          {machines.map((m, idx) => (
+            <tr key={m.id} className="hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent transition-all group cursor-pointer" onClick={() => onSelect(m)}>
+              <td className="px-8 py-5">
+                <div className="flex items-center space-x-4">
+                  <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
+                    {m.id.charAt(0)}
+                  </div>
+                  <div>
+                    <span className="font-black text-slate-900 text-base group-hover:text-blue-600 transition-colors block">{m.id}</span>
+                    <p className="text-[11px] text-slate-400 mt-0.5 font-medium">{m.shipDate || '未註記日期'}</p>
+                  </div>
+                </div>
+              </td>
+              <td className="px-6 py-5">
+                <div className="flex items-center space-x-2">
+                   <div className="p-2 bg-gradient-to-br from-slate-100 to-slate-50 rounded-lg text-slate-400 shadow-inner"><QrCode size={16} /></div>
+                   <span className="font-mono text-sm font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded">{m.gameSerial || '------'}</span>
+                </div>
+              </td>
+              <td className="px-6 py-5">
+                <p className="text-sm font-bold text-slate-700">{m.orderNo}</p>
+                <p className="text-[11px] text-slate-400 truncate max-w-[200px] mt-0.5 font-medium">{m.importSource}</p>
+              </td>
+              <td className="px-6 py-5 text-center">
+                <span className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-blue-700 px-4 py-1.5 rounded-full text-xs font-black shadow-sm group-hover:from-blue-100 group-hover:to-indigo-100 transition-all">
+                  <Package size={12} className="mr-1.5" /> {m.parts.length} 項
+                </span>
+              </td>
+              <td className="px-6 py-5 text-right">
+                <button className="p-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-x-0.5 group-hover:scale-105">
+                  <ChevronRight size={18} />
+                </button>
+              </td>
+            </tr>
+          ))}
+          {machines.length === 0 && (
+            <tr>
+              <td colSpan="5" className="py-24">
+                <div className="flex flex-col items-center justify-center text-center">
+                  <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-300 mb-4">
+                    <Search size={40} strokeWidth={1.5} />
+                  </div>
+                  <p className="text-slate-400 font-bold text-lg">找不到符合的資料</p>
+                  <p className="text-slate-300 text-sm mt-1">嘗試調整搜尋條件或匯入新資料</p>
+                </div>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+    
+    {/* 底部統計 */}
+    {machines.length > 0 && (
+      <div className="px-8 py-4 bg-gradient-to-r from-slate-50 to-white border-t border-slate-100 flex items-center justify-between">
+        <p className="text-sm text-slate-400">
+          共 <span className="font-black text-slate-700">{machines.length}</span> 台機台
+        </p>
+        <div className="flex items-center space-x-2 text-xs text-slate-400">
+          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          <span>即時同步</span>
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+// --- 表單視圖 ---
+const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions = {} }) => {
+  const [formData, setFormData] = useState({
+    id: '', orderNo: '', poNo: '', 
+    shipDate: new Date().toISOString().slice(0, 10).replace(/-/g, '.'),
+    gameSerial: '', 
+    parts: [{ category: '控箱區域', name: '', desc: '', sn: '' }],
+    ...initialData
+  });
+
+  const handlePartChange = (index, field, value) => {
+    const newParts = [...formData.parts]; newParts[index][field] = value; setFormData(prev => ({ ...prev, parts: newParts }));
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* 頂部漸層標題區 */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-8 rounded-3xl shadow-2xl">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500 rounded-full -mr-40 -mt-40 opacity-20 blur-[100px]"></div>
+        <div className="absolute bottom-0 left-0 w-60 h-60 bg-emerald-500 rounded-full -ml-30 -mb-30 opacity-10 blur-[80px]"></div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center space-x-5">
+            <div className={`w-16 h-16 ${mode === 'edit' ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-br from-blue-400 to-blue-600'} rounded-2xl flex items-center justify-center shadow-2xl`}>
+              {mode === 'edit' ? <Edit3 size={28} className="text-white" /> : <PlusCircle size={28} className="text-white" />}
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-white tracking-tight">{mode === 'edit' ? `修改機台履歷` : '登記新機台電規'}</h1>
+              <p className="text-blue-300/70 text-sm font-medium mt-1 uppercase tracking-widest">Electrical Specification Registry</p>
+              {mode === 'edit' && <p className="text-emerald-400 font-mono font-bold mt-1 text-lg">{formData.id}</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* 表單主體 */}
+      <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-white/50">
+        <form onSubmit={(e) => { e.preventDefault(); onSave({...formData, timestamp: new Date().getTime()}); }} className="space-y-10">
+          
+          {/* 基本資訊區塊 */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-blue-600 rounded-full"></div>
+              <h2 className="text-xl font-bold text-slate-800">基本資訊</h2>
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Basic Information</span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="group">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
+                  <span className="flex items-center"><QrCode size={12} className="mr-1.5" />機台編號 (Feiloli ID) *</span>
+                </label>
+                <input name="id" value={formData.id} onChange={(e) => setFormData({...formData, id: e.target.value})} required disabled={mode === 'edit'} className={`w-full px-5 py-4 border-2 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg transition-all duration-300 ${mode === 'edit' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-blue-600 border-slate-200 hover:border-blue-300'}`} placeholder="例: F32H-0070" />
+              </div>
+              <div className="group">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
+                  <span className="flex items-center"><Cpu size={12} className="mr-1.5" />遊戲機序號 (SN) *</span>
+                </label>
+                <input name="gameSerial" value={formData.gameSerial} onChange={(e) => setFormData({...formData, gameSerial: e.target.value})} required className="w-full px-5 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg text-slate-700 font-mono transition-all duration-300 hover:border-blue-300" placeholder="例: L-29XXX" />
+              </div>
+              <div className="group">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
+                  <span className="flex items-center"><Calendar size={12} className="mr-1.5" />出貨日期記錄</span>
+                </label>
+                <input name="shipDate" value={formData.shipDate} onChange={(e) => setFormData({...formData, shipDate: e.target.value})} className="w-full px-5 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg font-mono transition-all duration-300 hover:border-blue-300" placeholder="YYYY.MM.DD" />
+              </div>
+            </div>
+          </div>
+
+          {/* 零件資訊區塊 */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-1.5 h-8 bg-gradient-to-b from-emerald-500 to-emerald-600 rounded-full"></div>
+                <h2 className="text-xl font-bold text-slate-800">電器零件詳情</h2>
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Parts Details</span>
+                <span className="ml-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold">{formData.parts.length} 項</span>
+              </div>
+              <button type="button" onClick={() => setFormData(p => ({ ...p, parts: [...p.parts, { category: p.parts[p.parts.length-1]?.category || '一般區域', name: '', desc: '', sn: '' }] }))} className="flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-bold text-sm hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-emerald-500/25 active:scale-95">
+                <Plus size={16} className="mr-2" /> 新增零件
+              </button>
+            </div>
+
+            <datalist id="spec-cat-list">{suggestions.categories?.map(c => <option key={c} value={c} />)}</datalist>
+            <datalist id="spec-name-list">{suggestions.names?.map(c => <option key={c} value={c} />)}</datalist>
+            <datalist id="spec-desc-list">{suggestions.descs?.map(c => <option key={c} value={c} />)}</datalist>
+
+            <div className="space-y-4">
+              {formData.parts.map((part, index) => (
+                <div key={index} className="relative flex flex-col xl:flex-row gap-4 bg-gradient-to-br from-slate-50 to-white p-6 rounded-2xl border-2 border-slate-100 group transition-all duration-300 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-500/5">
+                  {/* 序號標籤 */}
+                  <div className="absolute -top-3 -left-2 w-8 h-8 bg-gradient-to-br from-slate-700 to-slate-900 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-lg">
+                    {index + 1}
+                  </div>
+                  
+                  <div className="w-full xl:w-44 space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center"><Tag size={11} className="mr-1.5 text-slate-300" /> 區域分類</label>
+                    <input list="spec-cat-list" value={part.category} onChange={(e) => handlePartChange(index, 'category', e.target.value)} className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-300" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center"><Type size={11} className="mr-1.5 text-slate-300" /> 中文品名</label>
+                    <input list="spec-name-list" value={part.name} onChange={(e) => handlePartChange(index, 'name', e.target.value)} className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-300" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center"><Globe size={11} className="mr-1.5 text-slate-300" /> 英文描述</label>
+                    <input list="spec-desc-list" value={part.desc} onChange={(e) => handlePartChange(index, 'desc', e.target.value)} className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl text-sm text-slate-600 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-300" />
+                  </div>
+                  <div className="w-full xl:w-64 space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center"><Hash size={11} className="mr-1.5 text-slate-300" /> 唯一序號 S/N</label>
+                    <input value={part.sn} onChange={(e) => handlePartChange(index, 'sn', e.target.value)} className="w-full px-4 py-3 bg-gradient-to-r from-blue-50 to-white border-2 border-blue-200 rounded-xl text-sm font-bold text-blue-600 font-mono focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400" placeholder="輸入唯一識別碼" />
+                  </div>
+                  <button type="button" onClick={() => setFormData(p => ({ ...p, parts: p.parts.filter((_, i) => i !== index) }))} className="xl:self-center p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all duration-300 hover:scale-110 active:scale-95"><X size={22} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* 提交按鈕 */}
+          <button type="submit" className="w-full py-5 bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white rounded-2xl font-bold text-base hover:from-blue-600 hover:via-blue-700 hover:to-blue-600 transition-all duration-500 shadow-2xl hover:shadow-blue-500/25 hover:-translate-y-1 active:translate-y-0 flex items-center justify-center uppercase tracking-widest group">
+            <Save size={22} className="mr-3 group-hover:scale-110 transition-transform" />
+            {mode === 'edit' ? '儲存修改' : '完成登記'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// --- 追溯詳情視圖 ---
+const SpecTraceabilityDetailView = ({ machine, onClose, onEdit }) => {
+  if (!machine) return null;
+  const grouped = machine.parts.reduce((acc, part) => { if (!acc[part.category]) acc[part.category] = []; acc[part.category].push(part); return acc; }, {});
+  
+  return (
+    <div className="space-y-8">
+      {/* 頂部英雄區 - 機台護照 */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-10 rounded-3xl shadow-2xl">
+        {/* 裝飾性背景元素 */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500 rounded-full -mr-64 -mt-64 opacity-20 blur-[120px]"></div>
+        <div className="absolute left-0 bottom-0 w-72 h-72 bg-emerald-500 rounded-full -ml-36 -mb-36 opacity-15 blur-[80px]"></div>
+        <div className="absolute right-20 bottom-10 w-32 h-32 bg-amber-400 rounded-full opacity-10 blur-[60px]"></div>
+        
+        {/* 網格背景 */}
+        <div className="absolute inset-0 opacity-5" style={{backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '40px 40px'}}></div>
+        
+        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
+          <div className="space-y-6">
+            {/* 標籤區 */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="px-4 py-1.5 bg-gradient-to-r from-blue-600/30 to-blue-500/20 backdrop-blur-xl border border-blue-400/20 rounded-full text-xs font-bold uppercase tracking-widest text-blue-300 flex items-center">
+                <Cpu size={12} className="mr-2 animate-pulse" />Digital Passport
+              </div>
+              <span className="text-slate-600">•</span>
+              <span className="text-slate-400 text-sm font-medium flex items-center">
+                <Calendar size={12} className="mr-1.5" />{machine.shipDate} 出貨
+              </span>
+            </div>
+            
+            {/* 機台編號大標題 */}
+            <div>
+              <h2 className="text-6xl font-black tracking-tighter text-white leading-none mb-2 bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text">{machine.id}</h2>
+              <div className="h-1.5 w-32 bg-gradient-to-r from-blue-500 via-emerald-400 to-transparent rounded-full"></div>
+            </div>
+            
+            {/* 資訊卡片 */}
+            <div className="flex flex-wrap gap-4 items-stretch">
+              <div className="bg-white/10 backdrop-blur-xl px-6 py-5 rounded-2xl border border-white/10 flex flex-col min-w-[180px] hover:bg-white/15 transition-all duration-300 hover:scale-[1.02]">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center"><QrCode size={11} className="mr-1.5" />遊戲機序號</span>
+                <span className="font-bold text-2xl font-mono text-emerald-400">{machine.gameSerial || 'N/A'}</span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xl px-6 py-5 rounded-2xl border border-white/5 flex flex-col min-w-[140px] hover:bg-white/10 transition-all duration-300">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center"><FileText size={11} className="mr-1.5" />訂單資訊</span>
+                <span className="font-bold text-xl text-white">{machine.orderNo || '—'}</span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xl px-6 py-5 rounded-2xl border border-white/5 flex flex-col min-w-[120px] hover:bg-white/10 transition-all duration-300">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center"><Package size={11} className="mr-1.5" />零件總數</span>
+                <span className="font-bold text-xl text-amber-400">{machine.parts.length} 項</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* 操作按鈕區 */}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => onEdit(machine)} className="group bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-7 py-4 rounded-2xl font-bold text-sm flex items-center transition-all duration-300 shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5">
+              <Edit3 size={18} className="mr-2 group-hover:rotate-12 transition-transform" /> 修改履歷
+            </button>
+            <button onClick={() => window.print()} className="bg-white/10 hover:bg-white/20 text-white p-4 rounded-2xl transition-all duration-300 border border-white/10 backdrop-blur-md hover:scale-105">
+              <Printer size={20} />
+            </button>
+            <button onClick={onClose} className="bg-white text-slate-900 px-7 py-4 rounded-2xl font-bold text-sm hover:bg-blue-50 transition-all duration-300 shadow-xl hover:-translate-y-0.5">
+              返回列表
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 零件清單區 */}
+      <div className="space-y-12 pb-16">
+        {Object.entries(grouped).map(([category, parts], catIndex) => (
+          <div key={category} className="space-y-6">
+            {/* 分類標題 */}
+            <div className="flex items-center space-x-4 sticky top-0 bg-gradient-to-r from-slate-50 to-transparent py-4 z-10">
+              <div className={`w-2 h-10 rounded-full shadow-lg ${catIndex % 3 === 0 ? 'bg-gradient-to-b from-blue-500 to-blue-600' : catIndex % 3 === 1 ? 'bg-gradient-to-b from-emerald-500 to-emerald-600' : 'bg-gradient-to-b from-amber-500 to-amber-600'}`}></div>
+              <h3 className="text-2xl font-bold text-slate-800">{category}</h3>
+              <span className="bg-slate-900 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-lg">{parts.length} 項零件</span>
+            </div>
+            
+            {/* 零件卡片網格 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {parts.map((p, i) => (
+                <div key={i} className="group bg-white p-6 rounded-2xl border-2 border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-200 transition-all duration-500 flex flex-col justify-between hover:-translate-y-1">
+                  <div>
+                    {/* 卡片頭部 */}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs text-slate-400 font-bold uppercase tracking-wide truncate max-w-[140px]" title={p.desc}>{p.desc || 'Electronic Part'}</span>
+                      <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <Cpu size={14} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                    </div>
+                    {/* 品名 */}
+                    <p className="font-bold text-slate-800 text-lg mb-5 leading-tight min-h-[3rem]">{p.name}</p>
+                  </div>
+                  
+                  {/* 序號區塊 */}
+                  <div className="bg-gradient-to-br from-slate-50 to-blue-50/50 px-5 py-4 rounded-xl border border-slate-100 group-hover:from-blue-50 group-hover:to-blue-100/50 group-hover:border-blue-200 transition-all duration-300">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center mb-1"><Hash size={10} className="mr-1" />Serial Number</span>
+                        <span className="font-mono text-base font-bold text-blue-600">{p.sn}</span>
+                      </div>
+                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-inner group-hover:shadow-blue-100 transition-all">
+                        <Check size={16} className="text-emerald-500" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- 電規追蹤系統主組件 ---
+const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [machines, setMachines] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMachine, setSelectedMachine] = useState(null);
+  const [editingMachine, setEditingMachine] = useState(null);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [notification, setNotification] = useState(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('feiloli_machine_db_v3');
+    if (saved) setMachines(JSON.parse(saved));
+    loadXLSXForSpec();
+  }, []);
+
+  useEffect(() => { localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(machines)); }, [machines]);
+
+  const suggestions = useMemo(() => {
+    const allParts = machines.flatMap(m => m.parts);
+    return {
+      categories: Array.from(new Set(allParts.map(p => p.category))).filter(Boolean).sort(),
+      names: Array.from(new Set(allParts.map(p => p.name))).filter(Boolean).sort(),
+      descs: Array.from(new Set(allParts.map(p => p.desc))).filter(Boolean).sort(),
+    };
+  }, [machines]);
+
+  const showNotification = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3000); };
+
+  const handleFileUpload = async (e) => {
+    const files = e.target.files; if (!files.length) return;
+    const XLSX = await loadXLSXForSpec();
+    let totalParsed = [];
+    let processedCount = 0;
+    for (let file of Array.from(files)) {
+      const reader = new FileReader();
+      const isXlsx = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+      reader.onload = (event) => {
+        try {
+          if (isXlsx) {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            workbook.SheetNames.forEach(name => {
+              const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1 });
+              totalParsed = [...totalParsed, ...processSpecRawData(matrix, file.name)];
+            });
+          } else {
+            const matrix = event.target.result.split(/\r?\n/).map(line => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c?.replace(/"/g, '').trim()));
+            totalParsed = [...totalParsed, ...processSpecRawData(matrix, file.name)];
+          }
+          processedCount++;
+          if (processedCount === files.length) {
+            setMachines(prev => {
+              const machineMap = {};
+              [...prev, ...totalParsed].forEach(m => {
+                if (!machineMap[m.id]) { machineMap[m.id] = m; } else {
+                  const existingParts = new Set(machineMap[m.id].parts.map(p => `${p.name}-${p.sn}`));
+                  m.parts.forEach(p => { if (!existingParts.has(`${p.name}-${p.sn}`)) machineMap[m.id].parts.push(p); });
+                }
+              });
+              return Object.values(machineMap).sort((a, b) => b.timestamp - a.timestamp);
+            });
+            showNotification(`已解析並分析 ${totalParsed.length} 台機台/明細數據。`);
+          }
+        } catch (err) { showNotification(`解析失敗`, 'error'); }
+      };
+      if (isXlsx) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+    }
+  };
+
+  const handleCustomExport = async (selectedMachines, fields, includeParts) => {
+    const XLSX = await loadXLSXForSpec(); const wb = XLSX.utils.book_new();
+    const mainSheetData = selectedMachines.map(m => {
+      const row = {}; if (fields.id) row["機台 ID"] = m.id; if (fields.gameSerial) row["遊戲序號"] = m.gameSerial; if (fields.orderNo) row["訂單編號"] = m.orderNo; if (fields.poNo) row["PO 編號"] = m.poNo; if (fields.shipDate) row["出貨日期"] = m.shipDate; if (fields.partsCount) row["零件總項數"] = m.parts.length; if (fields.source) row["資料來源"] = m.importSource; return row;
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mainSheetData), "機台總表");
+    if (includeParts) {
+      const partsSheetData = []; selectedMachines.forEach(m => { m.parts.forEach(p => { partsSheetData.push({ "機台 ID": m.id, "遊戲序號": m.gameSerial, "區域": p.category, "中文名稱": p.name, "英文名稱": p.desc, "唯一序號 (S/N)": p.sn, "出貨日期": m.shipDate }); }); });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(partsSheetData), "零件明細");
+    }
+    XLSX.writeFile(wb, `機台自訂報表_${new Date().toISOString().slice(0,10)}.xlsx`); showNotification('匯出成功');
+  };
+
+  const filteredMachines = useMemo(() => {
+    if (!searchTerm) return machines; const s = searchTerm.toLowerCase();
+    return machines.filter(m => m.id.toLowerCase().includes(s) || (m.gameSerial && m.gameSerial.toLowerCase().includes(s)) || (m.orderNo && m.orderNo.toLowerCase().includes(s)) || m.parts.some(p => p.sn.toLowerCase().includes(s)));
+  }, [machines, searchTerm]);
+
+  const stats = useMemo(() => {
+    const total = machines.length; const models = {}; machines.forEach(m => { const p = m.id.split('-')[0]; models[p] = (models[p] || 0) + 1; });
+    const recent = [...machines].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5); return { total, models, recent };
+  }, [machines]);
+
+  const navItems = [
+    { id: 'dashboard', icon: LayoutDashboard, label: '概覽儀表板' },
+    { id: 'list', icon: FileText, label: '機台紀錄表' },
+    { id: 'traceability', icon: Package, label: '履歷分析' },
+    { id: 'manual', icon: PlusCircle, label: '手動新增' }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50/30 text-slate-900 font-sans">
+      <SpecExportCenterModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} machines={machines} onExport={handleCustomExport} />
+      
+      {/* Header - 升級版 */}
+      <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-2xl border-b border-white/5">
+        {/* 裝飾性漸層 */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-500 rounded-full opacity-10 blur-[60px]"></div>
+          <div className="absolute -bottom-12 left-1/3 w-32 h-32 bg-emerald-400 rounded-full opacity-5 blur-[40px]"></div>
+        </div>
+        
+        <div className="relative flex items-center space-x-5">
+          <div className="relative">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/20">
+              <Cpu size={24} className="text-white" />
+            </div>
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-slate-900 animate-pulse"></div>
+          </div>
+          <div>
+            <span className="font-black text-xl block leading-tight tracking-tight">電規追蹤系統</span>
+            <span className="text-xs text-blue-400/80 uppercase tracking-[0.2em] font-medium">Track Master Pro</span>
+          </div>
+        </div>
+        
+        <div className="relative flex items-center space-x-4">
+          <div className="hidden md:flex items-center bg-white/5 backdrop-blur-xl px-5 py-2.5 rounded-xl text-sm border border-white/10">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-lg flex items-center justify-center mr-3 shadow-lg shadow-emerald-500/20">
+              <User size={14} className="text-white" />
+            </div>
+            <div className="text-left">
+              <span className="text-slate-100 font-bold block text-sm">{user?.displayName || 'Admin'}</span>
+              <span className="text-slate-400 text-xs">已登入</span>
+            </div>
+          </div>
+          <button onClick={onBackToMenu} className="px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all duration-300 flex items-center border border-white/10 hover:border-white/20 hover:scale-105 active:scale-95">
+            <ArrowLeft size={16} className="mr-2" /> 返回選單
+          </button>
+        </div>
+      </header>
+
+      <div className="flex">
+        {/* Sidebar Nav - 升級版 */}
+        <nav className="w-72 bg-white/80 backdrop-blur-xl border-r border-slate-200/50 min-h-[calc(100vh-68px)] p-5 hidden lg:block sticky top-[68px] shadow-xl">
+          <div className="space-y-2">
+            {navItems.map((item, index) => (
+              <button key={item.id} onClick={() => { setActiveTab(item.id); setEditingMachine(null); }} className={`w-full flex items-center p-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${activeTab === item.id ? 'bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-xl shadow-slate-900/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'}`}>
+                {activeTab === item.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 to-emerald-400 rounded-r-full"></div>}
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-4 transition-all duration-300 ${activeTab === item.id ? 'bg-white/10' : 'bg-slate-100 group-hover:bg-slate-200 group-hover:scale-110'}`}>
+                  <item.icon size={20} className={activeTab === item.id ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-600'} />
+                </div>
+                <div className="text-left">
+                  <span className="font-bold text-sm block">{item.label}</span>
+                  <span className={`text-xs ${activeTab === item.id ? 'text-slate-400' : 'text-slate-400'}`}>
+                    {index === 0 ? '總覽統計' : index === 1 ? '所有記錄' : index === 2 ? '詳細資訊' : '新增資料'}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+          
+          {/* 側邊欄統計卡片 */}
+          <div className="mt-8 p-5 bg-gradient-to-br from-slate-50 to-blue-50/50 rounded-2xl border border-slate-200/50">
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">系統狀態</span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-400">已登錄機台</span>
+                <span className="font-bold text-slate-700">{stats.total} 台</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-400">版本</span>
+                <span className="font-mono text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">v2.5</span>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        {/* Mobile Nav - 升級版 */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 flex justify-around py-3 px-2 z-40 shadow-2xl">
+          {navItems.map((item) => (
+            <button key={item.id} onClick={() => { setActiveTab(item.id); setEditingMachine(null); }} className={`flex flex-col items-center p-3 rounded-xl transition-all duration-300 ${activeTab === item.id ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+              <item.icon size={22} className={activeTab === item.id ? 'mb-1' : 'mb-1'} />
+              <span className="text-xs font-bold">{item.label.slice(0, 4)}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Main Content - 升級版 */}
+        <main className="flex-1 p-6 lg:p-10 pb-24 lg:pb-10">
+          <div className="max-w-6xl mx-auto">
+            {/* 頁面標題區 */}
+            <div className="mb-10">
+              <div className="flex items-center space-x-2 mb-2">
+                <div className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-bold uppercase tracking-widest">
+                  {editingMachine ? 'Edit Mode' : activeTab === 'dashboard' ? 'Overview' : activeTab === 'list' ? 'Database' : activeTab === 'traceability' ? 'Details' : 'Create'}
+                </div>
+              </div>
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight">
+                {editingMachine ? '編輯履歷' : activeTab === 'dashboard' ? '數據儀表板' : activeTab === 'list' ? '全機台清單' : activeTab === 'traceability' ? '機台身份證' : '新增數據'}
+              </h1>
+              <p className="text-slate-500 mt-2">
+                {activeTab === 'dashboard' ? '查看系統概覽與最新動態' : activeTab === 'list' ? '瀏覽與搜尋所有已登錄機台' : activeTab === 'traceability' ? '查看機台詳細履歷資訊' : '手動新增機台電規資料'}
+              </p>
+            </div>
+
+            <div>
+              {editingMachine ? <SpecEntryFormView initialData={editingMachine} mode="edit" onSave={(m) => { setMachines(prev => { const idx = prev.findIndex(x => x.id === m.id); const updated = [...prev]; updated[idx] = m; return updated; }); setEditingMachine(null); setSelectedMachine(m); setActiveTab('traceability'); showNotification('更新成功'); }} suggestions={suggestions} /> : (
+                <>
+                  {activeTab === 'dashboard' && <SpecDashboardView stats={stats} onUpload={handleFileUpload} onNavigate={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onOpenExport={() => setIsExportOpen(true)} />}
+                  {activeTab === 'list' && <SpecMachineListView machines={filteredMachines} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSelect={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onClear={() => {if(window.confirm('確定清空？')) setMachines([]);}} onOpenExport={() => setIsExportOpen(true)} />}
+                  {activeTab === 'traceability' && <SpecTraceabilityDetailView machine={selectedMachine} onEdit={(m) => setEditingMachine(m)} onClose={() => setActiveTab('list')} />}
+                  {activeTab === 'manual' && <SpecEntryFormView onSave={(m) => { setMachines(prev => [m, ...prev]); setActiveTab('list'); showNotification('登記成功'); }} mode="create" suggestions={suggestions} />}
+                </>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Toast Notification - 升級版 */}
+      {notification && (
+        <div className={`fixed bottom-24 lg:bottom-8 right-8 px-8 py-5 rounded-2xl shadow-2xl z-[100] flex items-center space-x-4 border backdrop-blur-xl transition-all duration-500 animate-in slide-in-from-right ${notification.type === 'success' ? 'bg-slate-900/95 text-white border-white/10' : 'bg-gradient-to-r from-rose-600 to-rose-500 text-white border-rose-400/20'}`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-white/20'}`}>
+            {notification.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+          </div>
+          <div>
+            <p className="text-xs opacity-60 uppercase tracking-widest mb-1">{notification.type === 'success' ? 'Success' : 'Error'}</p>
+            <p className="font-bold text-base">{notification.msg}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const AppraisalWithDashboard = ({ onBackToMenu, user }) => {
@@ -14285,6 +15321,10 @@ export default function App() {
 
   if (system === 'APPRAISAL') {
     return renderWithThemeToggle(<AppraisalWithDashboard user={user} onBackToMenu={() => setSystem(null)} />);
+  }
+
+  if (system === 'ELEC_SPEC') {
+    return renderWithThemeToggle(<ElecSpecTrackingApp user={user} onBackToMenu={() => setSystem(null)} />);
   }
 
   if (system === 'PRODUCT_WAR_ROOM') {
