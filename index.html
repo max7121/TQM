@@ -12078,6 +12078,10 @@ const ProductWarRoom = ({ onBackToMenu }) => {
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const fileInputRef = React.useRef(null);
   const [excelLibLoaded, setExcelLibLoaded] = useState(false);
+  
+  // 新增：整合資料 state
+  const [rdTasks, setRdTasks] = useState([]);
+  const [rdMachines, setRdMachines] = useState([]);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ef4444', '#6366f1'];
   const CAT_COLORS = {
@@ -12100,6 +12104,15 @@ const ProductWarRoom = ({ onBackToMenu }) => {
       }
     };
     loadData();
+    
+    // 訂閱整合資料
+    const unsubTasks = db.subscribe('rd_tasks', setRdTasks);
+    const unsubMachines = db.subscribe('rd_machines', setRdMachines);
+    
+    return () => {
+      unsubTasks && unsubTasks();
+      unsubMachines && unsubMachines();
+    };
   }, []);
 
   useEffect(() => {
@@ -12439,6 +12452,12 @@ const ProductWarRoom = ({ onBackToMenu }) => {
               <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
                 <LayoutDashboard size={18} /> 戰情總覽
               </button>
+              <button onClick={() => setActiveTab('workload')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'workload' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                <Users size={18} /> 人員負擔
+              </button>
+              <button onClick={() => setActiveTab('machines')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'machines' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                <Cpu size={18} /> 機台近況
+              </button>
               <button onClick={() => setActiveTab('data')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'data' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
                 <TableIcon size={18} /> 資料管理
               </button>
@@ -12620,6 +12639,381 @@ const ProductWarRoom = ({ onBackToMenu }) => {
                 </div>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* 人員工作負擔分析 */}
+        {activeTab === 'workload' && !isPresentationMode && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800">
+                <Users className="text-blue-600" size={24} />
+                人員工作負擔分析
+                <span className="text-xs text-slate-400 ml-2">整合自：研發專案管理系統</span>
+              </h3>
+              
+              {(() => {
+                // 計算每位人員的任務統計
+                const ownerStats = {};
+                rdTasks.forEach(task => {
+                  const owner = task.owner || '未指派';
+                  if (!ownerStats[owner]) {
+                    ownerStats[owner] = { total: 0, todo: 0, doing: 0, review: 0, done: 0, p1: 0, risk: 0 };
+                  }
+                  ownerStats[owner].total++;
+                  if (task.status === 'To Do') ownerStats[owner].todo++;
+                  if (task.status === 'Doing') ownerStats[owner].doing++;
+                  if (task.status === 'Review') ownerStats[owner].review++;
+                  if (task.status === 'Done') ownerStats[owner].done++;
+                  if (task.priority === 'P1') ownerStats[owner].p1++;
+                  if (task.risk) ownerStats[owner].risk++;
+                });
+                
+                const sortedOwners = Object.entries(ownerStats)
+                  .map(([name, stats]) => ({ name, ...stats, activeLoad: stats.todo + stats.doing + stats.review }))
+                  .sort((a, b) => b.activeLoad - a.activeLoad);
+                
+                const maxLoad = Math.max(...sortedOwners.map(o => o.activeLoad), 1);
+                
+                return (
+                  <div className="space-y-6">
+                    {/* 負載總覽卡片 */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <p className="text-xs text-blue-600 font-bold mb-1">總任務數</p>
+                        <p className="text-3xl font-black text-blue-700">{rdTasks.length}</p>
+                      </div>
+                      <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                        <p className="text-xs text-amber-600 font-bold mb-1">進行中</p>
+                        <p className="text-3xl font-black text-amber-700">{rdTasks.filter(t => t.status === 'Doing').length}</p>
+                      </div>
+                      <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                        <p className="text-xs text-red-600 font-bold mb-1">高風險</p>
+                        <p className="text-3xl font-black text-red-700">{rdTasks.filter(t => t.risk).length}</p>
+                      </div>
+                      <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                        <p className="text-xs text-emerald-600 font-bold mb-1">已完成</p>
+                        <p className="text-3xl font-black text-emerald-700">{rdTasks.filter(t => t.status === 'Done').length}</p>
+                      </div>
+                    </div>
+                    
+                    {/* 人員負載圖表 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="bg-slate-50 p-6 rounded-xl">
+                        <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                          <BarChart3 size={18} className="text-blue-500" />
+                          人員工作量排名
+                        </h4>
+                        <div className="space-y-3">
+                          {sortedOwners.slice(0, 10).map((owner, idx) => (
+                            <div key={owner.name} className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-orange-500' : idx === 2 ? 'bg-amber-500' : 'bg-slate-400'}`}>
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="font-bold text-slate-700">{owner.name}</span>
+                                  <span className="text-xs text-slate-500">
+                                    {owner.activeLoad} 進行中 / {owner.total} 總計
+                                  </span>
+                                </div>
+                                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full transition-all ${owner.activeLoad > 5 ? 'bg-red-500' : owner.activeLoad > 3 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                    style={{ width: `${(owner.activeLoad / maxLoad) * 100}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                              {owner.risk > 0 && (
+                                <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full">
+                                  {owner.risk} 風險
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                          {sortedOwners.length === 0 && (
+                            <p className="text-slate-400 text-center py-8">尚無任務資料</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="bg-slate-50 p-6 rounded-xl">
+                        <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                          <Activity size={18} className="text-emerald-500" />
+                          任務狀態分佈
+                        </h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: '待處理', value: rdTasks.filter(t => t.status === 'To Do').length, fill: '#94a3b8' },
+                                  { name: '進行中', value: rdTasks.filter(t => t.status === 'Doing').length, fill: '#3b82f6' },
+                                  { name: '審核中', value: rdTasks.filter(t => t.status === 'Review').length, fill: '#f59e0b' },
+                                  { name: '已完成', value: rdTasks.filter(t => t.status === 'Done').length, fill: '#10b981' },
+                                ].filter(d => d.value > 0)}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={50}
+                                outerRadius={80}
+                                paddingAngle={3}
+                                dataKey="value"
+                                label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              >
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* 詳細任務表格 */}
+                    <div className="bg-slate-50 p-6 rounded-xl">
+                      <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        <FileText size={18} className="text-indigo-500" />
+                        各人員任務明細
+                      </h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200">
+                              <th className="text-left py-3 px-4 font-bold text-slate-600">負責人</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">待處理</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">進行中</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">審核中</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">已完成</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">P1任務</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">風險任務</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">負載狀態</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sortedOwners.map(owner => (
+                              <tr key={owner.name} className="border-b border-slate-100 hover:bg-white">
+                                <td className="py-3 px-4 font-bold text-slate-800">{owner.name}</td>
+                                <td className="py-3 px-4 text-center text-slate-600">{owner.todo}</td>
+                                <td className="py-3 px-4 text-center text-blue-600 font-bold">{owner.doing}</td>
+                                <td className="py-3 px-4 text-center text-amber-600">{owner.review}</td>
+                                <td className="py-3 px-4 text-center text-emerald-600">{owner.done}</td>
+                                <td className="py-3 px-4 text-center">
+                                  {owner.p1 > 0 && <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold">{owner.p1}</span>}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  {owner.risk > 0 && <span className="px-2 py-1 bg-orange-100 text-orange-600 rounded-full text-xs font-bold">{owner.risk}</span>}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${owner.activeLoad > 5 ? 'bg-red-100 text-red-600' : owner.activeLoad > 3 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                    {owner.activeLoad > 5 ? '超載' : owner.activeLoad > 3 ? '繁忙' : '正常'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* 機台開發近況分析 */}
+        {activeTab === 'machines' && !isPresentationMode && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800">
+                <Cpu className="text-emerald-600" size={24} />
+                機台開發近況分析
+                <span className="text-xs text-slate-400 ml-2">整合自：研發專案管理系統</span>
+              </h3>
+              
+              {(() => {
+                // 計算每台機台的專案與任務統計
+                const machineStats = rdMachines.map(machine => {
+                  const machineProjects = data.filter(p => p.machineId === machine.id);
+                  const machineTasks = rdTasks.filter(t => {
+                    const proj = data.find(p => p.id === t.projectId);
+                    return proj && proj.machineId === machine.id;
+                  });
+                  
+                  return {
+                    ...machine,
+                    projectCount: machineProjects.length,
+                    taskCount: machineTasks.length,
+                    activeTasks: machineTasks.filter(t => t.status === 'Doing' || t.status === 'Review').length,
+                    doneTasks: machineTasks.filter(t => t.status === 'Done').length,
+                    riskTasks: machineTasks.filter(t => t.risk).length,
+                    progress: machine.progress || 0
+                  };
+                });
+                
+                return (
+                  <div className="space-y-6">
+                    {/* 機台總覽卡片 */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                        <p className="text-xs text-emerald-600 font-bold mb-1">總機台數</p>
+                        <p className="text-3xl font-black text-emerald-700">{rdMachines.length}</p>
+                      </div>
+                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <p className="text-xs text-blue-600 font-bold mb-1">進行中專案</p>
+                        <p className="text-3xl font-black text-blue-700">
+                          {machineStats.reduce((sum, m) => sum + m.activeTasks, 0)}
+                        </p>
+                      </div>
+                      <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                        <p className="text-xs text-amber-600 font-bold mb-1">風險項目</p>
+                        <p className="text-3xl font-black text-amber-700">
+                          {machineStats.reduce((sum, m) => sum + m.riskTasks, 0)}
+                        </p>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                        <p className="text-xs text-purple-600 font-bold mb-1">平均進度</p>
+                        <p className="text-3xl font-black text-purple-700">
+                          {machineStats.length > 0 ? Math.round(machineStats.reduce((sum, m) => sum + m.progress, 0) / machineStats.length) : 0}%
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* 機台卡片列表 */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {machineStats.map(machine => (
+                        <div key={machine.id} className="bg-gradient-to-br from-slate-50 to-white p-6 rounded-2xl border border-slate-200 hover:shadow-xl hover:border-blue-200 transition-all group">
+                          <div className="flex items-start gap-4 mb-4">
+                            <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-200 flex-shrink-0">
+                              {machine.image ? (
+                                <img src={machine.image} alt={machine.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                  <Cpu size={32} />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-slate-800 text-lg truncate group-hover:text-blue-600 transition-colors">
+                                {machine.name}
+                              </h4>
+                              <p className="text-xs text-slate-400 font-mono">{machine.code || machine.id}</p>
+                              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold mt-1 ${machine.status === 'Active' ? 'bg-emerald-100 text-emerald-600' : machine.status === 'Warning' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${machine.status === 'Active' ? 'bg-emerald-500' : machine.status === 'Warning' ? 'bg-amber-500' : 'bg-slate-400'}`}></span>
+                                {machine.status || '進行中'}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* 進度條 */}
+                          <div className="mb-4">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs text-slate-500">整體進度</span>
+                              <span className="text-xs font-bold text-slate-700">{machine.progress}%</span>
+                            </div>
+                            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all ${machine.progress >= 80 ? 'bg-emerald-500' : machine.progress >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
+                                style={{ width: `${machine.progress}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          
+                          {/* 統計數據 */}
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-blue-50 p-2 rounded-lg">
+                              <p className="text-lg font-black text-blue-600">{machine.activeTasks}</p>
+                              <p className="text-[10px] text-blue-500">進行中</p>
+                            </div>
+                            <div className="bg-emerald-50 p-2 rounded-lg">
+                              <p className="text-lg font-black text-emerald-600">{machine.doneTasks}</p>
+                              <p className="text-[10px] text-emerald-500">已完成</p>
+                            </div>
+                            <div className="bg-red-50 p-2 rounded-lg">
+                              <p className="text-lg font-black text-red-600">{machine.riskTasks}</p>
+                              <p className="text-[10px] text-red-500">風險</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {rdMachines.length === 0 && (
+                        <div className="col-span-full text-center py-12 text-slate-400">
+                          <Cpu size={48} className="mx-auto mb-4 opacity-30" />
+                          <p>尚無機台資料，請至研發專案管理系統新增</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* 機台任務統計表 */}
+                    <div className="bg-slate-50 p-6 rounded-xl">
+                      <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        <TableIcon size={18} className="text-indigo-500" />
+                        機台開發數據總表
+                      </h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200">
+                              <th className="text-left py-3 px-4 font-bold text-slate-600">機台名稱</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">狀態</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">進度</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">總任務</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">進行中</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">已完成</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-600">風險項</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {machineStats.map(machine => (
+                              <tr key={machine.id} className="border-b border-slate-100 hover:bg-white">
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-200">
+                                      {machine.image ? (
+                                        <img src={machine.image} alt="" className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-400"><Cpu size={20} /></div>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-slate-800">{machine.name}</p>
+                                      <p className="text-xs text-slate-400">{machine.code || machine.id}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${machine.status === 'Active' ? 'bg-emerald-100 text-emerald-600' : machine.status === 'Warning' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                                    {machine.status || '進行中'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                      <div className={`h-full ${machine.progress >= 80 ? 'bg-emerald-500' : machine.progress >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${machine.progress}%` }}></div>
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-600 w-10">{machine.progress}%</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 text-center font-bold text-slate-700">{machine.taskCount}</td>
+                                <td className="py-3 px-4 text-center text-blue-600 font-bold">{machine.activeTasks}</td>
+                                <td className="py-3 px-4 text-center text-emerald-600 font-bold">{machine.doneTasks}</td>
+                                <td className="py-3 px-4 text-center">
+                                  {machine.riskTasks > 0 ? (
+                                    <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold">{machine.riskTasks}</span>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -14412,14 +14806,78 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
   const [editingMachine, setEditingMachine] = useState(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // 從 Firebase 載入資料
   useEffect(() => {
-    const saved = localStorage.getItem('feiloli_machine_db_v3');
-    if (saved) setMachines(JSON.parse(saved));
     loadXLSXForSpec();
+    
+    // 訂閱 Firebase 資料
+    const unsubscribe = db.subscribe('elec_spec_machines', (data) => {
+      if (data && data.length > 0) {
+        setMachines(data);
+      } else {
+        // 如果 Firebase 沒有資料，嘗試從 localStorage 遷移
+        const saved = localStorage.getItem('feiloli_machine_db_v3');
+        if (saved) {
+          const localData = JSON.parse(saved);
+          if (localData.length > 0) {
+            // 遷移本地資料到 Firebase
+            localData.forEach(machine => {
+              db.addDoc('elec_spec_machines', { ...machine, id: machine.id });
+            });
+            setMachines(localData);
+            console.log('📦 已將本地電規資料遷移至 Firebase');
+          }
+        }
+      }
+      setIsLoading(false);
+    });
+    
+    return () => unsubscribe && unsubscribe();
   }, []);
 
-  useEffect(() => { localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(machines)); }, [machines]);
+  // 同步儲存到 Firebase（當 machines 更新時）
+  const saveMachineToFirebase = async (machine) => {
+    try {
+      // 使用 addDoc（如果有 id 會自動 setDoc）
+      await db.addDoc('elec_spec_machines', { ...machine, id: machine.id });
+      // 同時備份到 localStorage
+      const allMachines = [...machines.filter(m => m.id !== machine.id), machine];
+      localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(allMachines));
+    } catch (error) {
+      console.error('儲存到 Firebase 失敗:', error);
+      // 回退到 localStorage
+      localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(machines));
+    }
+  };
+
+  // 批量儲存到 Firebase
+  const saveMachinesToFirebase = async (newMachines) => {
+    try {
+      for (const machine of newMachines) {
+        await db.addDoc('elec_spec_machines', { ...machine, id: machine.id });
+      }
+      // 同時備份到 localStorage
+      localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(newMachines));
+    } catch (error) {
+      console.error('批量儲存到 Firebase 失敗:', error);
+      localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(newMachines));
+    }
+  };
+
+  // 刪除所有資料
+  const clearAllMachines = async () => {
+    try {
+      for (const machine of machines) {
+        await db.deleteDoc('elec_spec_machines', machine.id);
+      }
+      localStorage.removeItem('feiloli_machine_db_v3');
+      setMachines([]);
+    } catch (error) {
+      console.error('清空資料失敗:', error);
+    }
+  };
 
   const suggestions = useMemo(() => {
     const allParts = machines.flatMap(m => m.parts);
@@ -14455,17 +14913,18 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
           }
           processedCount++;
           if (processedCount === files.length) {
-            setMachines(prev => {
-              const machineMap = {};
-              [...prev, ...totalParsed].forEach(m => {
-                if (!machineMap[m.id]) { machineMap[m.id] = m; } else {
-                  const existingParts = new Set(machineMap[m.id].parts.map(p => `${p.name}-${p.sn}`));
-                  m.parts.forEach(p => { if (!existingParts.has(`${p.name}-${p.sn}`)) machineMap[m.id].parts.push(p); });
-                }
-              });
-              return Object.values(machineMap).sort((a, b) => b.timestamp - a.timestamp);
+            const machineMap = {};
+            [...machines, ...totalParsed].forEach(m => {
+              if (!machineMap[m.id]) { machineMap[m.id] = m; } else {
+                const existingParts = new Set(machineMap[m.id].parts.map(p => `${p.name}-${p.sn}`));
+                m.parts.forEach(p => { if (!existingParts.has(`${p.name}-${p.sn}`)) machineMap[m.id].parts.push(p); });
+              }
             });
-            showNotification(`已解析並分析 ${totalParsed.length} 台機台/明細數據。`);
+            const mergedMachines = Object.values(machineMap).sort((a, b) => b.timestamp - a.timestamp);
+            setMachines(mergedMachines);
+            // 同步到 Firebase
+            saveMachinesToFirebase(mergedMachines);
+            showNotification(`已解析並分析 ${totalParsed.length} 台機台/明細數據，已同步至雲端。`);
           }
         } catch (err) { showNotification(`解析失敗`, 'error'); }
       };
@@ -14506,6 +14965,17 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50/30 text-slate-900 font-sans">
       <SpecExportCenterModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} machines={machines} onExport={handleCustomExport} />
+      
+      {/* 載入中顯示 */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-700 font-bold">正在從雲端載入資料...</p>
+            <p className="text-slate-400 text-sm mt-1">Firebase Firestore</p>
+          </div>
+        </div>
+      )}
       
       {/* Header - 升級版 */}
       <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-2xl border-b border-white/5">
@@ -14612,12 +15082,24 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
             </div>
 
             <div>
-              {editingMachine ? <SpecEntryFormView initialData={editingMachine} mode="edit" onSave={(m) => { setMachines(prev => { const idx = prev.findIndex(x => x.id === m.id); const updated = [...prev]; updated[idx] = m; return updated; }); setEditingMachine(null); setSelectedMachine(m); setActiveTab('traceability'); showNotification('更新成功'); }} suggestions={suggestions} /> : (
+              {editingMachine ? <SpecEntryFormView initialData={editingMachine} mode="edit" onSave={(m) => { 
+                saveMachineToFirebase(m);
+                setMachines(prev => { const idx = prev.findIndex(x => x.id === m.id); const updated = [...prev]; updated[idx] = m; return updated; }); 
+                setEditingMachine(null); 
+                setSelectedMachine(m); 
+                setActiveTab('traceability'); 
+                showNotification('更新成功'); 
+              }} suggestions={suggestions} /> : (
                 <>
                   {activeTab === 'dashboard' && <SpecDashboardView stats={stats} onUpload={handleFileUpload} onNavigate={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onOpenExport={() => setIsExportOpen(true)} />}
-                  {activeTab === 'list' && <SpecMachineListView machines={filteredMachines} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSelect={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onClear={() => {if(window.confirm('確定清空？')) setMachines([]);}} onOpenExport={() => setIsExportOpen(true)} />}
+                  {activeTab === 'list' && <SpecMachineListView machines={filteredMachines} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSelect={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onClear={() => {if(window.confirm('確定清空所有資料？此操作無法復原！')) clearAllMachines();}} onOpenExport={() => setIsExportOpen(true)} />}
                   {activeTab === 'traceability' && <SpecTraceabilityDetailView machine={selectedMachine} onEdit={(m) => setEditingMachine(m)} onClose={() => setActiveTab('list')} />}
-                  {activeTab === 'manual' && <SpecEntryFormView onSave={(m) => { setMachines(prev => [m, ...prev]); setActiveTab('list'); showNotification('登記成功'); }} mode="create" suggestions={suggestions} />}
+                  {activeTab === 'manual' && <SpecEntryFormView onSave={(m) => { 
+                    saveMachineToFirebase(m);
+                    setMachines(prev => [m, ...prev]); 
+                    setActiveTab('list'); 
+                    showNotification('登記成功，已同步至雲端'); 
+                  }} mode="create" suggestions={suggestions} />}
                 </>
               )}
             </div>
