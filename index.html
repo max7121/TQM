@@ -6,6 +6,8 @@
     <title>TQM 品質管理系統 (本地版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- QR Code 函式庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     
     <!-- Firebase SDKs -->
     <script type="module">
@@ -466,7 +468,14 @@ import {
   Settings2,
   History,
   Check,
-  Hash
+  Hash,
+  File,
+  Bell,
+  Sparkles,
+  Copy,
+  GitBranch,
+  Box,
+  PackageCheck
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -489,6 +498,177 @@ import {
 const CONFIG = {
   USE_FIREBASE: true, // 使用 Firebase 雲端資料庫
   DATABASE_TYPE: 'Firebase Firestore'
+};
+
+// --- 機型模板配置 ---
+const MACHINE_TEMPLATES = {
+  'F32H': {
+    name: 'F32H 系列',
+    description: '32吋橫式機台（簡化版）',
+    prefix: 'F32H',
+    parts: [
+      { category: '控箱區域', name: 'MAIN BOARD 主板', desc: 'Main Board', sn: '' },
+      { category: '控箱區域', name: 'POWER SUPPLY 電源', desc: 'Power Supply', sn: '' },
+      { category: '控箱區域', name: 'I/O BOARD IO板', desc: 'I/O Board', sn: '' },
+      { category: '螢幕區域', name: 'LCD PANEL 液晶面板', desc: 'LCD Panel 32"', sn: '' },
+      { category: '螢幕區域', name: 'TOUCH PANEL 觸控面板', desc: 'Touch Panel', sn: '' },
+      { category: '周邊設備', name: 'SPEAKER 喇叭', desc: 'Speaker Set', sn: '' },
+      { category: '周邊設備', name: 'CAMERA 攝像頭', desc: 'Camera Module', sn: '' },
+      { category: '機殼外觀', name: 'TOP CASE 上蓋', desc: 'Top Case', sn: '' },
+      { category: '機殼外觀', name: 'BOTTOM CASE 底座', desc: 'Bottom Case', sn: '' }
+    ]
+  },
+  'F32H_FULL': {
+    name: 'F32H-標板',
+    description: '從機台 F32H-0045 複製（完整版31項零件）',
+    prefix: 'F32H',
+    parts: [
+      { category: '控箱區域', name: '控箱主機板', desc: 'Console Main Board', sn: '' },
+      { category: '控箱區域', name: '控箱音效板', desc: 'Console Music Board', sn: '' },
+      { category: '控箱區域', name: '控箱爆閃燈機板', desc: 'Strobe light', sn: '' },
+      { category: '控箱區域', name: '控箱防電小卡(插座)', desc: 'Outlet board', sn: '' },
+      { category: '控箱區域', name: '控箱遠端更新板', desc: 'Console WIFI', sn: '' },
+      { category: '控箱區域', name: '搖桿方向燈控制板', desc: 'Joystick Direction Light board', sn: '' },
+      { category: '控箱區域', name: '控箱主電供', desc: 'Console main power supply', sn: '' },
+      { category: '控箱區域', name: '地磚燈電供', desc: 'Glass floor power supply', sn: '' },
+      { category: '控箱區域', name: '電子碼表', desc: 'Coin meter board', sn: '' },
+      { category: '機器人機板區域', name: '機器人主機板', desc: 'JJ Main Board', sn: '' },
+      { category: '機器人機板區域', name: '機器人遠端更新板', desc: 'JJ WIFI', sn: '' },
+      { category: '機器人機板區域', name: '機器人音效板', desc: 'JJ Audio Board', sn: '' },
+      { category: '機器人機板區域', name: '機器人馬達電供', desc: 'JJ motor power supply', sn: '' },
+      { category: '機器人機板區域', name: '機器人燈光電供', desc: 'JJ light power supply', sn: '' },
+      { category: '天花板區域', name: '上燈箱主機板', desc: 'Top Light Main Board', sn: '' },
+      { category: '天花板區域', name: '天板燈控制板', desc: 'Ceiling Light(Light Board A)', sn: '' },
+      { category: '天花板區域', name: '招牌燈控制板', desc: 'Marquee Light(Light Board B)', sn: '' },
+      { category: '天花板區域', name: 'RFID機板', desc: 'RFID board', sn: '' },
+      { category: '天花板區域', name: '前半燈光電供', desc: 'Front cabinet power supply', sn: '' },
+      { category: '天花板區域', name: '後半燈光電供', desc: 'Back cabinet power supply', sn: '' },
+      { category: '天花板區域', name: '喇叭電供(ETL新增)', desc: 'Speaker power supply', sn: '' },
+      { category: '機器人主體區域', name: '馬達第一軸', desc: 'Axis 1 motor', sn: '' },
+      { category: '機器人主體區域', name: '馬達第二軸', desc: 'Axis 2 motor', sn: '' },
+      { category: '機器人主體區域', name: '馬達第三軸', desc: 'Axis 3 motor', sn: '' },
+      { category: '機器人主體區域', name: '馬達第四軸', desc: 'Axis 4 motor', sn: '' },
+      { category: '機器人主體區域', name: '馬達第五軸', desc: 'Axis 5 motor', sn: '' },
+      { category: '機器人主體區域', name: '馬達第六軸', desc: 'Axis 6 motor', sn: '' },
+      { category: '機器人主體區域', name: '控箱觸控螢幕', desc: 'Credit Timer Display', sn: '' },
+      { category: '機器人主體區域', name: '搖桿', desc: 'Joystick', sn: '' },
+      { category: '機器人主體區域', name: 'JJ螢幕', desc: 'Monitor (JJ FACE)', sn: '' },
+      { category: '機器人主體區域', name: 'RFID主機', desc: 'RFID reader', sn: '' }
+    ]
+  },
+  'F10F': {
+    name: 'F10F 系列',
+    description: '10吋直立式機台',
+    prefix: 'F10F',
+    parts: [
+      { category: '控箱區域', name: 'MAIN BOARD 主板', desc: 'Main Board', sn: '' },
+      { category: '控箱區域', name: 'POWER SUPPLY 電源', desc: 'Power Supply', sn: '' },
+      { category: '螢幕區域', name: 'LCD PANEL 液晶面板', desc: 'LCD Panel 10"', sn: '' },
+      { category: '螢幕區域', name: 'TOUCH PANEL 觸控面板', desc: 'Touch Panel', sn: '' },
+      { category: '周邊設備', name: 'SPEAKER 喇叭', desc: 'Speaker', sn: '' },
+      { category: '機殼外觀', name: 'CASE 機殼', desc: 'Case Assembly', sn: '' }
+    ]
+  },
+  'F27H': {
+    name: 'F27H 系列',
+    description: '27吋橫式機台',
+    prefix: 'F27H',
+    parts: [
+      { category: '控箱區域', name: 'MAIN BOARD 主板', desc: 'Main Board', sn: '' },
+      { category: '控箱區域', name: 'POWER SUPPLY 電源', desc: 'Power Supply', sn: '' },
+      { category: '控箱區域', name: 'I/O BOARD IO板', desc: 'I/O Board', sn: '' },
+      { category: '螢幕區域', name: 'LCD PANEL 液晶面板', desc: 'LCD Panel 27"', sn: '' },
+      { category: '螢幕區域', name: 'TOUCH PANEL 觸控面板', desc: 'Touch Panel', sn: '' },
+      { category: '周邊設備', name: 'SPEAKER 喇叭', desc: 'Speaker Set', sn: '' },
+      { category: '周邊設備', name: 'BUTTON SET 按鍵組', desc: 'Button Set', sn: '' },
+      { category: '機殼外觀', name: 'CASE 機殼', desc: 'Case Assembly', sn: '' }
+    ]
+  },
+  'F43H': {
+    name: 'F43H 系列',
+    description: '43吋橫式機台',
+    prefix: 'F43H',
+    parts: [
+      { category: '控箱區域', name: 'MAIN BOARD 主板', desc: 'Main Board', sn: '' },
+      { category: '控箱區域', name: 'POWER SUPPLY 電源', desc: 'Power Supply', sn: '' },
+      { category: '控箱區域', name: 'I/O BOARD IO板', desc: 'I/O Board', sn: '' },
+      { category: '控箱區域', name: 'COOLING FAN 散熱風扇', desc: 'Cooling Fan', sn: '' },
+      { category: '螢幕區域', name: 'LCD PANEL 液晶面板', desc: 'LCD Panel 43"', sn: '' },
+      { category: '螢幕區域', name: 'TOUCH PANEL 觸控面板', desc: 'Touch Panel', sn: '' },
+      { category: '周邊設備', name: 'SPEAKER 喇叭', desc: 'Speaker Set', sn: '' },
+      { category: '周邊設備', name: 'CAMERA 攝像頭', desc: 'Camera Module', sn: '' },
+      { category: '周邊設備', name: 'CARD READER 讀卡機', desc: 'Card Reader', sn: '' },
+      { category: '機殼外觀', name: 'TOP CASE 上蓋', desc: 'Top Case', sn: '' },
+      { category: '機殼外觀', name: 'BOTTOM CASE 底座', desc: 'Bottom Case', sn: '' }
+    ]
+  },
+  'CUSTOM': {
+    name: '自訂機型',
+    description: '手動輸入所有資訊',
+    prefix: '',
+    parts: [{ category: '控箱區域', name: '', desc: '', sn: '' }]
+  }
+};
+
+// --- 模板管理工具函數 ---
+const TemplateManager = {
+  // 獲取所有模板（預設+自訂）
+  getAllTemplates: () => {
+    try {
+      const stored = localStorage.getItem('spec_custom_templates');
+      const customTemplates = stored && stored !== 'undefined' ? JSON.parse(stored) : {};
+      const allTemplates = { ...MACHINE_TEMPLATES, ...customTemplates };
+      return Object.entries(allTemplates); // 返回 [[key, template], ...] 格式
+    } catch (e) {
+      console.error('載入模板失敗:', e);
+      return Object.entries(MACHINE_TEMPLATES);
+    }
+  },
+  
+  // 保存自訂模板
+  saveCustomTemplate: (key, template) => {
+    try {
+      const stored = localStorage.getItem('spec_custom_templates');
+      const customTemplates = stored && stored !== 'undefined' ? JSON.parse(stored) : {};
+      customTemplates[key] = template;
+      localStorage.setItem('spec_custom_templates', JSON.stringify(customTemplates));
+    } catch (e) {
+      console.error('保存模板失敗:', e);
+    }
+  },
+  
+  // 刪除自訂模板
+  deleteCustomTemplate: (key) => {
+    try {
+      const stored = localStorage.getItem('spec_custom_templates');
+      const customTemplates = stored && stored !== 'undefined' ? JSON.parse(stored) : {};
+      delete customTemplates[key];
+      localStorage.setItem('spec_custom_templates', JSON.stringify(customTemplates));
+    } catch (e) {
+      console.error('刪除模板失敗:', e);
+    }
+  },
+  
+  // 檢查是否為自訂模板
+  isCustomTemplate: (key) => {
+    return !MACHINE_TEMPLATES.hasOwnProperty(key);
+  },
+  
+  // 從機台創建模板
+  createFromMachine: (machine, templateName, templateDesc) => {
+    return {
+      name: templateName,
+      description: templateDesc,
+      model: machine.model || machine.id.split('-')[0],
+      prefix: machine.id.split('-')[0],
+      parts: machine.parts.map(p => ({
+        category: p.category,
+        name: p.name,
+        desc: p.desc || '',
+        serialPrefix: p.sn ? p.sn.split('-')[0] + '-' : ''
+      }))
+    };
+  }
 };
 
 console.log('資料庫模式:', CONFIG.DATABASE_TYPE);
@@ -14136,6 +14316,1130 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
 // 電規追蹤系統 (Electrical Spec Tracking System)
 // ============================================================
 
+// --- QR Code 生成器組件 ---
+const QRCodeModal = ({ isOpen, onClose, machineId, machineData }) => {
+  const qrContainerRef = React.useRef(null);
+  const [qrGenerated, setQrGenerated] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && qrContainerRef.current && window.QRCode) {
+      // 清除舊的 QR Code
+      qrContainerRef.current.innerHTML = '';
+      
+      const qrData = JSON.stringify({
+        id: machineId,
+        gameSerial: machineData?.gameSerial,
+        shipDate: machineData?.shipDate,
+        orderNo: machineData?.orderNo,
+        timestamp: new Date().getTime()
+      });
+      
+      try {
+        // 創建 QR Code 實例
+        new window.QRCode(qrContainerRef.current, {
+          text: qrData,
+          width: 300,
+          height: 300,
+          colorDark: '#1e293b',
+          colorLight: '#ffffff',
+          correctLevel: window.QRCode.CorrectLevel.H
+        });
+        setQrGenerated(true);
+      } catch (error) {
+        console.error('QR Code 生成錯誤:', error);
+        qrContainerRef.current.innerHTML = '<div class="text-red-500 text-sm">QR Code 生成失敗</div>';
+      }
+    }
+  }, [isOpen, machineId, machineData]);
+
+  const downloadQR = () => {
+    if (qrContainerRef.current) {
+      // 查找生成的 canvas 或 img
+      const canvas = qrContainerRef.current.querySelector('canvas');
+      const img = qrContainerRef.current.querySelector('img');
+      
+      if (canvas) {
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `QRCode_${machineId}.png`;
+        a.click();
+      } else if (img) {
+        const a = document.createElement('a');
+        a.href = img.src;
+        a.download = `QRCode_${machineId}.png`;
+        a.click();
+      }
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl">
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 border border-white/20">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center">
+              <QrCode size={24} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-800">QR Code 生成</h3>
+              <p className="text-xs text-slate-400">{machineId}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="flex flex-col items-center space-y-6">
+          <div ref={qrContainerRef} className="bg-gradient-to-br from-slate-50 to-blue-50 p-6 rounded-2xl border-2 border-slate-100 flex items-center justify-center min-h-[340px]">
+            {/* QR Code 將在這裡生成 */}
+          </div>
+          
+          {qrGenerated && (
+            <div className="flex gap-3 w-full">
+              <button onClick={downloadQR} className="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-6 py-3 rounded-xl font-bold hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                <Download size={18} /> 下載 QR Code
+              </button>
+              <button onClick={() => window.print()} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-xl font-bold transition-all">
+                <Printer size={18} />
+              </button>
+            </div>
+          )}
+          
+          <p className="text-xs text-slate-400 text-center">掃描此 QR Code 可快速查看機台履歷資訊</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 拖拽上傳組件 ---
+const DragDropUpload = ({ onFilesSelected, accept = ".xlsx,.xls,.csv", multiple = true }) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = React.useRef(null);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => setIsDragging(false);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      simulateProgress();
+      onFilesSelected({ target: { files } });
+    }
+  };
+
+  const simulateProgress = () => {
+    setUploadProgress(0);
+    const interval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => setUploadProgress(0), 1000);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 100);
+  };
+
+  return (
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative border-2 border-dashed rounded-3xl p-12 transition-all duration-300 cursor-pointer group ${
+        isDragging 
+          ? 'border-blue-500 bg-blue-50 scale-[1.02]' 
+          : 'border-slate-300 bg-white hover:border-blue-400 hover:bg-blue-50/50'
+      }`}
+      onClick={() => fileInputRef.current?.click()}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        onChange={(e) => { simulateProgress(); onFilesSelected(e); }}
+        className="hidden"
+      />
+      
+      <div className="flex flex-col items-center space-y-4">
+        <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+          isDragging ? 'bg-blue-500 scale-110' : 'bg-gradient-to-br from-slate-100 to-slate-200 group-hover:from-blue-100 group-hover:to-blue-200'
+        }`}>
+          <Upload size={32} className={isDragging ? 'text-white animate-bounce' : 'text-slate-400 group-hover:text-blue-500'} />
+        </div>
+        
+        <div className="text-center">
+          <p className="text-lg font-bold text-slate-700 mb-1">
+            {isDragging ? '放開以上傳檔案' : '拖拽檔案至此或點擊上傳'}
+          </p>
+          <p className="text-sm text-slate-400">支援 Excel (.xlsx, .xls) 及 CSV 格式</p>
+        </div>
+        
+        {uploadProgress > 0 && uploadProgress < 100 && (
+          <div className="w-full max-w-xs">
+            <div className="bg-slate-200 h-2 rounded-full overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-2 text-center">上傳中... {uploadProgress}%</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- 標籤管理組件 ---
+const TagManager = ({ tags = [], onTagsChange, availableTags = [] }) => {
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const [selectedColor, setSelectedColor] = useState('bg-blue-500');
+  
+  const predefinedTags = [
+    { name: '已出貨', color: 'bg-emerald-500' },
+    { name: '待檢修', color: 'bg-amber-500' },
+    { name: '重點追蹤', color: 'bg-red-500' },
+    { name: '測試中', color: 'bg-blue-500' },
+    { name: '制作中', color: 'bg-orange-500' },
+    { name: '已完工', color: 'bg-purple-500' },
+    { name: '緊急', color: 'bg-rose-600' },
+  ];
+
+  const colorOptions = [
+    { name: '藍色', value: 'bg-blue-500' },
+    { name: '橘色', value: 'bg-orange-500' },
+    { name: '綠色', value: 'bg-emerald-500' },
+    { name: '紅色', value: 'bg-red-500' },
+    { name: '紫色', value: 'bg-purple-500' },
+    { name: '黃色', value: 'bg-amber-500' },
+    { name: '粉紅', value: 'bg-pink-500' },
+    { name: '青色', value: 'bg-cyan-500' },
+    { name: '深紅', value: 'bg-rose-600' },
+    { name: '灰色', value: 'bg-slate-500' },
+  ];
+
+  const addTag = (tagName, tagColor = null) => {
+    const color = tagColor || selectedColor;
+    // 將標籤存為物件格式 {name: string, color: string}
+    const tagObj = { name: tagName, color: color };
+    const existingTag = tags.find(t => (typeof t === 'string' ? t : t.name) === tagName);
+    
+    if (!existingTag) {
+      // 將新標籤添加到列表
+      onTagsChange([...tags, tagObj]);
+    }
+    setShowTagInput(false);
+    setNewTag('');
+    setSelectedColor('bg-blue-500');
+  };
+
+  const removeTag = (tagName) => {
+    onTagsChange(tags.filter(t => (typeof t === 'string' ? t : t.name) !== tagName));
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="text-sm font-bold text-slate-700 flex items-center">
+        <Tag size={14} className="mr-2" />標籤分類
+      </label>
+      
+      <div className="flex flex-wrap gap-2">
+        {tags.map((tag, idx) => {
+          const tagName = typeof tag === 'string' ? tag : tag.name;
+          const tagColor = typeof tag === 'string' 
+            ? (predefinedTags.find(t => t.name === tag)?.color || 'bg-slate-500')
+            : tag.color;
+          
+          return (
+            <span key={idx} className={`${tagColor} text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 shadow-lg`}>
+              {tagName}
+              <button onClick={() => removeTag(tagName)} className="hover:bg-white/20 rounded-full p-0.5 transition-colors">
+                <X size={12} />
+              </button>
+            </span>
+          );
+        })}
+        
+        {!showTagInput ? (
+          <button 
+            onClick={() => setShowTagInput(true)}
+            className="border-2 border-dashed border-slate-300 hover:border-blue-400 text-slate-400 hover:text-blue-600 px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1"
+          >
+            <Plus size={12} /> 新增標籤
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2 p-3 bg-white rounded-xl border-2 border-blue-400 shadow-lg">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && newTag && addTag(newTag)}
+                placeholder="輸入標籤名稱"
+                className="border-2 border-slate-300 px-3 py-1 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+              <button onClick={() => newTag && addTag(newTag)} className="bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-600">
+                <Check size={12} />
+              </button>
+              <button onClick={() => { setShowTagInput(false); setNewTag(''); }} className="bg-slate-300 text-slate-700 px-3 py-1 rounded-lg text-xs font-bold hover:bg-slate-400">
+                <X size={12} />
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-xs text-slate-600 font-bold w-full">選擇顏色：</span>
+              {colorOptions.map(color => (
+                <button
+                  key={color.value}
+                  onClick={() => setSelectedColor(color.value)}
+                  className={`${color.value} w-7 h-7 rounded-full ${selectedColor === color.value ? 'ring-2 ring-offset-2 ring-slate-800 scale-110' : 'hover:scale-105'} transition-all shadow-md`}
+                  title={color.name}
+                />
+              ))}
+            </div>
+            {newTag && (
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                <span className="text-xs text-slate-500">預覽：</span>
+                <span className={`${selectedColor} text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg`}>
+                  {newTag}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      
+      {showTagInput && (
+        <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl">
+          <span className="text-xs text-slate-500 font-bold w-full mb-1">快速選擇：</span>
+          {predefinedTags.map(tag => (
+            <button
+              key={tag.name}
+              onClick={() => addTag(tag.name, tag.color)}
+              className={`${tag.color} text-white px-3 py-1 rounded-full text-xs font-bold hover:opacity-80 transition-opacity`}
+            >
+              {tag.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- 附件管理組件 ---
+const AttachmentManager = ({ machineId, attachments = [], onAttachmentsChange }) => {
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef(null);
+
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    
+    setUploading(true);
+    
+    // 模擬上傳到 Firebase Storage（實際使用時需要完整實作）
+    const newAttachments = files.map(file => ({
+      id: `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      uploadDate: new Date().toISOString(),
+      url: URL.createObjectURL(file) // 實際應上傳到 Firebase Storage
+    }));
+    
+    setTimeout(() => {
+      onAttachmentsChange([...attachments, ...newAttachments]);
+      setUploading(false);
+    }, 1000);
+  };
+
+  const removeAttachment = (attachmentId) => {
+    onAttachmentsChange(attachments.filter(a => a.id !== attachmentId));
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const getFileIcon = (type) => {
+    if (type?.includes('image')) return <ImageIcon size={16} className="text-blue-500" />;
+    if (type?.includes('pdf')) return <FileText size={16} className="text-red-500" />;
+    return <File size={16} className="text-slate-400" />;
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="text-sm font-bold text-slate-700 flex items-center">
+        <Paperclip size={14} className="mr-2" />附件檔案
+      </label>
+      
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        className="w-full border-2 border-dashed border-slate-300 hover:border-blue-400 bg-slate-50 hover:bg-blue-50 rounded-xl p-4 transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-blue-600 font-medium disabled:opacity-50"
+      >
+        {uploading ? (
+          <><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> 上傳中...</>
+        ) : (
+          <><Upload size={16} /> 上傳附件 (照片、PDF、文件)</>  
+        )}
+      </button>
+      
+      {attachments.length > 0 && (
+        <div className="space-y-2">
+          {attachments.map(att => (
+            <div key={att.id} className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  {getFileIcon(att.type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm text-slate-700 truncate">{att.name}</p>
+                  <p className="text-xs text-slate-400">{formatFileSize(att.size)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 p-2">
+                  <Download size={16} />
+                </a>
+                <button onClick={() => removeAttachment(att.id)} className="text-red-500 hover:text-red-700 p-2">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- 統計圖表組件 ---
+const AnalyticsCharts = ({ machines }) => {
+  // 零件使用率統計
+  const partUsageStats = useMemo(() => {
+    const partCounts = {};
+    machines.forEach(m => {
+      m.parts.forEach(p => {
+        const key = p.name || 'Unknown';
+        partCounts[key] = (partCounts[key] || 0) + 1;
+      });
+    });
+    return Object.entries(partCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [machines]);
+
+  // 機型分布
+  const modelDistribution = useMemo(() => {
+    const models = {};
+    machines.forEach(m => {
+      const model = m.id.split('-')[0] || 'Unknown';
+      models[model] = (models[model] || 0) + 1;
+    });
+    return Object.entries(models).map(([name, value]) => ({ name, value }));
+  }, [machines]);
+
+  // 月度趨勢（出貨日期）
+  const monthlyTrend = useMemo(() => {
+    const months = {};
+    machines.forEach(m => {
+      if (m.shipDate) {
+        const month = m.shipDate.substring(0, 7); // YYYY-MM
+        months[month] = (months[month] || 0) + 1;
+      }
+    });
+    return Object.entries(months)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+  }, [machines]);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 零件使用排行 */}
+      <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+          <BarChart3 size={20} className="mr-2 text-blue-500" />
+          零件使用率 TOP 10
+        </h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={partUsageStats}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={80} />
+            <YAxis />
+            <Tooltip />
+            <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* 機型分布 */}
+      <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+          <PieChartIcon size={20} className="mr-2 text-emerald-500" />
+          機型分布統計
+        </h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <PieChart>
+            <Pie data={modelDistribution} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
+              {modelDistribution.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* 月度出貨趨勢 */}
+      <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 lg:col-span-2">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+          <TrendingUp size={20} className="mr-2 text-purple-500" />
+          月度出貨趨勢
+        </h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={monthlyTrend}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="month" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 6 }} activeDot={{ r: 8 }} name="出貨數量" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+// --- 提醒通知組件 ---
+const NotificationPanel = ({ machines }) => {
+  const notifications = useMemo(() => {
+    const today = new Date();
+    const alerts = [];
+    
+    machines.forEach(m => {
+      if (m.shipDate) {
+        const shipDate = new Date(m.shipDate);
+        const daysUntilShip = Math.ceil((shipDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysUntilShip < 0) {
+          alerts.push({ type: 'overdue', machine: m, days: Math.abs(daysUntilShip), message: `逾期 ${Math.abs(daysUntilShip)} 天` });
+        } else if (daysUntilShip <= 7) {
+          alerts.push({ type: 'urgent', machine: m, days: daysUntilShip, message: `${daysUntilShip} 天後出貨` });
+        } else if (daysUntilShip <= 14) {
+          alerts.push({ type: 'warning', machine: m, days: daysUntilShip, message: `${daysUntilShip} 天後出貨` });
+        }
+      }
+    });
+    
+    return alerts.sort((a, b) => a.days - b.days);
+  }, [machines]);
+
+  if (notifications.length === 0) {
+    return (
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-2xl p-6 text-center">
+        <CheckCircle2 size={48} className="text-emerald-500 mx-auto mb-3" />
+        <p className="text-emerald-700 font-bold">目前無需要提醒的事項</p>
+        <p className="text-emerald-600 text-sm mt-1">所有機台狀態正常</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-slate-800 flex items-center">
+          <Bell size={20} className="mr-2 text-amber-500" />
+          提醒通知
+        </h3>
+        <span className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">{notifications.length}</span>
+      </div>
+      
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {notifications.map((notif, idx) => (
+          <div key={idx} className={`p-4 rounded-xl border-l-4 ${
+            notif.type === 'overdue' ? 'bg-red-50 border-red-500' :
+            notif.type === 'urgent' ? 'bg-amber-50 border-amber-500' :
+            'bg-blue-50 border-blue-500'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  {notif.type === 'overdue' ? <AlertTriangle size={16} className="text-red-600" /> :
+                   notif.type === 'urgent' ? <Clock size={16} className="text-amber-600" /> :
+                   <Calendar size={16} className="text-blue-600" />}
+                  <span className="font-bold text-slate-800">{notif.machine.id}</span>
+                </div>
+                <p className={`text-sm font-medium ${
+                  notif.type === 'overdue' ? 'text-red-700' :
+                  notif.type === 'urgent' ? 'text-amber-700' :
+                  'text-blue-700'
+                }`}>
+                  {notif.message} • 預計出貨：{notif.machine.shipDate}
+                </p>
+              </div>
+              <button className="text-slate-400 hover:text-slate-600 ml-2">
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- 報表模板選擇器 ---
+const ReportTemplateModal = ({ isOpen, onClose, machines, onExport }) => {
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  
+  const templates = [
+    {
+      id: 'monthly',
+      name: '月度統計報表',
+      icon: Calendar,
+      description: '按月份統計機台出貨數量、零件使用情況',
+      color: 'from-blue-500 to-blue-600'
+    },
+    {
+      id: 'customer',
+      name: '客戶交付報表',
+      icon: Users,
+      description: '專為客戶設計的精簡版交付清單',
+      color: 'from-emerald-500 to-emerald-600'
+    },
+    {
+      id: 'inventory',
+      name: '零件庫存分析',
+      icon: Package,
+      description: '零件使用率、庫存預警、採購建議',
+      color: 'from-purple-500 to-purple-600'
+    },
+    {
+      id: 'quality',
+      name: '品質追蹤報表',
+      icon: CheckCircle2,
+      description: '機台履歷完整度、異常追蹤記錄',
+      color: 'from-amber-500 to-amber-600'
+    }
+  ];
+
+  const generateReport = async () => {
+    if (!selectedTemplate || !window.XLSX) return;
+    
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+    
+    if (selectedTemplate === 'monthly') {
+      // 月度報表
+      const monthlyData = {};
+      machines.forEach(m => {
+        if (m.shipDate) {
+          const month = m.shipDate.substring(0, 7);
+          if (!monthlyData[month]) monthlyData[month] = [];
+          monthlyData[month].push(m);
+        }
+      });
+      
+      Object.entries(monthlyData).forEach(([month, mList]) => {
+        const sheetData = mList.map(m => ({
+          '機台ID': m.id,
+          '遊戲序號': m.gameSerial,
+          '訂單編號': m.orderNo,
+          '出貨日期': m.shipDate,
+          '零件數量': m.parts.length
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetData), month);
+      });
+    } else if (selectedTemplate === 'customer') {
+      // 客戶報表
+      const customerData = machines.map(m => ({
+        '機台編號': m.id,
+        '遊戲序號': m.gameSerial,
+        '出貨日期': m.shipDate,
+        '訂單編號': m.orderNo,
+        '零件總數': m.parts.length,
+        '狀態': '已完成'
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customerData), '交付清單');
+    } else if (selectedTemplate === 'inventory') {
+      // 庫存分析
+      const partStats = {};
+      machines.forEach(m => {
+        m.parts.forEach(p => {
+          const key = p.name;
+          if (!partStats[key]) partStats[key] = { name: key, count: 0, category: p.category };
+          partStats[key].count++;
+        });
+      });
+      
+      const inventoryData = Object.values(partStats).map(p => ({
+        '零件名稱': p.name,
+        '分類': p.category,
+        '使用次數': p.count,
+        '建議庫存': Math.ceil(p.count * 1.2),
+        '狀態': p.count > 50 ? '高用量' : p.count > 20 ? '正常' : '低用量'
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inventoryData), '零件分析');
+    } else if (selectedTemplate === 'quality') {
+      // 品質報表
+      const qualityData = machines.map(m => ({
+        '機台ID': m.id,
+        '履歷完整度': m.parts.length > 0 ? '完整' : '不完整',
+        '零件記錄數': m.parts.length,
+        '有遊戲序號': m.gameSerial ? '是' : '否',
+        '有訂單編號': m.orderNo ? '是' : '否',
+        '資料來源': m.importSource || '手動輸入'
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(qualityData), '品質追蹤');
+    }
+    
+    XLSX.writeFile(wb, `${templates.find(t => t.id === selectedTemplate)?.name}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xl">
+      <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 text-white p-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-amber-400 to-amber-500 rounded-2xl flex items-center justify-center">
+                <FileText size={26} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">報表模板中心</h2>
+                <p className="text-sm text-blue-300/80 font-medium mt-1">選擇預定義報表格式快速匯出</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
+              <X size={28} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {templates.map(template => (
+              <button
+                key={template.id}
+                onClick={() => setSelectedTemplate(template.id)}
+                className={`text-left p-6 rounded-2xl border-2 transition-all duration-300 ${
+                  selectedTemplate === template.id
+                    ? 'border-blue-500 bg-blue-50 shadow-lg scale-[1.02]'
+                    : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-md'
+                }`}
+              >
+                <div className="flex items-start space-x-4">
+                  <div className={`w-12 h-12 bg-gradient-to-br ${template.color} rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg`}>
+                    <template.icon size={24} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 mb-1">{template.name}</h3>
+                    <p className="text-sm text-slate-500">{template.description}</p>
+                  </div>
+                  {selectedTemplate === template.id && (
+                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Check size={16} className="text-white" />
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
+            >
+              取消
+            </button>
+            <button
+              onClick={generateReport}
+              disabled={!selectedTemplate}
+              className="px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg"
+            >
+              <Download size={18} /> 生成報表
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 模板管理模態框 ---
+const TemplateManagementModal = ({ isOpen, onClose, onTemplateChange }) => {
+  const [templates, setTemplates] = useState([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({
+    name: '',
+    description: '',
+    model: '',
+    parts: []
+  });
+  const [newPart, setNewPart] = useState({ category: '', name: '', serialPrefix: '' });
+
+  // 載入所有模板
+  React.useEffect(() => {
+    if (isOpen) {
+      setTemplates(TemplateManager.getAllTemplates());
+    }
+  }, [isOpen]);
+
+  // 新增零件到新模板
+  const handleAddPart = () => {
+    if (!newPart.category || !newPart.name) {
+      alert('請填寫零件分類與名稱');
+      return;
+    }
+    setNewTemplate(prev => ({
+      ...prev,
+      parts: [...prev.parts, { ...newPart }]
+    }));
+    setNewPart({ category: '', name: '', serialPrefix: '' });
+  };
+
+  // 從新模板中移除零件
+  const handleRemovePart = (index) => {
+    setNewTemplate(prev => ({
+      ...prev,
+      parts: prev.parts.filter((_, i) => i !== index)
+    }));
+  };
+
+  // 儲存新模板
+  const handleSaveTemplate = () => {
+    if (!newTemplate.name || !newTemplate.model) {
+      alert('請填寫模板名稱與型號');
+      return;
+    }
+    if (newTemplate.parts.length === 0) {
+      alert('至少需要一個零件');
+      return;
+    }
+
+    const templateKey = `CUSTOM_${Date.now()}`;
+    const template = {
+      name: newTemplate.name,
+      description: newTemplate.description || `自訂模板 - ${newTemplate.model}`,
+      model: newTemplate.model,
+      parts: newTemplate.parts
+    };
+
+    TemplateManager.saveCustomTemplate(templateKey, template);
+    setTemplates(TemplateManager.getAllTemplates());
+    setIsCreating(false);
+    setNewTemplate({ name: '', description: '', model: '', parts: [] });
+    alert('✅ 模板已成功建立！');
+  };
+
+  // 複製模板
+  const handleDuplicateTemplate = (key, template) => {
+    const newKey = `CUSTOM_${Date.now()}`;
+    const duplicated = {
+      ...template,
+      name: `${template.name} (副本)`,
+      description: `${template.description || ''} - 複製版本`
+    };
+    TemplateManager.saveCustomTemplate(newKey, duplicated);
+    setTemplates(TemplateManager.getAllTemplates());
+    alert('✅ 模板已複製！');
+  };
+
+  // 刪除自訂模板
+  const handleDeleteTemplate = (key) => {
+    if (!TemplateManager.isCustomTemplate(key)) {
+      alert('⚠️ 預設模板無法刪除');
+      return;
+    }
+    if (confirm('確定要刪除此模板嗎？')) {
+      TemplateManager.deleteCustomTemplate(key);
+      setTemplates(TemplateManager.getAllTemplates());
+      alert('✅ 模板已刪除');
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* 標題列 */}
+        <div className="bg-gradient-to-r from-purple-600 to-purple-500 px-8 py-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+              <Sparkles size={24} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">模板管理中心</h2>
+              <p className="text-purple-100 text-sm">Template Management</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-xl flex items-center justify-center transition-all backdrop-blur-md">
+            <X size={20} className="text-white" />
+          </button>
+        </div>
+
+        {/* 主內容區 */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {!isCreating ? (
+            <>
+              {/* 新增模板按鈕 */}
+              <div className="mb-8">
+                <button
+                  onClick={() => setIsCreating(true)}
+                  className="w-full py-6 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white rounded-2xl font-bold text-lg transition-all shadow-xl hover:shadow-purple-500/30 hover:-translate-y-1 flex items-center justify-center gap-3"
+                >
+                  <Plus size={24} /> 建立新模板
+                </button>
+              </div>
+
+              {/* 模板網格 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {templates.map(([key, template]) => {
+                  const isCustom = TemplateManager.isCustomTemplate(key);
+                  return (
+                    <div
+                      key={key}
+                      className="bg-gradient-to-br from-slate-50 to-white border-2 border-slate-200 rounded-2xl p-6 hover:shadow-xl transition-all hover:-translate-y-1"
+                    >
+                      {/* 模板標題 */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="font-bold text-slate-800 text-lg">{template.name}</h3>
+                            {isCustom && (
+                              <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                自訂
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-500 mb-2">{template.description}</p>
+                          {template.parts && (
+                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                              <Package size={12} />
+                              <span>{template.parts.length} 個零件</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 零件預覽 */}
+                      <div className="bg-white rounded-xl p-3 mb-4 max-h-32 overflow-y-auto">
+                        {template.parts && template.parts.slice(0, 3).map((part, idx) => (
+                          <div key={idx} className="text-xs text-slate-600 flex items-center gap-1 mb-1">
+                            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                            <span className="font-medium">{part.category}:</span>
+                            <span>{part.name}</span>
+                          </div>
+                        ))}
+                        {template.parts && template.parts.length > 3 && (
+                          <div className="text-xs text-slate-400 mt-1">
+                            ... 還有 {template.parts.length - 3} 個零件
+                          </div>
+                        )}
+                        {!template.parts && (
+                          <div className="text-center py-4 text-slate-400 text-xs">
+                            尚未配置零件
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 操作按鈕 */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDuplicateTemplate(key, template)}
+                          className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1"
+                        >
+                          <Copy size={14} /> 複製
+                        </button>
+                        {isCustom && (
+                          <button
+                            onClick={() => handleDeleteTemplate(key)}
+                            className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1"
+                          >
+                            <Trash2 size={14} /> 刪除
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* 建立新模板表單 */
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-slate-800">建立新模板</h3>
+                <button
+                  onClick={() => {
+                    setIsCreating(false);
+                    setNewTemplate({ name: '', description: '', model: '', parts: [] });
+                  }}
+                  className="text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                >
+                  <ArrowLeft size={18} /> 返回列表
+                </button>
+              </div>
+
+              {/* 基本資訊 */}
+              <div className="bg-slate-50 rounded-2xl p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">模板名稱 *</label>
+                  <input
+                    type="text"
+                    value={newTemplate.name}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+                    placeholder="例如：F32H 雙人賽車"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">機型型號 *</label>
+                  <input
+                    type="text"
+                    value={newTemplate.model}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, model: e.target.value })}
+                    placeholder="例如：F32H"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">描述說明</label>
+                  <textarea
+                    value={newTemplate.description}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
+                    placeholder="模板用途說明..."
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none resize-none"
+                    rows="2"
+                  />
+                </div>
+              </div>
+
+              {/* 零件配置 */}
+              <div className="bg-slate-50 rounded-2xl p-6">
+                <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Package size={18} className="text-purple-600" />
+                  零件配置 ({newTemplate.parts.length} 個)
+                </h4>
+
+                {/* 新增零件表單 */}
+                <div className="bg-white rounded-xl p-4 mb-4 space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={newPart.category}
+                      onChange={(e) => setNewPart({ ...newPart, category: e.target.value })}
+                      placeholder="分類 (如：CPU)"
+                      className="px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-purple-500 focus:outline-none text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={newPart.name}
+                      onChange={(e) => setNewPart({ ...newPart, name: e.target.value })}
+                      placeholder="零件名稱"
+                      className="px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-purple-500 focus:outline-none text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={newPart.serialPrefix}
+                      onChange={(e) => setNewPart({ ...newPart, serialPrefix: e.target.value })}
+                      placeholder="序號前綴 (選填)"
+                      className="px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-purple-500 focus:outline-none text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddPart}
+                    className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} /> 新增零件
+                  </button>
+                </div>
+
+                {/* 零件列表 */}
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {newTemplate.parts.map((part, idx) => (
+                    <div key={idx} className="bg-white rounded-lg p-3 flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">
+                            {part.category}
+                          </span>
+                          <span className="font-medium text-slate-800">{part.name}</span>
+                          {part.serialPrefix && (
+                            <span className="text-xs text-slate-400">({part.serialPrefix})</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemovePart(idx)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {newTemplate.parts.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 text-sm">
+                      尚未新增零件，請使用上方表單新增
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 儲存按鈕 */}
+              <button
+                onClick={handleSaveTemplate}
+                className="w-full py-4 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white rounded-2xl font-bold text-lg transition-all shadow-xl hover:shadow-purple-500/30 hover:-translate-y-1 flex items-center justify-center gap-2"
+              >
+                <Save size={20} /> 儲存模板
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- 動態載入 XLSX 函式庫 ---
 const loadXLSXForSpec = () => {
   return new Promise((resolve) => {
@@ -14414,8 +15718,13 @@ const SpecExportCenterModal = ({ isOpen, onClose, machines, onExport }) => {
 };
 
 // --- 儀表板視圖 ---
-const SpecDashboardView = ({ stats, onUpload, onNavigate, onOpenExport }) => (
+const SpecDashboardView = ({ stats, onUpload, onNavigate, onOpenExport, machines }) => (
   <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    {/* 提醒通知區 */}
+    {machines && machines.length > 0 && (
+      <NotificationPanel machines={machines} />
+    )}
+    
     {/* 統計卡片區 */}
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {/* 機台總數卡片 */}
@@ -14481,23 +15790,8 @@ const SpecDashboardView = ({ stats, onUpload, onNavigate, onOpenExport }) => (
 
     {/* 下方區塊 */}
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* 上傳區塊 */}
-      <div className="relative bg-gradient-to-br from-white to-blue-50/30 p-10 rounded-3xl shadow-lg border-2 border-dashed border-slate-200 hover:border-blue-400 transition-all duration-500 group overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        <div className="relative z-10 flex flex-col items-center justify-center text-center">
-          <div className="w-24 h-24 bg-gradient-to-br from-slate-100 to-slate-50 text-slate-300 rounded-3xl flex items-center justify-center mb-6 group-hover:bg-gradient-to-br group-hover:from-blue-100 group-hover:to-indigo-100 group-hover:text-blue-500 transition-all duration-500 shadow-inner group-hover:shadow-lg group-hover:scale-110">
-            <Upload size={44} strokeWidth={1.5} />
-          </div>
-          <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">匯入電規檔案</h3>
-          <p className="text-slate-400 text-sm mb-8 max-w-sm leading-relaxed">支援原始工廠 CSV/XLSX 檔案或本系統匯出之報表檔案，系統將自動解析合併數據。</p>
-          <label className="relative bg-gradient-to-r from-slate-900 to-slate-800 hover:from-blue-600 hover:to-indigo-600 text-white px-10 py-4 rounded-2xl font-bold cursor-pointer transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 text-sm uppercase tracking-widest group/btn">
-            <span className="flex items-center">
-              <Upload size={18} className="mr-2 group-hover/btn:animate-bounce" /> 選取檔案開始
-            </span>
-            <input type="file" multiple accept=".xlsx,.xls,.csv" className="hidden" onChange={onUpload} />
-          </label>
-        </div>
-      </div>
+      {/* 上傳區塊 - 使用拖拽上傳組件 */}
+      <DragDropUpload onFilesSelected={onUpload} />
 
       {/* 最近紀錄 */}
       <div className="bg-white p-8 rounded-3xl shadow-lg border border-slate-100/80 overflow-hidden">
@@ -14546,38 +15840,531 @@ const SpecDashboardView = ({ stats, onUpload, onNavigate, onOpenExport }) => (
         </div>
       </div>
     </div>
+    
+    {/* 統計圖表區 */}
+    {machines && machines.length > 5 && (
+      <div className="mt-8">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-2xl font-black text-slate-800">數據分析</h3>
+            <p className="text-sm text-slate-400 mt-1">深入了解機台與零件使用趨勢</p>
+          </div>
+        </div>
+        <AnalyticsCharts machines={machines} />
+      </div>
+    )}
   </div>
 );
 
-// --- 機台列表視圖 ---
-const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, onClear, onOpenExport }) => (
-  <div className="bg-white rounded-3xl shadow-xl border border-slate-100/80 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-    {/* 搜尋工具列 */}
-    <div className="p-6 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-gradient-to-r from-slate-50/80 to-white">
-      <div className="relative flex-1 max-w-2xl group">
-        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 group-focus-within:bg-blue-100 rounded-xl flex items-center justify-center transition-colors">
-          <Search className="text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
-        </div>
-        <input 
-          type="text" 
-          placeholder="搜尋機台 ID、序號、訂單編號或特定零件 S/N..." 
-          className="w-full pl-16 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all font-medium text-slate-700 shadow-sm placeholder:text-slate-300"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        {searchTerm && (
-          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 bg-slate-100 hover:bg-rose-100 rounded-lg text-slate-400 hover:text-rose-500 transition-all">
-            <X size={16} />
+// --- 快速標籤編輯器 ---
+const QuickTagEditor = ({ machine, onUpdate }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTags, setEditingTags] = useState(machine.tags || []);
+  const [newTag, setNewTag] = useState('');
+  const inputRef = React.useRef(null);
+
+  const commonTags = ['緊急', '重要', '已完成', '待確認', '測試中', '已出貨', '保留', '特殊規格'];
+
+  const handleSave = async (e) => {
+    e.stopPropagation();
+    // 更新機台標籤
+    const updatedMachine = { ...machine, tags: editingTags };
+    
+    // 調用更新函數（需要在父組件提供）
+    if (window.updateMachineGlobal) {
+      await window.updateMachineGlobal(updatedMachine);
+    }
+    
+    setIsEditing(false);
+  };
+
+  const addTag = (tag, e) => {
+    e && e.stopPropagation();
+    const tagName = typeof tag === 'string' ? tag : tag.name;
+    const existingTag = editingTags.find(t => (typeof t === 'string' ? t : t.name) === tagName);
+    if (tag && !existingTag) {
+      setEditingTags([...editingTags, tag]);
+    }
+  };
+
+  const removeTag = (tagToRemove, e) => {
+    e.stopPropagation();
+    setEditingTags(editingTags.filter(t => {
+      const tName = typeof t === 'string' ? t : t.name;
+      const removeName = typeof tagToRemove === 'string' ? tagToRemove : tagToRemove.name;
+      return tName !== removeName;
+    }));
+  };
+
+  const handleAddCustomTag = (e) => {
+    e.stopPropagation();
+    const trimmedTag = newTag.trim();
+    const existingTag = editingTags.find(t => (typeof t === 'string' ? t : t.name) === trimmedTag);
+    if (trimmedTag && !existingTag) {
+      setEditingTags([...editingTags, trimmedTag]);
+      setNewTag('');
+    }
+  };
+
+  if (!isEditing) {
+    return (
+      <div 
+        onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+        className="flex flex-wrap gap-1.5 items-center min-h-[32px] cursor-pointer group"
+      >
+        {(machine.tags && machine.tags.length > 0) ? (
+          <>
+            {machine.tags.map((tag, idx) => {
+              const tagName = typeof tag === 'string' ? tag : tag.name;
+              const tagColor = typeof tag === 'string' ? 'bg-gradient-to-r from-blue-500 to-blue-600' : tag.color;
+              return (
+                <span 
+                  key={idx}
+                  className={`px-2 py-1 ${tagColor} text-white text-xs font-bold rounded-full shadow-sm group-hover:shadow-md transition-all`}
+                >
+                  {tagName}
+                </span>
+              );
+            })}
+            <button className="opacity-0 group-hover:opacity-100 w-6 h-6 bg-slate-200 hover:bg-blue-500 hover:text-white rounded-full flex items-center justify-center transition-all">
+              <Edit size={12} />
+            </button>
+          </>
+        ) : (
+          <button className="px-3 py-1.5 bg-slate-100 hover:bg-blue-50 border-2 border-dashed border-slate-200 hover:border-blue-300 text-slate-400 hover:text-blue-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1">
+            <Plus size={12} /> 添加標籤
           </button>
         )}
       </div>
-      <div className="flex space-x-3">
-        <button onClick={onOpenExport} className="px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-2xl font-bold text-xs transition-all flex items-center shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:-translate-y-0.5 uppercase tracking-widest">
-          <Download size={16} className="mr-2" /> 匯出報表
+    );
+  }
+
+  return (
+    <div 
+      onClick={(e) => e.stopPropagation()} 
+      className="bg-white border-2 border-blue-300 rounded-xl p-3 shadow-lg min-w-[300px] z-10"
+    >
+      {/* 當前標籤 */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {editingTags.map((tag, idx) => {
+          const tagName = typeof tag === 'string' ? tag : tag.name;
+          const tagColor = typeof tag === 'string' ? 'bg-gradient-to-r from-blue-500 to-blue-600' : tag.color;
+          return (
+            <span 
+              key={idx}
+              className={`px-2 py-1 ${tagColor} text-white text-xs font-bold rounded-full flex items-center gap-1 shadow-sm`}
+            >
+              {tagName}
+              <button 
+                onClick={(e) => removeTag(tagName, e)}
+                className="w-4 h-4 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-all"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+
+      {/* 常用標籤 */}
+      <div className="mb-3">
+        <p className="text-xs font-bold text-slate-500 mb-2">常用標籤:</p>
+        <div className="flex flex-wrap gap-1.5">
+          {commonTags.map(tag => {
+            const isTagUsed = editingTags.some(t => (typeof t === 'string' ? t : t.name) === tag);
+            return (
+              <button
+                key={tag}
+                onClick={(e) => addTag(tag, e)}
+                disabled={isTagUsed}
+                className={`px-2 py-1 text-xs font-bold rounded-lg transition-all ${
+                  isTagUsed
+                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                    : 'bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <Plus size={10} className="inline mr-1" />
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 自訂標籤輸入 */}
+      <div className="flex gap-2 mb-3">
+        <input
+          ref={inputRef}
+          type="text"
+          value={newTag}
+          onChange={(e) => setNewTag(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleAddCustomTag(e)}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="自訂標籤..."
+          className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+        />
+        <button
+          onClick={handleAddCustomTag}
+          className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg transition-all"
+        >
+          <Plus size={12} />
         </button>
-        <button onClick={onClear} className="p-3.5 text-rose-500 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:border-rose-500 rounded-2xl transition-all shadow-sm hover:shadow-lg">
-          <Trash2 size={20} />
+      </div>
+
+      {/* 操作按鈕 */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave}
+          className="flex-1 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1"
+        >
+          <Check size={12} /> 儲存
         </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsEditing(false); setEditingTags(machine.tags || []); }}
+          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-all"
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- 機台列表視圖 ---
+const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, onClear, onOpenExport, onOpenReportModal }) => {
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [filterType, setFilterType] = useState('all'); // 篩選類型
+  const [filterValue, setFilterValue] = useState(''); // 篩選值
+  
+  // 計算所有機型分類
+  const modelCategories = useMemo(() => {
+    const models = {};
+    machines.forEach(m => {
+      const model = m.id.split('-')[0] || 'Unknown';
+      if (!models[model]) {
+        models[model] = {
+          name: model,
+          count: 0,
+          machines: []
+        };
+      }
+      models[model].count++;
+      models[model].machines.push(m);
+    });
+    return Object.values(models).sort((a, b) => b.count - a.count);
+  }, [machines]);
+  
+  // 獲取所有版本選項
+  const versionOptions = useMemo(() => {
+    const versions = new Set();
+    machines.forEach(m => {
+      if (m.configVersion) versions.add(m.configVersion);
+    });
+    return Array.from(versions).sort();
+  }, [machines]);
+  
+  // 獲取所有訂單編號選項
+  const orderOptions = useMemo(() => {
+    const orders = new Set();
+    machines.forEach(m => {
+      if (m.orderNo) orders.add(m.orderNo);
+    });
+    return Array.from(orders).sort();
+  }, [machines]);
+  
+  // 獲取所有出貨日期選項（月份）
+  const shipDateOptions = useMemo(() => {
+    const dates = new Set();
+    machines.forEach(m => {
+      if (m.shipDate) {
+        const month = m.shipDate.substring(0, 7); // YYYY.MM
+        dates.add(month);
+      }
+    });
+    return Array.from(dates).sort().reverse();
+  }, [machines]);
+  
+  // 獲取所有標籤選項
+  const tagOptions = useMemo(() => {
+    const tags = new Set();
+    machines.forEach(m => {
+      if (m.tags && m.tags.length > 0) {
+        m.tags.forEach(tag => tags.add(tag));
+      }
+    });
+    return Array.from(tags).sort();
+  }, [machines]);
+  
+  // 綜合過濾邏輯
+  const displayedMachines = useMemo(() => {
+    let filtered = machines;
+    
+    // 機型篩選
+    if (selectedModel) {
+      filtered = filtered.filter(m => m.id.startsWith(selectedModel + '-'));
+    }
+    
+    // 高級篩選
+    if (filterType !== 'all' && filterValue) {
+      filtered = filtered.filter(m => {
+        switch (filterType) {
+          case 'order':
+            return m.orderNo === filterValue;
+          case 'shipDate':
+            return m.shipDate && m.shipDate.startsWith(filterValue);
+          case 'tag':
+            return m.tags && m.tags.includes(filterValue);
+          case 'hasSerial':
+            return filterValue === 'yes' ? !!m.gameSerial : !m.gameSerial;
+          case 'version':
+            return m.configVersion === filterValue;
+          case 'partsCount':
+            const count = m.parts ? m.parts.length : 0;
+            if (filterValue === '0') return count === 0;
+            if (filterValue === '1-10') return count >= 1 && count <= 10;
+            if (filterValue === '11-30') return count >= 11 && count <= 30;
+            if (filterValue === '31+') return count >= 31;
+            return true;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    return filtered;
+  }, [machines, selectedModel, filterType, filterValue]);
+  
+  return (
+  <div className="space-y-6">
+    {/* 機型分類卡片區 */}
+    {modelCategories.length > 0 && (
+      <div className="bg-white rounded-3xl shadow-xl border border-slate-100/80 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl flex items-center justify-center">
+              <Layers size={20} className="text-purple-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-800">機型分類</h3>
+              <p className="text-xs text-slate-400">點擊卡片快速篩選機型</p>
+            </div>
+          </div>
+          {selectedModel && (
+            <button 
+              onClick={() => setSelectedModel(null)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition-all flex items-center gap-2"
+            >
+              <X size={14} /> 清除篩選
+            </button>
+          )}
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+          {modelCategories.map((model, idx) => {
+            const isSelected = selectedModel === model.name;
+            const colors = [
+              { from: 'from-blue-500', to: 'to-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', shadow: 'shadow-blue-500/20' },
+              { from: 'from-emerald-500', to: 'to-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-600', shadow: 'shadow-emerald-500/20' },
+              { from: 'from-purple-500', to: 'to-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', shadow: 'shadow-purple-500/20' },
+              { from: 'from-amber-500', to: 'to-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-600', shadow: 'shadow-amber-500/20' },
+              { from: 'from-rose-500', to: 'to-rose-600', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-600', shadow: 'shadow-rose-500/20' },
+              { from: 'from-cyan-500', to: 'to-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-600', shadow: 'shadow-cyan-500/20' },
+            ];
+            const color = colors[idx % colors.length];
+            
+            return (
+              <button
+                key={model.name}
+                onClick={() => setSelectedModel(isSelected ? null : model.name)}
+                className={`group relative p-5 rounded-2xl border-2 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
+                  isSelected 
+                    ? `bg-gradient-to-br ${color.from} ${color.to} border-transparent shadow-lg ${color.shadow}` 
+                    : `${color.bg} ${color.border} hover:${color.border}`
+                }`}
+              >
+                {/* 背景裝飾 */}
+                <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-10 -mt-10 opacity-20 blur-2xl transition-opacity ${
+                  isSelected ? 'bg-white' : `bg-gradient-to-br ${color.from} ${color.to}`
+                }`}></div>
+                
+                <div className="relative z-10">
+                  {/* 圖標 */}
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 transition-all ${
+                    isSelected ? 'bg-white/20 backdrop-blur-sm' : `${color.bg} group-hover:scale-110`
+                  }`}>
+                    <Cpu size={24} className={isSelected ? 'text-white' : color.text} />
+                  </div>
+                  
+                  {/* 機型名稱 */}
+                  <h4 className={`text-lg font-black mb-1 ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                    {model.name}
+                  </h4>
+                  
+                  {/* 數量標籤 */}
+                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
+                    isSelected 
+                      ? 'bg-white/20 text-white backdrop-blur-sm' 
+                      : `${color.bg} ${color.text}`
+                  }`}>
+                    <Package size={12} className="mr-1" />
+                    {model.count} 台
+                  </div>
+                  
+                  {/* 選中指示器 */}
+                  {isSelected && (
+                    <div className="absolute top-3 right-3 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
+                      <Check size={14} className={color.text} />
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        
+        {/* 篩選提示 */}
+        {selectedModel && (
+          <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                <Filter size={16} className="text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-blue-900">
+                  正在顯示 <span className="text-blue-600">{selectedModel}</span> 機型
+                </p>
+                <p className="text-xs text-blue-600">
+                  共 {displayedMachines.length} 台機台
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+    
+    {/* 原有的列表視圖 */}
+    <div className="bg-white rounded-3xl shadow-xl border border-slate-100/80 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+    {/* 搜尋工具列 */}
+    <div className="p-6 border-b border-slate-100 flex flex-col gap-4 bg-gradient-to-r from-slate-50/80 to-white">
+      {/* 第一排：搜尋框 */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="relative flex-1 max-w-2xl group">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 group-focus-within:bg-blue-100 rounded-xl flex items-center justify-center transition-colors">
+            <Search className="text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
+          </div>
+          <input 
+            type="text" 
+            placeholder="搜尋機台 ID、序號、訂單編號或特定零件 S/N..." 
+            className="w-full pl-16 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all font-medium text-slate-700 shadow-sm placeholder:text-slate-300"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 bg-slate-100 hover:bg-rose-100 rounded-lg text-slate-400 hover:text-rose-500 transition-all">
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <div className="flex space-x-3">
+          <button onClick={onOpenReportModal} className="px-6 py-3.5 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-2xl font-bold text-xs transition-all flex items-center shadow-lg shadow-purple-500/20 hover:shadow-xl hover:-translate-y-0.5 uppercase tracking-widest">
+            <FileText size={16} className="mr-2" /> 報表模板
+          </button>
+          <button onClick={onOpenExport} className="px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-2xl font-bold text-xs transition-all flex items-center shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:-translate-y-0.5 uppercase tracking-widest">
+            <Download size={16} className="mr-2" /> 自訂匯出
+          </button>
+          <button onClick={onClear} className="p-3.5 text-rose-500 bg-rose-50 border border-rose-100 hover:bg-rose-500 hover:text-white hover:border-rose-500 rounded-2xl transition-all shadow-sm hover:shadow-lg">
+            <Trash2 size={20} />
+          </button>
+        </div>
+      </div>
+      
+      {/* 第二排：高級篩選器 */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="flex items-center gap-2">
+          <Filter size={16} className="text-slate-400" />
+          <span className="text-sm font-bold text-slate-600">進階篩選：</span>
+        </div>
+        
+        <div className="flex flex-wrap gap-3 flex-1">
+          {/* 篩選類型下拉 */}
+          <div className="relative">
+            <select 
+              value={filterType}
+              onChange={(e) => { setFilterType(e.target.value); setFilterValue(''); }}
+              className="appearance-none pl-4 pr-10 py-2.5 bg-white border-2 border-slate-200 hover:border-blue-300 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all cursor-pointer shadow-sm"
+            >
+              <option value="all">全部顯示</option>
+              <option value="order">依訂單編號</option>
+              <option value="shipDate">依出貨月份</option>
+              <option value="tag">依標籤分類</option>
+              <option value="version">依配置版本</option>
+              <option value="hasSerial">依遊戲序號</option>
+              <option value="partsCount">依零件數量</option>
+            </select>
+            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+          
+          {/* 篩選值下拉（根據類型動態顯示） */}
+          {filterType !== 'all' && (
+            <div className="relative flex-1 min-w-[200px]">
+              <select
+                value={filterValue}
+                onChange={(e) => setFilterValue(e.target.value)}
+                className="appearance-none w-full pl-4 pr-10 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 hover:border-blue-400 rounded-xl text-sm font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer shadow-sm"
+              >
+                <option value="">請選擇...</option>
+                {filterType === 'order' && orderOptions.map(order => (
+                  <option key={order} value={order}>{order}</option>
+                ))}
+                {filterType === 'shipDate' && shipDateOptions.map(date => (
+                  <option key={date} value={date}>{date.replace('.', '年')}月</option>
+                ))}
+                {filterType === 'tag' && tagOptions.map(tag => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+                {filterType === 'version' && versionOptions.map(version => (
+                  <option key={version} value={version}>v{version}</option>
+                ))}
+                {filterType === 'hasSerial' && (
+                  <>
+                    <option value="yes">有遊戲序號</option>
+                    <option value="no">無遊戲序號</option>
+                  </>
+                )}
+                {filterType === 'partsCount' && (
+                  <>
+                    <option value="0">無零件 (0)</option>
+                    <option value="1-10">少量 (1-10)</option>
+                    <option value="11-30">中量 (11-30)</option>
+                    <option value="31+">大量 (31+)</option>
+                  </>
+                )}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-600 pointer-events-none" />
+            </div>
+          )}
+          
+          {/* 清除篩選按鈕 */}
+          {(filterType !== 'all' || filterValue) && (
+            <button
+              onClick={() => { setFilterType('all'); setFilterValue(''); }}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm"
+            >
+              <X size={14} /> 清除
+            </button>
+          )}
+        </div>
+        
+        {/* 篩選結果提示 */}
+        {(filterType !== 'all' && filterValue) && (
+          <div className="px-4 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex items-center gap-2">
+            <Check size={14} className="text-emerald-600" />
+            <span className="text-xs font-bold text-emerald-700">
+              篩選中 ({displayedMachines.length} 筆)
+            </span>
+          </div>
+        )}
       </div>
     </div>
     
@@ -14589,14 +16376,15 @@ const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, on
             <th className="px-8 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">機台 ID 編號</th>
             <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">遊戲機 SN</th>
             <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">訂單資訊</th>
+            <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">標籤</th>
             <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-[0.15em] text-center">電規項數</th>
             <th className="px-6 py-5"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50">
-          {machines.map((m, idx) => (
-            <tr key={m.id} className="hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent transition-all group cursor-pointer" onClick={() => onSelect(m)}>
-              <td className="px-8 py-5">
+          {displayedMachines.map((m, idx) => (
+            <tr key={m.id} className="hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent transition-all group">
+              <td className="px-8 py-5 cursor-pointer" onClick={() => onSelect(m)}>
                 <div className="flex items-center space-x-4">
                   <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
                     {m.id.charAt(0)}
@@ -14607,31 +16395,34 @@ const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, on
                   </div>
                 </div>
               </td>
-              <td className="px-6 py-5">
+              <td className="px-6 py-5 cursor-pointer" onClick={() => onSelect(m)}>
                 <div className="flex items-center space-x-2">
                    <div className="p-2 bg-gradient-to-br from-slate-100 to-slate-50 rounded-lg text-slate-400 shadow-inner"><QrCode size={16} /></div>
                    <span className="font-mono text-sm font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded">{m.gameSerial || '------'}</span>
                 </div>
               </td>
-              <td className="px-6 py-5">
+              <td className="px-6 py-5 cursor-pointer" onClick={() => onSelect(m)}>
                 <p className="text-sm font-bold text-slate-700">{m.orderNo}</p>
                 <p className="text-[11px] text-slate-400 truncate max-w-[200px] mt-0.5 font-medium">{m.importSource}</p>
               </td>
-              <td className="px-6 py-5 text-center">
+              <td className="px-6 py-5">
+                <QuickTagEditor machine={m} onUpdate={onSelect} />
+              </td>
+              <td className="px-6 py-5 cursor-pointer" onClick={() => onSelect(m)}>
                 <span className="inline-flex items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-blue-700 px-4 py-1.5 rounded-full text-xs font-black shadow-sm group-hover:from-blue-100 group-hover:to-indigo-100 transition-all">
                   <Package size={12} className="mr-1.5" /> {m.parts.length} 項
                 </span>
               </td>
               <td className="px-6 py-5 text-right">
-                <button className="p-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-x-0.5 group-hover:scale-105">
+                <button onClick={() => onSelect(m)} className="p-3 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-x-0.5 group-hover:scale-105">
                   <ChevronRight size={18} />
                 </button>
               </td>
             </tr>
           ))}
-          {machines.length === 0 && (
+          {displayedMachines.length === 0 && (
             <tr>
-              <td colSpan="5" className="py-24">
+              <td colSpan="6" className="py-24">
                 <div className="flex flex-col items-center justify-center text-center">
                   <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-300 mb-4">
                     <Search size={40} strokeWidth={1.5} />
@@ -14647,10 +16438,18 @@ const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, on
     </div>
     
     {/* 底部統計 */}
-    {machines.length > 0 && (
+    {displayedMachines.length > 0 && (
       <div className="px-8 py-4 bg-gradient-to-r from-slate-50 to-white border-t border-slate-100 flex items-center justify-between">
         <p className="text-sm text-slate-400">
-          共 <span className="font-black text-slate-700">{machines.length}</span> 台機台
+          {selectedModel ? (
+            <>
+              顯示 <span className="font-black text-blue-600">{selectedModel}</span> 機型，共 <span className="font-black text-slate-700">{displayedMachines.length}</span> 台
+            </>
+          ) : (
+            <>
+              共 <span className="font-black text-slate-700">{displayedMachines.length}</span> 台機台
+            </>
+          )}
         </p>
         <div className="flex items-center space-x-2 text-xs text-slate-400">
           <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -14658,21 +16457,188 @@ const SpecMachineListView = ({ machines, searchTerm, setSearchTerm, onSelect, on
         </div>
       </div>
     )}
+    </div>
   </div>
-);
+  );
+};
 
 // --- 表單視圖 ---
-const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions = {} }) => {
+const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions = {}, machines = [] }) => {
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [nextSerialNumber, setNextSerialNumber] = useState(1);
+  const [isTemplateManagementOpen, setIsTemplateManagementOpen] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState([]);
   const [formData, setFormData] = useState({
     id: '', orderNo: '', poNo: '', 
     shipDate: new Date().toISOString().slice(0, 10).replace(/-/g, '.'),
     gameSerial: '', 
-    parts: [{ category: '控箱區域', name: '', desc: '', sn: '' }],
+    configVersion: '', // 整機版本
+    parts: [{ category: '控箱區域', name: '', desc: '', sn: '', componentVersion: '' }], // 加入零件版本
+    tags: [],
+    attachments: [],
     ...initialData
   });
+  
+  // 🔥 序號自動生成函數
+  const generateSerialNumber = (partIndex) => {
+    const machineId = formData.id || '';
+    let prefix = 'PART'; // 預設前綴
+    
+    console.log('🔍 開始生成零件序號，機台ID:', machineId);
+    
+    // 根據機台系列決定序號前綴
+    if (machineId.startsWith('F10F')) {
+      prefix = 'S';
+    } else if (machineId.startsWith('F32H')) {
+      prefix = 'J';
+    }
+    
+    console.log('📌 使用前綴:', prefix);
+    console.log('📊 現有機台數量:', machines.length);
+    
+    // 收集所有現有的該前綴序號
+    const existingSerials = [];
+    machines.forEach(machine => {
+      if (machine.parts) {
+        machine.parts.forEach(part => {
+          if (part.sn && part.sn.startsWith(prefix + '-')) {
+            existingSerials.push(part.sn);
+          }
+        });
+      }
+    });
+    
+    // 同時檢查當前表單中已有的序號
+    formData.parts.forEach(part => {
+      if (part.sn && part.sn.startsWith(prefix + '-')) {
+        existingSerials.push(part.sn);
+      }
+    });
+    
+    console.log('📋 找到的現有序號:', existingSerials);
+    
+    // 找出最大編號
+    let maxNumber = 0;
+    existingSerials.forEach(serial => {
+      const match = serial.match(new RegExp(`^${prefix}-(\\d+)$`));
+      if (match) {
+        const num = parseInt(match[1], 10);
+        console.log(`🔢 解析 ${serial} → 編號: ${num}`);
+        if (num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    });
+    
+    console.log('🎯 最大編號:', maxNumber);
+    
+    // 生成新序號（最大編號 + 1）
+    const newNumber = maxNumber + 1;
+    const newSerial = `${prefix}-${String(newNumber).padStart(4, '0')}`;
+    console.log('✨ 生成新序號:', newSerial);
+    return newSerial;
+  };
+  
+  // 🔥 機台編號自動生成函數
+  const generateMachineId = (prefix) => {
+    console.log('🔍 開始生成機台編號，前綴:', prefix);
+    console.log('📊 現有機台數量:', machines.length);
+    
+    // 收集所有該前綴的機台編號
+    const existingIds = [];
+    machines.forEach(machine => {
+      if (machine.id && machine.id.startsWith(prefix + '-')) {
+        existingIds.push(machine.id);
+        console.log('✅ 找到匹配機台:', machine.id);
+      }
+    });
+    
+    console.log('📋 所有匹配的機台編號:', existingIds);
+    
+    // 找出最大編號
+    let maxNumber = 0;
+    existingIds.forEach(id => {
+      const match = id.match(new RegExp(`^${prefix}-(\\d+)$`));
+      if (match) {
+        const num = parseInt(match[1], 10);
+        console.log(`🔢 解析 ${id} → 編號: ${num}`);
+        if (num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    });
+    
+    console.log('🎯 最大編號:', maxNumber);
+    
+    // 生成新編號（最大編號 + 1）
+    const newNumber = maxNumber + 1;
+    const newId = `${prefix}-${String(newNumber).padStart(4, '0')}`;
+    console.log('✨ 生成新編號:', newId);
+    return newId;
+  };
+  
+  // 載入版本資料
+  const [configVersions, setConfigVersions] = useState([]);
+  const [componentVersions, setComponentVersions] = useState([]);
+  
+  // 🔍 調試：檢查 machines 數據
+  React.useEffect(() => {
+    console.log('🔍🔍🔍 SpecEntryFormView 接收到的 machines:', machines);
+    console.log('📊 機台數量:', machines ? machines.length : 0);
+    if (machines && machines.length > 0) {
+      console.log('📋 前5台機台ID:', machines.slice(0, 5).map(m => m.id));
+    }
+  }, [machines]);
+  
+  React.useEffect(() => {
+    const storedConfig = localStorage.getItem('config_versions');
+    const storedComponent = localStorage.getItem('component_versions');
+    if (storedConfig && storedConfig !== 'undefined') {
+      try { setConfigVersions(JSON.parse(storedConfig)); } catch(e) {}
+    }
+    if (storedComponent && storedComponent !== 'undefined') {
+      try { setComponentVersions(JSON.parse(storedComponent)); } catch(e) {}
+    }
+  }, []);
+
+  // 載入所有可用模板
+  React.useEffect(() => {
+    setAvailableTemplates(TemplateManager.getAllTemplates());
+  }, []);
+
+  // 當選擇機型模板時，自動填充零件和生成機台編號
+  const handleTemplateChange = (templateKey) => {
+    setSelectedTemplate(templateKey);
+    
+    const allTemplates = TemplateManager.getAllTemplates();
+    const templateEntry = allTemplates.find(([key]) => key === templateKey);
+    
+    if (templateEntry) {
+      const [, template] = templateEntry;
+      
+      // 自動生成機台編號（如果是新增模式且有 prefix）
+      if (mode === 'create' && template.prefix) {
+        const newId = `${template.prefix}-${String(nextSerialNumber).padStart(4, '0')}`;
+        setNextSerialNumber(prev => prev + 1);
+        
+        setFormData(prev => ({
+          ...prev,
+          id: newId,
+          parts: JSON.parse(JSON.stringify(template.parts)) // 深拷貝零件列表
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          parts: JSON.parse(JSON.stringify(template.parts))
+        }));
+      }
+    }
+  };
 
   const handlePartChange = (index, field, value) => {
-    const newParts = [...formData.parts]; newParts[index][field] = value; setFormData(prev => ({ ...prev, parts: newParts }));
+    const newParts = [...formData.parts]; 
+    newParts[index][field] = value; 
+    setFormData(prev => ({ ...prev, parts: newParts }));
   };
 
   return (
@@ -14707,10 +16673,136 @@ const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions =
               <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Basic Information</span>
             </div>
             
+            {/* 機型模板選擇 - 僅在新增模式顯示 */}
+            {mode === 'create' && (
+              <>
+                <TemplateManagementModal 
+                  isOpen={isTemplateManagementOpen} 
+                  onClose={() => {
+                    setIsTemplateManagementOpen(false);
+                    setAvailableTemplates(TemplateManager.getAllTemplates());
+                  }}
+                />
+                
+                <div className="mb-8 p-6 bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 rounded-2xl border-2 border-indigo-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <Layers size={20} className="text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-800">快速選擇機型模板</h3>
+                        <p className="text-xs text-indigo-600 font-medium">選擇機型後將自動帶入標準零件清單和編號</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsTemplateManagementOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-purple-500/30 hover:-translate-y-0.5"
+                    >
+                      <Sparkles size={16} /> 管理模板
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {availableTemplates.map(([key, template]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleTemplateChange(key)}
+                        className={`group p-4 rounded-xl border-2 transition-all duration-300 ${
+                          selectedTemplate === key
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 border-indigo-600 shadow-lg shadow-indigo-500/30 scale-105'
+                            : 'bg-white border-indigo-200 hover:border-indigo-400 hover:shadow-md hover:scale-102'
+                        }`}
+                      >
+                        <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2 ${
+                          selectedTemplate === key 
+                            ? 'bg-white/20' 
+                            : 'bg-gradient-to-br from-indigo-100 to-purple-100'
+                        }`}>
+                          <Cpu size={24} className={selectedTemplate === key ? 'text-white' : 'text-indigo-600'} />
+                        </div>
+                        <h4 className={`text-sm font-black text-center mb-1 ${
+                          selectedTemplate === key ? 'text-white' : 'text-slate-800'
+                        }`}>
+                          {template.name}
+                        </h4>
+                        <p className={`text-xs text-center ${
+                          selectedTemplate === key ? 'text-white/80' : 'text-slate-500'
+                        }`}>
+                          {template.description}
+                        </p>
+                        {selectedTemplate === key && (
+                          <div className="mt-2 flex justify-center">
+                            <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                              <Check size={12} className="text-indigo-600" />
+                            </div>
+                          </div>
+                        )}
+                        {key !== 'CUSTOM' && template.parts && (
+                          <div className={`mt-2 text-xs font-mono font-bold text-center ${
+                            selectedTemplate === key ? 'text-white/90' : 'text-indigo-600'
+                          }`}>
+                            {template.parts.length} 個零件
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="group">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
-                  <span className="flex items-center"><QrCode size={12} className="mr-1.5" />機台編號 (Feiloli ID) *</span>
+                  <span className="flex items-center justify-between w-full">
+                    <span className="flex items-center"><QrCode size={12} className="mr-1.5" />機台編號 (Feiloli ID) *</span>
+                    {mode === 'create' && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const newId = generateMachineId('F10F');
+                            console.log('🖱️ 點擊 F10F 按鈕，生成:', newId);
+                            setFormData({...formData, id: newId});
+                          }}
+                          className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 hover:underline bg-emerald-50 px-2 py-1 rounded"
+                          title="生成 F10F 系列編號"
+                        >
+                          <Sparkles size={10} /> F10F
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const newId = generateMachineId('F32H');
+                            console.log('🖱️ 點擊 F32H 按鈕，生成:', newId);
+                            setFormData({...formData, id: newId});
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 hover:underline bg-blue-50 px-2 py-1 rounded"
+                          title="生成 F32H 系列編號"
+                        >
+                          <Sparkles size={10} /> F32H
+                        </button>
+                        {formData.id && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setFormData({...formData, id: ''});
+                            }}
+                            className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 hover:underline bg-rose-50 px-2 py-1 rounded"
+                            title="清除重新生成"
+                          >
+                            <X size={10} /> 清除
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </span>
                 </label>
                 <input name="id" value={formData.id} onChange={(e) => setFormData({...formData, id: e.target.value})} required disabled={mode === 'edit'} className={`w-full px-5 py-4 border-2 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg transition-all duration-300 ${mode === 'edit' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-blue-600 border-slate-200 hover:border-blue-300'}`} placeholder="例: F32H-0070" />
               </div>
@@ -14722,10 +16814,64 @@ const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions =
               </div>
               <div className="group">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
+                  <span className="flex items-center"><FileText size={12} className="mr-1.5" />訂單編號 (Order No.)</span>
+                </label>
+                <input name="orderNo" value={formData.orderNo || ''} onChange={(e) => setFormData({...formData, orderNo: e.target.value})} className="w-full px-5 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg text-slate-700 font-mono transition-all duration-300 hover:border-blue-300" placeholder="例: SO-2025001" />
+              </div>
+              <div className="group">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
+                  <span className="flex items-center"><FileText size={12} className="mr-1.5" />採購單號 (PO No.)</span>
+                </label>
+                <input name="poNo" value={formData.poNo || ''} onChange={(e) => setFormData({...formData, poNo: e.target.value})} className="w-full px-5 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg text-slate-700 font-mono transition-all duration-300 hover:border-blue-300" placeholder="例: PO-2025001" />
+              </div>
+              <div className="group">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
                   <span className="flex items-center"><Calendar size={12} className="mr-1.5" />出貨日期記錄</span>
                 </label>
                 <input name="shipDate" value={formData.shipDate} onChange={(e) => setFormData({...formData, shipDate: e.target.value})} className="w-full px-5 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg font-mono transition-all duration-300 hover:border-blue-300" placeholder="YYYY.MM.DD" />
               </div>
+            </div>
+            
+            {/* 整機版本選擇 */}
+            <div className="bg-gradient-to-br from-purple-50 to-white border-2 border-purple-200 rounded-xl p-5 mt-4">
+              <label className="block text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                <GitBranch size={16} className="text-purple-600" />
+                整機版本配置
+                <span className="text-xs text-purple-600 font-normal">(選填，用於版本追蹤)</span>
+              </label>
+              <select
+                value={formData.configVersion || ''}
+                onChange={(e) => setFormData({...formData, configVersion: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-purple-200 rounded-xl focus:border-purple-500 focus:outline-none font-medium transition-all"
+              >
+                <option value="">未指定版本</option>
+                {configVersions.filter(v => v.isActive).map(version => (
+                  <option key={version.id} value={version.version}>
+                    {version.version} - {version.description}
+                  </option>
+                ))}
+                {configVersions.filter(v => !v.isActive).length > 0 && (
+                  <optgroup label="歷史版本">
+                    {configVersions.filter(v => !v.isActive).map(version => (
+                      <option key={version.id} value={version.version}>
+                        {version.version} - {version.description}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {formData.configVersion && (
+                <p className="mt-2 text-xs text-purple-600 flex items-center gap-1">
+                  <Check size={12} />
+                  已選擇版本: {formData.configVersion}
+                </p>
+              )}
+              {configVersions.length === 0 && (
+                <p className="mt-2 text-xs text-slate-400 flex items-center gap-1">
+                  <AlertCircle size={12} />
+                  尚未建立版本，請至「版本管理」新增
+                </p>
+              )}
             </div>
           </div>
 
@@ -14738,9 +16884,72 @@ const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions =
                 <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Parts Details</span>
                 <span className="ml-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold">{formData.parts.length} 項</span>
               </div>
-              <button type="button" onClick={() => setFormData(p => ({ ...p, parts: [...p.parts, { category: p.parts[p.parts.length-1]?.category || '一般區域', name: '', desc: '', sn: '' }] }))} className="flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-bold text-sm hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-emerald-500/25 active:scale-95">
-                <Plus size={16} className="mr-2" /> 新增零件
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    console.log('🖱️ 點擊自動編號按鈕');
+                    
+                    const machineId = formData.id || '';
+                    let prefix = 'PART';
+                    if (machineId.startsWith('F10F')) {
+                      prefix = 'S';
+                    } else if (machineId.startsWith('F32H')) {
+                      prefix = 'J';
+                    }
+                    
+                    // 收集所有現有序號
+                    const existingSerials = [];
+                    machines.forEach(machine => {
+                      if (machine.parts) {
+                        machine.parts.forEach(part => {
+                          if (part.sn && part.sn.startsWith(prefix + '-')) {
+                            existingSerials.push(part.sn);
+                          }
+                        });
+                      }
+                    });
+                    
+                    // 找出最大編號
+                    let maxNumber = 0;
+                    existingSerials.forEach(serial => {
+                      const match = serial.match(new RegExp(`^${prefix}-(\\d+)$`));
+                      if (match) {
+                        const num = parseInt(match[1], 10);
+                        if (num > maxNumber) maxNumber = num;
+                      }
+                    });
+                    
+                    console.log(`🎯 當前最大編號: ${maxNumber}，下一個起始: ${maxNumber + 1}`);
+                    
+                    // 批量生成序號，依次遞增
+                    let currentNumber = maxNumber;
+                    const newParts = formData.parts.map((part, idx) => {
+                      if (!part.sn) {
+                        currentNumber++;
+                        const newSn = `${prefix}-${String(currentNumber).padStart(4, '0')}`;
+                        console.log(`📝 為零件 ${idx + 1} 生成序號: ${newSn}`);
+                        return { ...part, sn: newSn };
+                      }
+                      return part;
+                    });
+                    
+                    setFormData(p => ({ ...p, parts: newParts }));
+                    console.log('✅ 自動編號完成');
+                  }}
+                  className="flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold text-sm hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-blue-500/25 active:scale-95"
+                  title="為空白序號自動編排編號 (F10F→S-XXXX, F32H→J-XXXX)"
+                >
+                  <Hash size={16} className="mr-2" /> 自動編號
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setFormData(p => ({ ...p, parts: [...p.parts, { category: p.parts[p.parts.length-1]?.category || '一般區域', name: '', desc: '', sn: '' }] }))} 
+                  className="flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-bold text-sm hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-emerald-500/25 active:scale-95"
+                >
+                  <Plus size={16} className="mr-2" /> 新增零件
+                </button>
+              </div>
             </div>
 
             <datalist id="spec-cat-list">{suggestions.categories?.map(c => <option key={c} value={c} />)}</datalist>
@@ -14768,12 +16977,58 @@ const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions =
                     <input list="spec-desc-list" value={part.desc} onChange={(e) => handlePartChange(index, 'desc', e.target.value)} className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl text-sm text-slate-600 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-300" />
                   </div>
                   <div className="w-full xl:w-64 space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center"><Hash size={11} className="mr-1.5 text-slate-300" /> 唯一序號 S/N</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase flex items-center justify-between">
+                      <span className="flex items-center"><Hash size={11} className="mr-1.5 text-slate-300" /> 唯一序號 S/N</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const newSn = generateSerialNumber(index);
+                          console.log('🖱️ 點擊零件生成按鈕，生成:', newSn);
+                          handlePartChange(index, 'sn', newSn);
+                        }}
+                        className="text-xs text-blue-500 hover:text-blue-700 font-bold flex items-center gap-1 hover:underline"
+                        title="快速生成序號 (F10F→S-XXXX, F32H→J-XXXX)"
+                      >
+                        <Sparkles size={10} /> 生成
+                      </button>
+                    </label>
                     <input value={part.sn} onChange={(e) => handlePartChange(index, 'sn', e.target.value)} className="w-full px-4 py-3 bg-gradient-to-r from-blue-50 to-white border-2 border-blue-200 rounded-xl text-sm font-bold text-blue-600 font-mono focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-300 hover:border-blue-400" placeholder="輸入唯一識別碼" />
                   </div>
                   <button type="button" onClick={() => setFormData(p => ({ ...p, parts: p.parts.filter((_, i) => i !== index) }))} className="xl:self-center p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all duration-300 hover:scale-110 active:scale-95"><X size={22} /></button>
                 </div>
               ))}
+            </div>
+          </div>
+          
+          {/* 標籤分類區塊 */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-1.5 h-8 bg-gradient-to-b from-purple-500 to-purple-600 rounded-full"></div>
+              <h2 className="text-xl font-bold text-slate-800">標籤與分類</h2>
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Tags & Categories</span>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-white p-6 rounded-2xl border-2 border-purple-100">
+              <TagManager 
+                tags={formData.tags || []} 
+                onTagsChange={(newTags) => setFormData({...formData, tags: newTags})}
+              />
+            </div>
+          </div>
+          
+          {/* 附件上傳區塊 */}
+          <div className="space-y-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-1.5 h-8 bg-gradient-to-b from-amber-500 to-amber-600 rounded-full"></div>
+              <h2 className="text-xl font-bold text-slate-800">附件檔案</h2>
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Attachments</span>
+            </div>
+            <div className="bg-gradient-to-br from-amber-50 to-white p-6 rounded-2xl border-2 border-amber-100">
+              <AttachmentManager 
+                machineId={formData.id}
+                attachments={formData.attachments || []}
+                onAttachmentsChange={(newAttachments) => setFormData({...formData, attachments: newAttachments})}
+              />
             </div>
           </div>
           
@@ -14788,13 +17043,1100 @@ const SpecEntryFormView = ({ initialData, onSave, mode = 'create', suggestions =
   );
 };
 
+// --- 版本管理視圖 ---
+const VersionManagementView = ({ configVersions, componentVersions, onSaveConfig, onSaveComponent, onDeleteConfig, onDeleteComponent }) => {
+  const [activeTab, setActiveTab] = useState('config'); // 'config' or 'component'
+  const [isAddingConfig, setIsAddingConfig] = useState(false);
+  const [isAddingComponent, setIsAddingComponent] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(null);
+  const [editingComponent, setEditingComponent] = useState(null);
+
+  const [configForm, setConfigForm] = useState({
+    id: '',
+    version: '',
+    effectiveDate: new Date().toISOString().slice(0, 10),
+    description: '',
+    changeReason: '',
+    standardBOM: [],
+    isActive: true
+  });
+
+  const [componentForm, setComponentForm] = useState({
+    id: '',
+    partNumber: '',
+    componentType: '',
+    version: '',
+    changes: '',
+    effectiveDate: new Date().toISOString().slice(0, 10),
+    compatibleVersions: []
+  });
+
+  const handleSaveConfig = () => {
+    if (!configForm.version || !configForm.description) {
+      alert('請填寫版本號和說明');
+      return;
+    }
+    
+    const version = {
+      ...configForm,
+      id: configForm.id || `CV_${Date.now()}`,
+      createdAt: configForm.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    onSaveConfig(version);
+    setConfigForm({
+      id: '',
+      version: '',
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      description: '',
+      changeReason: '',
+      standardBOM: [],
+      isActive: true
+    });
+    setIsAddingConfig(false);
+    setEditingConfig(null);
+  };
+
+  const handleSaveComponent = () => {
+    if (!componentForm.partNumber || !componentForm.componentType) {
+      alert('請填寫料號和零件類型');
+      return;
+    }
+    
+    const version = {
+      ...componentForm,
+      id: componentForm.id || `CPV_${Date.now()}`,
+      createdAt: componentForm.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    onSaveComponent(version);
+    setComponentForm({
+      id: '',
+      partNumber: '',
+      componentType: '',
+      version: '',
+      changes: '',
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      compatibleVersions: []
+    });
+    setIsAddingComponent(false);
+    setEditingComponent(null);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 標題 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black text-slate-900">版本管理中心</h2>
+          <p className="text-slate-500 mt-1">管理整機版本與零件版本配置</p>
+        </div>
+      </div>
+
+      {/* 標籤切換 */}
+      <div className="flex gap-4 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('config')}
+          className={`px-6 py-3 font-bold transition-all relative ${
+            activeTab === 'config'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <GitBranch size={18} className="inline mr-2" />
+          整機版本配置
+          {activeTab === 'config' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"></div>}
+        </button>
+        <button
+          onClick={() => setActiveTab('component')}
+          className={`px-6 py-3 font-bold transition-all relative ${
+            activeTab === 'component'
+              ? 'text-emerald-600 border-b-2 border-emerald-600'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <PackageCheck size={18} className="inline mr-2" />
+          零件版本清單
+          {activeTab === 'component' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600"></div>}
+        </button>
+      </div>
+
+      {/* 整機版本管理 */}
+      {activeTab === 'config' && (
+        <div className="space-y-6">
+          {/* 新增按鈕 */}
+          {!isAddingConfig && !editingConfig && (
+            <button
+              onClick={() => setIsAddingConfig(true)}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-2xl font-bold text-lg transition-all shadow-xl hover:shadow-blue-500/30 hover:-translate-y-1 flex items-center justify-center gap-3"
+            >
+              <Plus size={24} /> 新增整機版本
+            </button>
+          )}
+
+          {/* 新增/編輯表單 */}
+          {(isAddingConfig || editingConfig) && (
+            <div className="bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-slate-800">
+                  {editingConfig ? '編輯整機版本' : '新增整機版本'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsAddingConfig(false);
+                    setEditingConfig(null);
+                    setConfigForm({
+                      id: '',
+                      version: '',
+                      effectiveDate: new Date().toISOString().slice(0, 10),
+                      description: '',
+                      changeReason: '',
+                      standardBOM: [],
+                      isActive: true
+                    });
+                  }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">版本號 *</label>
+                  <input
+                    type="text"
+                    value={configForm.version}
+                    onChange={(e) => setConfigForm({ ...configForm, version: e.target.value })}
+                    placeholder="例: V2.1"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">生效日期</label>
+                  <input
+                    type="date"
+                    value={configForm.effectiveDate}
+                    onChange={(e) => setConfigForm({ ...configForm, effectiveDate: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">版本說明 *</label>
+                <textarea
+                  value={configForm.description}
+                  onChange={(e) => setConfigForm({ ...configForm, description: e.target.value })}
+                  placeholder="描述此版本的主要特點或變更..."
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none resize-none"
+                  rows="3"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">變更原因</label>
+                <select
+                  value={configForm.changeReason}
+                  onChange={(e) => setConfigForm({ ...configForm, changeReason: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">請選擇</option>
+                  <option value="優化">優化</option>
+                  <option value="修正">修正</option>
+                  <option value="客戶需求">客戶需求</option>
+                  <option value="成本考量">成本考量</option>
+                  <option value="性能提升">性能提升</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={configForm.isActive}
+                    onChange={(e) => setConfigForm({ ...configForm, isActive: e.target.checked })}
+                    className="w-5 h-5 rounded border-slate-300"
+                  />
+                  <span className="text-sm font-bold text-slate-700">目前使用中</span>
+                </label>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSaveConfig}
+                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={18} /> 儲存
+                </button>
+                <button
+                  onClick={() => {
+                    setIsAddingConfig(false);
+                    setEditingConfig(null);
+                  }}
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 版本清單 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {configVersions.map((version) => (
+              <div
+                key={version.id}
+                className={`bg-white border-2 rounded-2xl p-6 hover:shadow-lg transition-all ${
+                  version.isActive ? 'border-blue-300 bg-blue-50/50' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-black text-blue-600">{version.version}</span>
+                    {version.isActive && (
+                      <span className="bg-emerald-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">
+                        使用中
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm('確定要刪除此版本嗎？')) {
+                        onDeleteConfig(version.id);
+                      }
+                    }}
+                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                <p className="text-slate-700 font-medium mb-3">{version.description}</p>
+
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <Calendar size={12} />
+                    {version.effectiveDate}
+                  </span>
+                  {version.changeReason && (
+                    <span className="bg-slate-100 px-2 py-0.5 rounded-full">
+                      {version.changeReason}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setEditingConfig(version);
+                    setConfigForm(version);
+                  }}
+                  className="w-full mt-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-bold text-sm transition-all"
+                >
+                  編輯
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {configVersions.length === 0 && !isAddingConfig && (
+            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+              <GitBranch size={48} className="mx-auto text-slate-300 mb-4" />
+              <p className="text-slate-400 font-bold">尚未建立任何整機版本</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 零件版本管理 */}
+      {activeTab === 'component' && (
+        <div className="space-y-6">
+          {/* 新增按鈕 */}
+          {!isAddingComponent && !editingComponent && (
+            <button
+              onClick={() => setIsAddingComponent(true)}
+              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-2xl font-bold text-lg transition-all shadow-xl hover:shadow-emerald-500/30 hover:-translate-y-1 flex items-center justify-center gap-3"
+            >
+              <Plus size={24} /> 新增零件版本
+            </button>
+          )}
+
+          {/* 新增/編輯表單 */}
+          {(isAddingComponent || editingComponent) && (
+            <div className="bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-200 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-slate-800">
+                  {editingComponent ? '編輯零件版本' : '新增零件版本'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsAddingComponent(false);
+                    setEditingComponent(null);
+                    setComponentForm({
+                      id: '',
+                      partNumber: '',
+                      componentType: '',
+                      version: '',
+                      changes: '',
+                      effectiveDate: new Date().toISOString().slice(0, 10),
+                      compatibleVersions: []
+                    });
+                  }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">料號 *</label>
+                  <input
+                    type="text"
+                    value={componentForm.partNumber}
+                    onChange={(e) => setComponentForm({ ...componentForm, partNumber: e.target.value })}
+                    placeholder="例: CB-006"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">零件類型 *</label>
+                  <input
+                    type="text"
+                    value={componentForm.componentType}
+                    onChange={(e) => setComponentForm({ ...componentForm, componentType: e.target.value })}
+                    placeholder="例: 控制板"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">版本號</label>
+                  <input
+                    type="text"
+                    value={componentForm.version}
+                    onChange={(e) => setComponentForm({ ...componentForm, version: e.target.value })}
+                    placeholder="例: 006"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">生效日期</label>
+                  <input
+                    type="date"
+                    value={componentForm.effectiveDate}
+                    onChange={(e) => setComponentForm({ ...componentForm, effectiveDate: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">變更說明</label>
+                <textarea
+                  value={componentForm.changes}
+                  onChange={(e) => setComponentForm({ ...componentForm, changes: e.target.value })}
+                  placeholder="描述此版本的變更內容..."
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none resize-none"
+                  rows="3"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSaveComponent}
+                  className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={18} /> 儲存
+                </button>
+                <button
+                  onClick={() => {
+                    setIsAddingComponent(false);
+                    setEditingComponent(null);
+                  }}
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 零件版本清單 */}
+          <div className="space-y-3">
+            {componentVersions.map((comp) => (
+              <div
+                key={comp.id}
+                className="bg-white border-2 border-slate-200 rounded-2xl p-5 hover:shadow-lg transition-all hover:border-emerald-300"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-xl font-black text-emerald-600">{comp.partNumber}</span>
+                      {comp.version && (
+                        <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">
+                          v{comp.version}
+                        </span>
+                      )}
+                      <span className="text-slate-500 text-sm">{comp.componentType}</span>
+                    </div>
+                    {comp.changes && (
+                      <p className="text-slate-600 text-sm mb-2">{comp.changes}</p>
+                    )}
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Calendar size={12} />
+                      {comp.effectiveDate}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingComponent(comp);
+                        setComponentForm(comp);
+                      }}
+                      className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('確定要刪除此零件版本嗎？')) {
+                          onDeleteComponent(comp.id);
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {componentVersions.length === 0 && !isAddingComponent && (
+            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+              <PackageCheck size={48} className="mx-auto text-slate-300 mb-4" />
+              <p className="text-slate-400 font-bold">尚未建立任何零件版本</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- 庫存管理視圖 ---
+const StockManagementView = ({ stockData, componentVersions, onUpdateStock }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingStock, setEditingStock] = useState(null);
+  const [stockForm, setStockForm] = useState({
+    componentId: '',
+    partNumber: '',
+    componentType: '',
+    currentStock: 0,
+    safetyStock: 0,
+    location: '',
+    lastUpdated: new Date().toISOString()
+  });
+
+  const handleSave = () => {
+    if (!stockForm.partNumber || !stockForm.componentType) {
+      alert('請填寫料號和零件類型');
+      return;
+    }
+
+    const stock = {
+      ...stockForm,
+      componentId: stockForm.componentId || `ST_${Date.now()}`,
+      lastUpdated: new Date().toISOString()
+    };
+
+    onUpdateStock(stock);
+    setStockForm({
+      componentId: '',
+      partNumber: '',
+      componentType: '',
+      currentStock: 0,
+      safetyStock: 0,
+      location: '',
+      lastUpdated: new Date().toISOString()
+    });
+    setIsAdding(false);
+    setEditingStock(null);
+  };
+
+  const getStockStatus = (current, safety) => {
+    if (current === 0) return { label: '缺貨', color: 'red', bg: 'from-red-50 to-red-100', border: 'border-red-300' };
+    if (current < safety) return { label: '安全庫存以下', color: 'amber', bg: 'from-amber-50 to-amber-100', border: 'border-amber-300' };
+    return { label: '正常', color: 'emerald', bg: 'from-emerald-50 to-emerald-100', border: 'border-emerald-300' };
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 標題和統計 */}
+      <div>
+        <h2 className="text-3xl font-black text-slate-900">庫存管理</h2>
+        <p className="text-slate-500 mt-1">追蹤關鍵零件庫存狀態</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+          <div className="bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200 rounded-2xl p-5">
+            <div className="text-blue-600 text-sm font-bold mb-1">總項目數</div>
+            <div className="text-3xl font-black text-slate-900">{stockData.length}</div>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-200 rounded-2xl p-5">
+            <div className="text-emerald-600 text-sm font-bold mb-1">庫存正常</div>
+            <div className="text-3xl font-black text-slate-900">
+              {stockData.filter(s => s.currentStock >= s.safetyStock && s.currentStock > 0).length}
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-amber-50 to-white border-2 border-amber-200 rounded-2xl p-5">
+            <div className="text-amber-600 text-sm font-bold mb-1">低於安全庫存</div>
+            <div className="text-3xl font-black text-slate-900">
+              {stockData.filter(s => s.currentStock < s.safetyStock && s.currentStock > 0).length}
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-200 rounded-2xl p-5">
+            <div className="text-red-600 text-sm font-bold mb-1">缺貨項目</div>
+            <div className="text-3xl font-black text-slate-900">
+              {stockData.filter(s => s.currentStock === 0).length}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 新增按鈕 */}
+      {!isAdding && !editingStock && (
+        <button
+          onClick={() => setIsAdding(true)}
+          className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-2xl font-bold text-lg transition-all shadow-xl hover:shadow-blue-500/30 hover:-translate-y-1 flex items-center justify-center gap-3"
+        >
+          <Plus size={24} /> 新增庫存項目
+        </button>
+      )}
+
+      {/* 新增/編輯表單 */}
+      {(isAdding || editingStock) && (
+        <div className="bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-slate-800">
+              {editingStock ? '編輯庫存' : '新增庫存項目'}
+            </h3>
+            <button
+              onClick={() => {
+                setIsAdding(false);
+                setEditingStock(null);
+                setStockForm({
+                  componentId: '',
+                  partNumber: '',
+                  componentType: '',
+                  currentStock: 0,
+                  safetyStock: 0,
+                  location: '',
+                  lastUpdated: new Date().toISOString()
+                });
+              }}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">料號 *</label>
+              {isAdding ? (
+                <select
+                  value={stockForm.partNumber}
+                  onChange={(e) => {
+                    const selected = componentVersions.find(c => c.partNumber === e.target.value);
+                    setStockForm({
+                      ...stockForm,
+                      partNumber: e.target.value,
+                      componentType: selected?.componentType || ''
+                    });
+                  }}
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">選擇零件</option>
+                  {componentVersions.map(c => (
+                    <option key={c.id} value={c.partNumber}>
+                      {c.partNumber} - {c.componentType}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={stockForm.partNumber}
+                  disabled
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl bg-slate-50"
+                />
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">零件類型</label>
+              <input
+                type="text"
+                value={stockForm.componentType}
+                disabled
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl bg-slate-50"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">目前庫存</label>
+              <input
+                type="number"
+                value={stockForm.currentStock}
+                onChange={(e) => setStockForm({ ...stockForm, currentStock: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">安全庫存</label>
+              <input
+                type="number"
+                value={stockForm.safetyStock}
+                onChange={(e) => setStockForm({ ...stockForm, safetyStock: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">儲位</label>
+              <input
+                type="text"
+                value={stockForm.location}
+                onChange={(e) => setStockForm({ ...stockForm, location: e.target.value })}
+                placeholder="例: A1-05"
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleSave}
+              className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+            >
+              <Check size={18} /> 儲存
+            </button>
+            <button
+              onClick={() => {
+                setIsAdding(false);
+                setEditingStock(null);
+              }}
+              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 庫存清單 */}
+      <div className="space-y-3">
+        {stockData.map((stock) => {
+          const status = getStockStatus(stock.currentStock, stock.safetyStock);
+          return (
+            <div
+              key={stock.componentId}
+              className={`bg-gradient-to-br ${status.bg} border-2 ${status.border} rounded-2xl p-5 hover:shadow-lg transition-all`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-xl font-black text-slate-800">{stock.partNumber}</span>
+                    <span className="text-slate-600">{stock.componentType}</span>
+                    <span className={`bg-${status.color}-500 text-white px-3 py-1 rounded-full text-xs font-bold`}>
+                      {status.label}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 mb-3">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">目前庫存</div>
+                      <div className="text-2xl font-bold text-slate-900">{stock.currentStock}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">安全庫存</div>
+                      <div className="text-2xl font-bold text-slate-600">{stock.safetyStock}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">儲位</div>
+                      <div className="text-lg font-bold text-blue-600">{stock.location || '—'}</div>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-400">
+                    最後更新: {new Date(stock.lastUpdated).toLocaleString('zh-TW')}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingStock(stock);
+                      setStockForm(stock);
+                    }}
+                    className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newStock = prompt('請輸入新的庫存數量:', stock.currentStock);
+                      if (newStock !== null) {
+                        onUpdateStock({
+                          ...stock,
+                          currentStock: parseInt(newStock) || 0,
+                          lastUpdated: new Date().toISOString()
+                        });
+                      }
+                    }}
+                    className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+                    title="快速調整庫存"
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {stockData.length === 0 && !isAdding && (
+        <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+          <Box size={48} className="mx-auto text-slate-300 mb-4" />
+          <p className="text-slate-400 font-bold">尚未建立任何庫存項目</p>
+          <p className="text-slate-300 text-sm mt-1">請先在「版本管理」中建立零件版本</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- 產品履歷管理模態框 ---
+const ProductHistoryModal = ({ isOpen, onClose, machine, onUpdate }) => {
+  const [historyRecords, setHistoryRecords] = useState(machine.history || []);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newRecord, setNewRecord] = useState({
+    date: new Date().toISOString().slice(0, 10).replace(/-/g, '.'),
+    type: '維修',
+    content: '',
+    operator: '',
+    remarks: ''
+  });
+
+  const recordTypes = ['維修', '保養', '檢測', '升級', '更換零件', '故障', '校正', '其他'];
+
+  const handleAddRecord = () => {
+    if (!newRecord.content.trim()) {
+      alert('請填寫履歷內容');
+      return;
+    }
+
+    const record = {
+      id: Date.now(),
+      ...newRecord,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedRecords = [record, ...historyRecords];
+    setHistoryRecords(updatedRecords);
+    
+    // 更新機台資料
+    const updatedMachine = { ...machine, history: updatedRecords };
+    if (window.updateMachineGlobal) {
+      window.updateMachineGlobal(updatedMachine);
+    }
+
+    // 重置表單
+    setNewRecord({
+      date: new Date().toISOString().slice(0, 10).replace(/-/g, '.'),
+      type: '維修',
+      content: '',
+      operator: '',
+      remarks: ''
+    });
+    setIsAdding(false);
+  };
+
+  const handleDeleteRecord = (recordId) => {
+    if (!confirm('確定要刪除此履歷記錄嗎？')) return;
+    
+    const updatedRecords = historyRecords.filter(r => r.id !== recordId);
+    setHistoryRecords(updatedRecords);
+    
+    // 更新機台資料
+    const updatedMachine = { ...machine, history: updatedRecords };
+    if (window.updateMachineGlobal) {
+      window.updateMachineGlobal(updatedMachine);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* 標題列 */}
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-8 py-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+              <History size={24} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">產品履歷記錄</h2>
+              <p className="text-indigo-100 text-sm">機台 ID: {machine.id}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-xl flex items-center justify-center transition-all backdrop-blur-md">
+            <X size={20} className="text-white" />
+          </button>
+        </div>
+
+        {/* 主內容區 */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {/* 新增按鈕 */}
+          {!isAdding && (
+            <div className="mb-6">
+              <button
+                onClick={() => setIsAdding(true)}
+                className="w-full py-4 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-2xl font-bold text-lg transition-all shadow-xl hover:shadow-indigo-500/30 hover:-translate-y-1 flex items-center justify-center gap-3"
+              >
+                <Plus size={24} /> 新增履歷記錄
+              </button>
+            </div>
+          )}
+
+          {/* 新增表單 */}
+          {isAdding && (
+            <div className="mb-8 bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-200 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-800">新增履歷</h3>
+                <button
+                  onClick={() => setIsAdding(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">日期 *</label>
+                  <input
+                    type="text"
+                    value={newRecord.date}
+                    onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })}
+                    placeholder="YYYY.MM.DD"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">類型 *</label>
+                  <select
+                    value={newRecord.type}
+                    onChange={(e) => setNewRecord({ ...newRecord, type: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  >
+                    {recordTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">履歷內容 *</label>
+                <textarea
+                  value={newRecord.content}
+                  onChange={(e) => setNewRecord({ ...newRecord, content: e.target.value })}
+                  placeholder="描述此次操作的詳細內容..."
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none resize-none"
+                  rows="3"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">操作人員</label>
+                  <input
+                    type="text"
+                    value={newRecord.operator}
+                    onChange={(e) => setNewRecord({ ...newRecord, operator: e.target.value })}
+                    placeholder="操作人員姓名"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">備註</label>
+                  <input
+                    type="text"
+                    value={newRecord.remarks}
+                    onChange={(e) => setNewRecord({ ...newRecord, remarks: e.target.value })}
+                    placeholder="其他備註資訊"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleAddRecord}
+                  className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={18} /> 儲存
+                </button>
+                <button
+                  onClick={() => setIsAdding(false)}
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 履歷記錄列表 */}
+          {historyRecords.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-300 mb-4 mx-auto">
+                <History size={40} strokeWidth={1.5} />
+              </div>
+              <p className="text-slate-400 font-bold text-lg">尚無履歷記錄</p>
+              <p className="text-slate-300 text-sm mt-1">點擊上方按鈕新增第一筆記錄</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {historyRecords.map((record, idx) => {
+                const typeColors = {
+                  '維修': { bg: 'from-blue-50 to-blue-100', border: 'border-blue-200', badge: 'bg-blue-500' },
+                  '保養': { bg: 'from-emerald-50 to-emerald-100', border: 'border-emerald-200', badge: 'bg-emerald-500' },
+                  '檢測': { bg: 'from-purple-50 to-purple-100', border: 'border-purple-200', badge: 'bg-purple-500' },
+                  '升級': { bg: 'from-amber-50 to-amber-100', border: 'border-amber-200', badge: 'bg-amber-500' },
+                  '更換零件': { bg: 'from-rose-50 to-rose-100', border: 'border-rose-200', badge: 'bg-rose-500' },
+                  '故障': { bg: 'from-red-50 to-red-100', border: 'border-red-200', badge: 'bg-red-500' },
+                  '校正': { bg: 'from-cyan-50 to-cyan-100', border: 'border-cyan-200', badge: 'bg-cyan-500' },
+                  '其他': { bg: 'from-slate-50 to-slate-100', border: 'border-slate-200', badge: 'bg-slate-500' }
+                };
+                const color = typeColors[record.type] || typeColors['其他'];
+
+                return (
+                  <div
+                    key={record.id}
+                    className={`bg-gradient-to-br ${color.bg} border-2 ${color.border} rounded-2xl p-6 hover:shadow-lg transition-all`}
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className={`${color.badge} text-white px-3 py-1 rounded-full text-xs font-bold`}>
+                          {record.type}
+                        </span>
+                        <span className="text-sm font-bold text-slate-600 flex items-center gap-1">
+                          <Calendar size={14} />
+                          {record.date}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteRecord(record.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        title="刪除此記錄"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+
+                    <div className="mb-3">
+                      <p className="text-slate-800 font-medium leading-relaxed">
+                        {record.content}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+                      {record.operator && (
+                        <span className="flex items-center gap-1">
+                          <User size={12} />
+                          操作人員: {record.operator}
+                        </span>
+                      )}
+                      {record.remarks && (
+                        <span className="flex items-center gap-1">
+                          <FileText size={12} />
+                          備註: {record.remarks}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 底部統計 */}
+        <div className="px-8 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+          <p className="text-sm text-slate-600">
+            共 <span className="font-bold text-indigo-600">{historyRecords.length}</span> 筆履歷記錄
+          </p>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-xl font-bold transition-all"
+          >
+            關閉
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- 追溯詳情視圖 ---
 const SpecTraceabilityDetailView = ({ machine, onClose, onEdit }) => {
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  
   if (!machine) return null;
   const grouped = machine.parts.reduce((acc, part) => { if (!acc[part.category]) acc[part.category] = []; acc[part.category].push(part); return acc; }, {});
   
   return (
     <div className="space-y-8">
+      {/* QR Code 彈窗 */}
+      <QRCodeModal 
+        isOpen={isQRModalOpen} 
+        onClose={() => setIsQRModalOpen(false)} 
+        machineId={machine.id}
+        machineData={machine}
+      />
+      
+      {/* 產品履歷彈窗 */}
+      <ProductHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        machine={machine}
+        onUpdate={(updatedMachine) => {
+          if (window.updateMachineGlobal) {
+            window.updateMachineGlobal(updatedMachine);
+          }
+        }}
+      />
+      
       {/* 頂部英雄區 - 機台護照 */}
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-10 rounded-3xl shadow-2xl">
         {/* 裝飾性背景元素 */}
@@ -14816,6 +18158,16 @@ const SpecTraceabilityDetailView = ({ machine, onClose, onEdit }) => {
               <span className="text-slate-400 text-sm font-medium flex items-center">
                 <Calendar size={12} className="mr-1.5" />{machine.shipDate} 出貨
               </span>
+              {/* 顯示標籤 */}
+              {machine.tags && machine.tags.map((tag, idx) => {
+                const tagName = typeof tag === 'string' ? tag : tag.name;
+                const tagColor = typeof tag === 'string' ? 'bg-emerald-500' : tag.color;
+                return (
+                  <span key={idx} className={`${tagColor} text-white px-3 py-1 rounded-full text-xs font-bold`}>
+                    {tagName}
+                  </span>
+                );
+              })}
             </div>
             
             {/* 機台編號大標題 */}
@@ -14838,6 +18190,12 @@ const SpecTraceabilityDetailView = ({ machine, onClose, onEdit }) => {
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center"><Package size={11} className="mr-1.5" />零件總數</span>
                 <span className="font-bold text-xl text-amber-400">{machine.parts.length} 項</span>
               </div>
+              {machine.configVersion && (
+                <div className="bg-gradient-to-br from-purple-600/20 to-purple-500/10 backdrop-blur-xl px-6 py-5 rounded-2xl border border-purple-400/30 flex flex-col min-w-[140px] hover:from-purple-600/30 hover:to-purple-500/20 transition-all duration-300 hover:scale-[1.02]">
+                  <span className="text-xs font-bold text-purple-300 uppercase tracking-widest mb-2 flex items-center"><GitBranch size={11} className="mr-1.5" />配置版本</span>
+                  <span className="font-bold text-xl text-purple-200">{machine.configVersion}</span>
+                </div>
+              )}
             </div>
           </div>
           
@@ -14845,6 +18203,31 @@ const SpecTraceabilityDetailView = ({ machine, onClose, onEdit }) => {
           <div className="flex flex-wrap gap-3">
             <button onClick={() => onEdit(machine)} className="group bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-7 py-4 rounded-2xl font-bold text-sm flex items-center transition-all duration-300 shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5">
               <Edit3 size={18} className="mr-2 group-hover:rotate-12 transition-transform" /> 修改履歷
+            </button>
+            <button onClick={() => setIsQRModalOpen(true)} className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white px-6 py-4 rounded-2xl font-bold text-sm flex items-center transition-all duration-300 shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:-translate-y-0.5">
+              <QrCode size={18} className="mr-2" /> QR Code
+            </button>
+            <button onClick={() => setIsHistoryModalOpen(true)} className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white px-6 py-4 rounded-2xl font-bold text-sm flex items-center transition-all duration-300 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5">
+              <History size={18} className="mr-2" /> 產品履歷
+            </button>
+            <button 
+              onClick={() => {
+                const templateName = prompt('請輸入模板名稱:', `${machine.model || machine.id} 模板`);
+                if (templateName) {
+                  try {
+                    const templateKey = `CUSTOM_${Date.now()}`;
+                    const template = TemplateManager.createFromMachine(machine, templateName, `從機台 ${machine.id} 複製`);
+                    TemplateManager.saveCustomTemplate(templateKey, template);
+                    alert('✅ 已成功將此機台複製為模板！\n您可以在「新增機台」中的「模板管理」查看。');
+                  } catch (e) {
+                    console.error('複製模板失敗:', e);
+                    alert('❌ 複製模板失敗，請稍後再試');
+                  }
+                }
+              }}
+              className="bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white px-6 py-4 rounded-2xl font-bold text-sm flex items-center transition-all duration-300 shadow-xl shadow-purple-500/20 hover:shadow-purple-500/40 hover:-translate-y-0.5"
+            >
+              <Copy size={18} className="mr-2" /> 複製為模板
             </button>
             <button onClick={() => window.print()} className="bg-white/10 hover:bg-white/20 text-white p-4 rounded-2xl transition-all duration-300 border border-white/10 backdrop-blur-md hover:scale-105">
               <Printer size={20} />
@@ -14880,7 +18263,14 @@ const SpecTraceabilityDetailView = ({ machine, onClose, onEdit }) => {
                       </div>
                     </div>
                     {/* 品名 */}
-                    <p className="font-bold text-slate-800 text-lg mb-5 leading-tight min-h-[3rem]">{p.name}</p>
+                    <p className="font-bold text-slate-800 text-lg mb-3 leading-tight min-h-[3rem]">{p.name}</p>
+                    {/* 零件版本標籤 */}
+                    {p.componentVersion && (
+                      <div className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 px-2.5 py-1 rounded-lg text-xs font-bold mb-3">
+                        <GitBranch size={10} />
+                        <span>v{p.componentVersion}</span>
+                      </div>
+                    )}
                   </div>
                   
                   {/* 序號區塊 */}
@@ -14913,8 +18303,16 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [editingMachine, setEditingMachine] = useState(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [tagFilter, setTagFilter] = useState([]);
   const [notification, setNotification] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // 版本管理相關狀態
+  const [configVersions, setConfigVersions] = useState([]);
+  const [componentVersions, setComponentVersions] = useState([]);
+  const [stockData, setStockData] = useState([]);
 
   // 從 Firebase 載入資料
   useEffect(() => {
@@ -14958,6 +18356,85 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
       // 回退到 localStorage
       localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(machines));
     }
+  };
+
+  // 更新單一機台（用於快速標籤編輯）
+  const updateMachine = async (updatedMachine) => {
+    try {
+      await db.addDoc('elec_spec_machines', { ...updatedMachine, id: updatedMachine.id });
+      const allMachines = [...machines.filter(m => m.id !== updatedMachine.id), updatedMachine];
+      setMachines(allMachines);
+      localStorage.setItem('feiloli_machine_db_v3', JSON.stringify(allMachines));
+      showNotification('✅ 機台資料已更新');
+    } catch (error) {
+      console.error('更新機台失敗:', error);
+      showNotification('❌ 更新失敗', 'error');
+    }
+  };
+
+  // 設置全局更新函數供 QuickTagEditor 使用
+  React.useEffect(() => {
+    window.updateMachineGlobal = updateMachine;
+    return () => {
+      delete window.updateMachineGlobal;
+    };
+  }, [machines]);
+
+  // 載入版本管理資料
+  useEffect(() => {
+    // 從 localStorage 載入整機版本
+    const storedConfigVersions = localStorage.getItem('config_versions');
+    if (storedConfigVersions && storedConfigVersions !== 'undefined') {
+      try {
+        setConfigVersions(JSON.parse(storedConfigVersions));
+      } catch (e) {
+        console.error('解析整機版本資料失敗:', e);
+      }
+    }
+
+    // 從 localStorage 載入零件版本
+    const storedComponentVersions = localStorage.getItem('component_versions');
+    if (storedComponentVersions && storedComponentVersions !== 'undefined') {
+      try {
+        setComponentVersions(JSON.parse(storedComponentVersions));
+      } catch (e) {
+        console.error('解析零件版本資料失敗:', e);
+      }
+    }
+
+    // 從 localStorage 載入庫存資料
+    const storedStockData = localStorage.getItem('stock_data');
+    if (storedStockData && storedStockData !== 'undefined') {
+      try {
+        setStockData(JSON.parse(storedStockData));
+      } catch (e) {
+        console.error('解析庫存資料失敗:', e);
+      }
+    }
+  }, []);
+
+  // 儲存整機版本
+  const saveConfigVersion = (version) => {
+    const updatedVersions = [...configVersions.filter(v => v.id !== version.id), version];
+    setConfigVersions(updatedVersions);
+    localStorage.setItem('config_versions', JSON.stringify(updatedVersions));
+    showNotification('✅ 整機版本已儲存');
+  };
+
+  // 儲存零件版本
+  const saveComponentVersion = (version) => {
+    const updatedVersions = [...componentVersions.filter(v => v.id !== version.id), version];
+    setComponentVersions(updatedVersions);
+    localStorage.setItem('component_versions', JSON.stringify(updatedVersions));
+    showNotification('✅ 零件版本已儲存');
+  };
+
+  // 更新庫存
+  const updateStock = (stockItem) => {
+    const updatedStock = [...stockData.filter(s => s.componentId !== stockItem.componentId), stockItem];
+    setStockData(updatedStock);
+    localStorage.setItem('stock_data', JSON.stringify(updatedStock));
+    showNotification('✅ 庫存已更新');
   };
 
   // 批量儲存到 Firebase
@@ -15067,12 +18544,16 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
     { id: 'dashboard', icon: LayoutDashboard, label: '概覽儀表板' },
     { id: 'list', icon: FileText, label: '機台紀錄表' },
     { id: 'traceability', icon: Package, label: '履歷分析' },
-    { id: 'manual', icon: PlusCircle, label: '手動新增' }
+    { id: 'manual', icon: PlusCircle, label: '手動新增' },
+    { id: 'version', icon: GitBranch, label: '版本管理' },
+    { id: 'stock', icon: Box, label: '庫存管理' }
   ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50/30 text-slate-900 font-sans">
+      {/* 所有模態視窗 */}
       <SpecExportCenterModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} machines={machines} onExport={handleCustomExport} />
+      <ReportTemplateModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} machines={machines} onExport={() => {}} />
       
       {/* 載入中顯示 */}
       {isLoading && (
@@ -15178,14 +18659,31 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
             <div className="mb-10">
               <div className="flex items-center space-x-2 mb-2">
                 <div className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-bold uppercase tracking-widest">
-                  {editingMachine ? 'Edit Mode' : activeTab === 'dashboard' ? 'Overview' : activeTab === 'list' ? 'Database' : activeTab === 'traceability' ? 'Details' : 'Create'}
+                  {editingMachine ? 'Edit Mode' : 
+                   activeTab === 'dashboard' ? 'Overview' : 
+                   activeTab === 'list' ? 'Database' : 
+                   activeTab === 'traceability' ? 'Details' : 
+                   activeTab === 'version' ? 'Version Control' :
+                   activeTab === 'stock' ? 'Inventory' :
+                   'Create'}
                 </div>
               </div>
               <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-                {editingMachine ? '編輯履歷' : activeTab === 'dashboard' ? '數據儀表板' : activeTab === 'list' ? '全機台清單' : activeTab === 'traceability' ? '機台身份證' : '新增數據'}
+                {editingMachine ? '編輯履歷' : 
+                 activeTab === 'dashboard' ? '數據儀表板' : 
+                 activeTab === 'list' ? '全機台清單' : 
+                 activeTab === 'traceability' ? '機台身份證' : 
+                 activeTab === 'version' ? '版本管理中心' :
+                 activeTab === 'stock' ? '庫存管理' :
+                 '新增數據'}
               </h1>
               <p className="text-slate-500 mt-2">
-                {activeTab === 'dashboard' ? '查看系統概覽與最新動態' : activeTab === 'list' ? '瀏覽與搜尋所有已登錄機台' : activeTab === 'traceability' ? '查看機台詳細履歷資訊' : '手動新增機台電規資料'}
+                {activeTab === 'dashboard' ? '查看系統概覽與最新動態' : 
+                 activeTab === 'list' ? '瀏覽與搜尋所有已登錄機台' : 
+                 activeTab === 'traceability' ? '查看機台詳細履歷資訊' : 
+                 activeTab === 'version' ? '管理整機版本與零件版本配置' :
+                 activeTab === 'stock' ? '追蹤關鍵零件庫存狀態' :
+                 '手動新增機台電規資料'}
               </p>
             </div>
 
@@ -15197,17 +18695,40 @@ const ElecSpecTrackingApp = ({ onBackToMenu, user }) => {
                 setSelectedMachine(m); 
                 setActiveTab('traceability'); 
                 showNotification('更新成功'); 
-              }} suggestions={suggestions} /> : (
+              }} suggestions={suggestions} machines={machines} /> : (
                 <>
-                  {activeTab === 'dashboard' && <SpecDashboardView stats={stats} onUpload={handleFileUpload} onNavigate={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onOpenExport={() => setIsExportOpen(true)} />}
-                  {activeTab === 'list' && <SpecMachineListView machines={filteredMachines} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSelect={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onClear={() => {if(window.confirm('確定清空所有資料？此操作無法復原！')) clearAllMachines();}} onOpenExport={() => setIsExportOpen(true)} />}
+                  {activeTab === 'dashboard' && <SpecDashboardView stats={stats} machines={machines} onUpload={handleFileUpload} onNavigate={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onOpenExport={() => setIsExportOpen(true)} />}
+                  {activeTab === 'list' && <SpecMachineListView machines={filteredMachines} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onSelect={(m) => { setSelectedMachine(m); setActiveTab('traceability'); }} onClear={() => {if(window.confirm('確定清空所有資料？此操作無法復原！')) clearAllMachines();}} onOpenExport={() => setIsExportOpen(true)} onOpenReportModal={() => setIsReportModalOpen(true)} />}
                   {activeTab === 'traceability' && <SpecTraceabilityDetailView machine={selectedMachine} onEdit={(m) => setEditingMachine(m)} onClose={() => setActiveTab('list')} />}
                   {activeTab === 'manual' && <SpecEntryFormView onSave={(m) => { 
                     saveMachineToFirebase(m);
                     setMachines(prev => [m, ...prev]); 
                     setActiveTab('list'); 
                     showNotification('登記成功，已同步至雲端'); 
-                  }} mode="create" suggestions={suggestions} />}
+                  }} mode="create" suggestions={suggestions} machines={machines} />}
+                  {activeTab === 'version' && <VersionManagementView 
+                    configVersions={configVersions} 
+                    componentVersions={componentVersions}
+                    onSaveConfig={saveConfigVersion}
+                    onSaveComponent={saveComponentVersion}
+                    onDeleteConfig={(id) => {
+                      const updated = configVersions.filter(v => v.id !== id);
+                      setConfigVersions(updated);
+                      localStorage.setItem('config_versions', JSON.stringify(updated));
+                      showNotification('✅ 已刪除版本');
+                    }}
+                    onDeleteComponent={(id) => {
+                      const updated = componentVersions.filter(v => v.id !== id);
+                      setComponentVersions(updated);
+                      localStorage.setItem('component_versions', JSON.stringify(updated));
+                      showNotification('✅ 已刪除零件版本');
+                    }}
+                  />}
+                  {activeTab === 'stock' && <StockManagementView 
+                    stockData={stockData}
+                    componentVersions={componentVersions}
+                    onUpdateStock={updateStock}
+                  />}
                 </>
               )}
             </div>
@@ -15771,7 +19292,7 @@ const ThemeToggle = ({ theme, toggleTheme }) => {
   );
 };
 
-export default function App() {
+function App() {
   const [user, setUser] = useState(null);
   const [system, setSystem] = useState(null); // 'TQM', 'KPI', 'PROJECT'
   const [loading, setLoading] = useState(true);
@@ -15928,8 +19449,8 @@ export default function App() {
   return null;
 }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
 </body>
 </html>
