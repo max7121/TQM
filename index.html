@@ -20701,6 +20701,127 @@ const BOMManagerApp = ({ onBackToMenu }) => {
     setNewPartParentKey(null);
   };
 
+  const exportComparisonReport = () => {
+    if (!isComparing || comparisonResultsFlat.length === 0) {
+      alert('請先載入比對檔案');
+      return;
+    }
+
+    // 根據當前篩選条件過濾結果
+    let filteredResults = comparisonResultsFlat;
+    if (diffFilter !== 'all') {
+      filteredResults = comparisonResultsFlat.filter(r => r.status === diffFilter);
+    }
+
+    if (filteredResults.length === 0) {
+      alert('當前篩選條件下沒有差異項目');
+      return;
+    }
+
+    // 處理比對結果，展平成表格格式
+    const processComparison = (results) => {
+      const exportData = [];
+      
+      const traverse = (items) => {
+        items.forEach(item => {
+          if (!item || !item.node) return;
+          
+          const node = item.node;
+          const status = item.status || 'unchanged';
+          
+          // 基礎資訊
+          const row = {
+            '狀態': status === 'added' ? '新增' : 
+                   status === 'removed' ? '移除' : 
+                   status === 'changed' ? '變更' : '未變',
+            '階次': bomSanitizeStr(node['階次']),
+            '元件品號': bomSanitizeStr(node['元件品號']),
+            '品    名': bomSanitizeStr(node['品    名']),
+            '規    格': bomSanitizeStr(node['規    格']),
+            '標準用量': bomSanitizeStr(node['標準用量']),
+            '單位': bomSanitizeStr(node['單位']),
+            '屬性': bomSanitizeStr(node['屬性']),
+            '主件品號': bomSanitizeStr(node['主件品號'])
+          };
+
+          // 添加變更詳情
+          if (item.changes && item.changes.length > 0) {
+            const changeDetails = item.changes.map(c => 
+              `${c.field}: ${c.old || '(空)'} → ${c.new || '(空)'}`
+            ).join('; ');
+            row['變更詳情'] = changeDetails;
+          } else {
+            row['變更詳情'] = '';
+          }
+
+          // 添加備註
+          if (node._isDeleted) {
+            row['備註'] = '已標記刪除';
+          } else if (item._markedDeleted) {
+            row['備註'] = '已標記刪除';
+          } else {
+            row['備註'] = '';
+          }
+
+          exportData.push(row);
+
+          // 遞迴處理子階層
+          if (item.children && item.children.length > 0) {
+            traverse(item.children);
+          }
+        });
+      };
+
+      traverse(results);
+      return exportData;
+    };
+
+    const exportData = processComparison(filteredResults);
+
+    if (exportData.length === 0) {
+      alert('沒有資料可匯出');
+      return;
+    }
+
+    // 建立 Excel 檔案
+    const ws = window.XLSX.utils.json_to_sheet(exportData);
+    
+    // 設定欄位寬度
+    ws['!cols'] = [
+      { wch: 8 },  // 狀態
+      { wch: 8 },  // 階次
+      { wch: 20 }, // 元件品號
+      { wch: 30 }, // 品名
+      { wch: 25 }, // 規格
+      { wch: 10 }, // 標準用量
+      { wch: 8 },  // 單位
+      { wch: 10 }, // 屬性
+      { wch: 20 }, // 主件品號
+      { wch: 40 }, // 變更詳情
+      { wch: 15 }  // 備註
+    ];
+
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "比對差異");
+    
+    // 添加統計資訊工作表
+    const stats = [
+      { '項目': '總計', '數量': comparisonResultsFlat.length },
+      { '項目': '新增', '數量': comparisonResultsFlat.filter(r => r.status === 'added').length },
+      { '項目': '移除', '數量': comparisonResultsFlat.filter(r => r.status === 'removed').length },
+      { '項目': '變更', '數量': comparisonResultsFlat.filter(r => r.status === 'changed').length },
+      { '項目': '未變', '數量': comparisonResultsFlat.filter(r => r.status === 'unchanged').length },
+    ];
+    const statsWs = window.XLSX.utils.json_to_sheet(stats);
+    window.XLSX.utils.book_append_sheet(wb, statsWs, "統計資訊");
+
+    // 匯出檔案
+    const filterName = diffFilter === 'all' ? '全部' : 
+                       diffFilter === 'added' ? '新增' :
+                       diffFilter === 'removed' ? '移除' : '變更';
+    window.XLSX.writeFile(wb, `BOM比對報表_${filterName}_${new Date().getTime()}.xlsx`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 font-sans">
       {/* 側邊導覽 */}
@@ -20888,7 +21009,18 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                 <div className="max-w-[1400px] mx-auto space-y-8">
                   <div className="bg-white p-8 rounded-3xl shadow-lg border border-slate-200 flex flex-col lg:flex-row items-center gap-8">
                     <div className="flex-1 space-y-4">
-                      <h3 className="text-3xl font-bold text-slate-900">比對中心</h3>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-3xl font-bold text-slate-900">比對中心</h3>
+                        {isComparing && (
+                          <button 
+                            onClick={exportComparisonReport}
+                            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg"
+                          >
+                            <Download size={20}/>
+                            匯出差異報表
+                          </button>
+                        )}
+                      </div>
                       <div className="flex flex-wrap gap-3 mt-6">
                         <BomFilterChip active={diffFilter === 'all'} onClick={() => setDiffFilter('all')} count={comparisonResultsFlat.length} label="全部" color="bg-slate-800" />
                         <BomFilterChip active={diffFilter === 'changed'} onClick={() => setDiffFilter('changed')} count={comparisonResultsFlat.filter(r => r.status === 'changed').length} label="變更" color="bg-blue-600" />
