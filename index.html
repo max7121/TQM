@@ -19552,18 +19552,70 @@ const bomStandardizeData = (rawArray) => {
     Object.keys(item).forEach(key => {
       const cleanKey = bomSanitizeStr(key);
       const val = bomSanitizeStr(item[key]);
-      if (cleanKey.includes('品') && cleanKey.includes('名')) newItem['品    名'] = val;
-      else if (cleanKey.includes('規') && cleanKey.includes('格')) newItem['規    格'] = val;
-      else if (cleanKey.includes('元件') && cleanKey.includes('品號')) newItem['元件品號'] = val;
-      else if (cleanKey.includes('階次')) newItem['階次'] = val;
-      else if (cleanKey.includes('用量')) newItem['標準用量'] = val;
-      else if (cleanKey.includes('屬性')) newItem['屬性'] = val;
-      else if (cleanKey.includes('單位')) newItem['單位'] = val;
-      else if (cleanKey.includes('主件品號')) newItem['主件品號'] = val;
-      else if (!cleanKey.startsWith('__EMPTY')) newItem[cleanKey] = val;
+      // 移除所有空格以便更靈活地匹配欄位名稱
+      const keyNoSpace = cleanKey.replace(/\s+/g, '');
+      
+      // 品名欄位的多種可能名稱
+      if ((cleanKey.includes('品') && cleanKey.includes('名')) || keyNoSpace.includes('品名')) {
+        newItem['品    名'] = val;
+      }
+      // 規格欄位的多種可能名稱
+      else if ((cleanKey.includes('規') && cleanKey.includes('格')) || keyNoSpace.includes('規格') || cleanKey.includes('SPEC')) {
+        newItem['規    格'] = val;
+      }
+      // 元件品號欄位的多種可能名稱
+      else if (keyNoSpace.includes('元件品號') || keyNoSpace.includes('元件料號')) {
+        newItem['元件品號'] = val;
+      }
+      // 階次欄位的多種可能名稱
+      else if (keyNoSpace.includes('階次') || cleanKey.includes('LEVEL') || cleanKey === 'LV') {
+        newItem['階次'] = val;
+      }
+      // 用量欄位的多種可能名稱（包含"組成用量"）
+      else if (keyNoSpace.includes('用量') || keyNoSpace.includes('數量') || cleanKey.includes('QTY') || cleanKey.includes('QUANTITY')) {
+        newItem['標準用量'] = val;
+      }
+      // 屬性欄位的多種可能名稱
+      else if (keyNoSpace.includes('屬性') || cleanKey.includes('TYPE') || cleanKey.includes('ATTRIBUTE')) {
+        newItem['屬性'] = val;
+      }
+      // 單位欄位的多種可能名稱
+      else if (keyNoSpace.includes('單位') || cleanKey.includes('UNIT') || cleanKey === 'U/M') {
+        newItem['單位'] = val;
+      }
+      // 主件品號欄位的多種可能名稱
+      else if (keyNoSpace.includes('主件品號') || keyNoSpace.includes('主件') || keyNoSpace.includes('母件') || cleanKey.includes('PARENT')) {
+        newItem['主件品號'] = val;
+      }
+      // 序號欄位
+      else if (keyNoSpace.includes('序號') || cleanKey.includes('SEQ')) {
+        newItem['序號'] = val;
+      }
+      // 日期欄位（生效日期、失效日期等）
+      else if (keyNoSpace.includes('日期') || cleanKey.includes('DATE')) {
+        newItem[cleanKey] = val;
+      }
+      // 忽略成本相關欄位，但不影響載入
+      else if (cleanKey.includes('成本') || cleanKey.includes('單價') || cleanKey.includes('價格') || cleanKey.includes('COST') || cleanKey.includes('PRICE')) {
+        newItem[cleanKey] = val;
+      }
+      else if (!cleanKey.startsWith('__EMPTY') && cleanKey !== '') {
+        newItem[cleanKey] = val;
+      }
     });
+    // 設定預設值，確保即使欄位缺失也能載入
+    if (!newItem['階次'] || newItem['階次'] === '') newItem['階次'] = '0';
+    if (!newItem['標準用量'] || newItem['標準用量'] === '') newItem['標準用量'] = '1';
+    if (!newItem['屬性'] || newItem['屬性'] === '') newItem['屬性'] = '自製';
+    if (!newItem['單位'] || newItem['單位'] === '') newItem['單位'] = 'PCS';
     return newItem;
-  }).filter(item => item && (item['元件品號'] || item['品    名']));
+  }).filter(item => {
+    // 更寬鬆的過濾條件：只要有品號或品名其中之一即可
+    if (!item) return false;
+    const hasPartNo = item['元件品號'] && item['元件品號'] !== '';
+    const hasName = item['品    名'] && item['品    名'] !== '';
+    return hasPartNo || hasName;
+  });
 };
 
 // BOM 子元件
