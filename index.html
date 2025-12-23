@@ -483,7 +483,8 @@ import {
   RotateCcw,
   Zap,
   Maximize2,
-  Info
+  Info,
+  FolderKanban
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -6488,7 +6489,7 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
   );
 };
 
-const DashboardView = ({ projects, tasks, changes, history, onViewDetails }) => {
+const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user }) => {
   // Fallback to global PROJECTS if prop is missing (for safety)
   const displayProjects = projects || [];
   const displayTasks = tasks || [];
@@ -6507,11 +6508,22 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails }) => 
   // Find Alerts (Delay Projects or High Risk Tasks)
   const delayProjects = displayProjects.filter(p => p.status === 'delay');
   const riskTasks = displayTasks.filter(t => projectIds.includes(t.projectId) && t.risk);
+  
+  // 計算延期任務（只計算當前機台的專案任務）
+  const overdueTasks = displayTasks.filter(t => {
+    if (!projectIds.includes(t.projectId)) return false; // 只要當前機台的專案
+    if (!t.endDate || t.status === 'Done') return false;
+    return new Date(t.endDate) < new Date();
+  });
+  const totalOverdueDays = overdueTasks.reduce((sum, t) => {
+    const days = Math.floor((new Date() - new Date(t.endDate)) / (1000 * 60 * 60 * 24));
+    return sum + days;
+  }, 0);
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* KPI Cards - 專業深色玻璃風格 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
         <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10 hover:border-white/20 transition-all group">
           <div className="flex justify-between items-start">
             <div>
@@ -6576,6 +6588,29 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails }) => 
           </div>
           <div className="mt-4 text-xs text-slate-500">
             <span className="px-2 py-1 bg-white/5 rounded-lg">本月累計 {myChanges.length} 件變更</span>
+          </div>
+        </div>
+
+        <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10 hover:border-orange-500/30 transition-all group">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-slate-400 text-sm font-medium">任務延期統計</p>
+              <h3 className="text-4xl font-bold text-orange-400 mt-2">{overdueTasks.length}</h3>
+            </div>
+            <div className="p-3 bg-orange-500/20 rounded-xl text-orange-400 group-hover:scale-110 transition-transform">
+              <Clock size={24} />
+            </div>
+          </div>
+          <div className="mt-4 text-xs text-slate-500">
+            {overdueTasks.length > 0 ? (
+              <span className="text-orange-400 bg-orange-500/10 px-2 py-1 rounded-lg">
+                累計延期 {totalOverdueDays} 天
+              </span>
+            ) : (
+              <span className="text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg">
+                ✓ 無延期任務
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -6673,52 +6708,114 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails }) => 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Project Status Overview - 深色風格 */}
+        {/* Personal Tasks Overview - 深色風格 */}
         <div className="lg:col-span-2 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
           <h3 className="font-bold text-white mb-5 flex items-center">
-            <div className="p-2 bg-slate-500/20 rounded-xl mr-3">
-              <LayoutDashboard size={18} className="text-slate-400" />
+            <div className="p-2 bg-purple-500/20 rounded-xl mr-3">
+              <ListTodo size={18} className="text-purple-400" />
             </div>
-            專案進度摘要
+            我的任務
+            {user && <span className="ml-3 text-xs text-slate-500 font-normal bg-white/5 px-3 py-1 rounded-lg">{user.displayName || user.name || user.username}</span>}
           </h3>
           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-            {displayProjects.length === 0 ? (
-                <div className="text-center py-10 text-slate-400">
-                    <p>尚無專案，請至「專案列表」新增。</p>
-                </div>
-            ) : (
-                displayProjects.slice(0, 5).map((project) => {
-                const validProgress = Math.min(Math.max(parseFloat(project.progress) || 0, 0), 100);
+            {(() => {
+              // 過濾出當前用戶的任務
+              console.log('🔍 我的任務調試:', {
+                user: user,
+                userKeys: user ? Object.keys(user) : [],
+                userName: user?.name,
+                username: user?.username,
+                displayName: user?.displayName,
+                totalTasks: displayTasks.length,
+                taskOwners: displayTasks.map(t => t.owner).filter((v, i, a) => a.indexOf(v) === i),
+                taskStatuses: displayTasks.map(t => t.status).filter((v, i, a) => a.indexOf(v) === i),
+                sampleTasks: displayTasks.slice(0, 3).map(t => ({ title: t.title, owner: t.owner, status: t.status }))
+              });
+              
+              // 使用正確的用戶名稱屬性 - 可能是 displayName, name 或 username
+              const currentUserName = user?.displayName || user?.name || user?.username;
+              
+              console.log('🔍 當前用戶名:', currentUserName);
+              
+              const myTasks = displayTasks.filter(t => {
+                const match = currentUserName && t.owner === currentUserName && t.status !== 'Done';
+                if (currentUserName && t.owner === currentUserName) {
+                  console.log('🔍 找到用戶任務:', t.title, '狀態:', t.status, '匹配:', match);
+                }
+                return match;
+              });
+              
+              console.log('🔍 過濾後的我的任務數:', myTasks.length);
+              
+              if (myTasks.length === 0) {
                 return (
-                <div key={project.id} className="group hover:bg-white/5 p-4 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-white/10" onClick={() => onViewDetails(project)}>
-                    <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center">
-                        <span className="font-medium text-white">{project.name}</span>
-                        <span className="ml-3 text-xs text-slate-500 bg-white/5 px-2 py-1 rounded-lg">{project.owner}</span>
+                  <div className="text-center py-10 text-slate-400">
+                    <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <ListTodo size={32} className="text-slate-500" />
                     </div>
-                    <ProjectStatusBadge status={project.status} />
+                    <p>目前沒有待辦任務</p>
+                  </div>
+                );
+              }
+              
+              return myTasks.slice(0, 5).map((task) => {
+                const project = displayProjects.find(p => p.id === task.projectId);
+                const isOverdue = task.endDate && new Date(task.endDate) < new Date();
+                const statusColors = {
+                  'To Do': 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+                  'Doing': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+                  'Testing': 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                };
+                
+                const handleTaskClick = () => {
+                  if (project) {
+                    // 設置要高亮的任務ID
+                    sessionStorage.setItem('highlightTaskId', task.id);
+                    // 跳轉到專案詳情
+                    onViewDetails(project);
+                  }
+                };
+                
+                return (
+                  <div 
+                    key={task.id} 
+                    className="group hover:bg-white/5 p-4 rounded-xl transition-colors border border-transparent hover:border-purple-500/30 cursor-pointer"
+                    onClick={handleTaskClick}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <div className="font-medium text-white mb-1 group-hover:text-purple-300 transition-colors">{task.title}</div>
+                        <div className="text-xs text-slate-500">
+                          {project ? project.name : '未知專案'}
+                        </div>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-lg border ${statusColors[task.status] || statusColors['To Do']}`}>
+                        {task.status}
+                      </span>
                     </div>
-                    <div className="relative h-2.5 bg-white/10 rounded-full overflow-hidden">
-                    <div 
-                        className={`absolute top-0 left-0 h-full rounded-full ${
-                        project.status === 'delay' ? 'bg-gradient-to-r from-rose-500 to-pink-500' : 
-                        project.status === 'risk' ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-                        }`}
-                        style={{ width: `${validProgress}%` }}
-                    ></div>
-                    </div>
-                    <div className="flex justify-between mt-2 text-xs text-slate-500">
-                    <span>Start</span>
-                    <span>Deadline: {project.deadline}</span>
-                    </div>
+                    {task.endDate && (
+                      <div className={`text-xs mt-2 flex items-center gap-1 ${
+                        isOverdue ? 'text-rose-400' : 'text-slate-500'
+                      }`}>
+                        <Clock size={12} />
+                        {isOverdue ? '已逾期: ' : '截止: '}{task.endDate}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
+            {(() => {
+              const currentUserName = user?.displayName || user?.name || user?.username;
+              const myTasks = displayTasks.filter(t => 
+                currentUserName && t.owner === currentUserName && t.status !== 'Done'
+              );
+              return myTasks.length > 5 && (
+                <div className="text-center text-xs text-slate-500 py-3 bg-white/5 rounded-xl">
+                  還有 {myTasks.length - 5} 個任務
                 </div>
-                );})
-            )}
-            {displayProjects.length > 5 && (
-              <div className="text-center text-xs text-slate-500 py-3 bg-white/5 rounded-xl">
-                還有 {displayProjects.length - 5} 個專案，請查看上方完整甘特圖
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
 
@@ -6993,6 +7090,20 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
   const [newTaskStatus, setNewTaskStatus] = useState('To Do');
   const [taskViewFilter, setTaskViewFilter] = useState('all'); // 'all' | 'my' | 'department'
   const [selectedDepartment, setSelectedDepartment] = useState(''); // 選擇的部門
+  const [highlightTaskId, setHighlightTaskId] = useState(null); // 高亮任務ID
+  
+  // 🔥 檢查是否需要高亮特定任務
+  useEffect(() => {
+    const taskId = sessionStorage.getItem('highlightTaskId');
+    if (taskId) {
+      setHighlightTaskId(taskId);
+      setActiveTab('kanban'); // 切換到看板視圖
+      sessionStorage.removeItem('highlightTaskId');
+      console.log('🎯 高亮任務:', taskId);
+      // 3秒後取消高亮
+      setTimeout(() => setHighlightTaskId(null), 3000);
+    }
+  }, []);
   
   // 取得所有不重複的部門列表
   const departmentList = React.useMemo(() => {
@@ -7523,7 +7634,11 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
                     <div 
                       key={task.id} 
                       onClick={() => openEditTask(task)}
-                      className="bg-white/5 backdrop-blur p-4 rounded-xl border border-white/10 cursor-pointer hover:bg-white/10 hover:border-white/20 transition-all group"
+                      className={`bg-white/5 backdrop-blur p-4 rounded-xl border cursor-pointer hover:bg-white/10 hover:border-white/20 transition-all group ${
+                        highlightTaskId === task.id 
+                          ? 'border-blue-500 bg-blue-500/20 ring-2 ring-blue-400 animate-pulse shadow-lg shadow-blue-500/50' 
+                          : 'border-white/10'
+                      }`}
                     >
                       <div className="flex justify-between items-start mb-3">
                         <PriorityBadge priority={task.priority} />
@@ -7848,11 +7963,17 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
                         </div>
                       </div>
                     )}
-                    {item.attachment && (
+                    {(item.attachment || item.attachmentUrl) && (
                       <div className="mb-4">
-                        <a href={item.attachment} download={item.fileName || 'download'} className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-500/10 text-blue-400 rounded-xl text-xs font-medium hover:bg-blue-500/20 transition-colors border border-blue-500/20">
+                        <a 
+                          href={item.attachmentUrl || item.attachment} 
+                          download={item.attachmentName || item.fileName || 'download'} 
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-500/10 text-blue-400 rounded-xl text-xs font-medium hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+                        >
                           <Download size={14} />
-                          {item.fileName || '下載附件'}
+                          {item.attachmentName || item.fileName || '下載附件'}
                         </a>
                       </div>
                     )}
@@ -8309,7 +8430,21 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
   );
 };
 
-const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
+const AnalyticsView = ({ projects = [], tasks = [], changes = [], machines = [], onNavigate }) => {
+  // 調試：檢查 machines 數據
+  console.log('🔍 AnalyticsView machines:', machines.length, machines.map(m => ({ id: m.id, name: m.name })));
+  
+  // 只保留當前機台專案的任務
+  const projectIds = projects.map(p => p.id);
+  const filteredTasks = tasks.filter(t => projectIds.includes(t.projectId));
+  
+  console.log('🔍 AnalyticsView 過濾:', {
+    總專案數: projects.length,
+    總任務數: tasks.length,
+    過濾後任務數: filteredTasks.length,
+    專案IDs: projectIds
+  });
+  
   // ============== 實際數據計算 ==============
   
   // 1. 專案狀態統計
@@ -8325,11 +8460,11 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
 
   // 2. 任務狀態統計
   const taskStats = {
-    total: tasks.length,
-    todo: tasks.filter(t => t.status === 'To Do').length,
-    doing: tasks.filter(t => t.status === 'Doing').length,
-    testing: tasks.filter(t => t.status === 'Testing').length,
-    done: tasks.filter(t => t.status === 'Done').length
+    total: filteredTasks.length,
+    todo: filteredTasks.filter(t => t.status === 'To Do').length,
+    doing: filteredTasks.filter(t => t.status === 'Doing').length,
+    testing: filteredTasks.filter(t => t.status === 'Testing').length,
+    done: filteredTasks.filter(t => t.status === 'Done').length
   };
   
   // 3. 任務完成率
@@ -8339,7 +8474,7 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
 
   // 4. 人員任務負載分析
   const ownerTaskMap = {};
-  tasks.forEach(t => {
+  filteredTasks.forEach(t => {
     if (t.owner) {
       if (!ownerTaskMap[t.owner]) {
         ownerTaskMap[t.owner] = { total: 0, done: 0, doing: 0, todo: 0, overdue: 0 };
@@ -8392,24 +8527,39 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
     .sort((a, b) => b.專案數 - a.專案數);
 
   // 7. 逾期任務列表
-  const overdueTasks = tasks.filter(t => {
+  const overdueTasks = filteredTasks.filter(t => {
     if (!t.endDate || t.status === 'Done') return false;
     return new Date(t.endDate) < new Date();
   }).map(t => {
     const project = projects.find(p => p.id === t.projectId);
+    const machine = project ? machines.find(m => m.id === project.machineId) : null;
+    console.log('🔍 Overdue task:', t.title, '| project:', project?.name, '| machine:', machine?.name, '| projectId:', t.projectId, '| machineId:', project?.machineId);
     const daysOverdue = Math.floor((new Date() - new Date(t.endDate)) / (1000 * 60 * 60 * 24));
-    return { ...t, projectName: project?.name || '未知專案', daysOverdue };
+    return { 
+      ...t, 
+      projectName: project?.name || '未知專案',
+      projectDescription: project?.description || '',
+      machineName: machine?.name || '未知機台',
+      daysOverdue 
+    };
   }).sort((a, b) => b.daysOverdue - a.daysOverdue).slice(0, 10);
 
   // 8. 即將到期任務（7天內）
-  const upcomingTasks = tasks.filter(t => {
+  const upcomingTasks = filteredTasks.filter(t => {
     if (!t.endDate || t.status === 'Done') return false;
     const daysLeft = Math.floor((new Date(t.endDate) - new Date()) / (1000 * 60 * 60 * 24));
     return daysLeft >= 0 && daysLeft <= 7;
   }).map(t => {
     const project = projects.find(p => p.id === t.projectId);
+    const machine = project ? machines.find(m => m.id === project.machineId) : null;
     const daysLeft = Math.floor((new Date(t.endDate) - new Date()) / (1000 * 60 * 60 * 24));
-    return { ...t, projectName: project?.name || '未知專案', daysLeft };
+    return { 
+      ...t, 
+      projectName: project?.name || '未知專案',
+      projectDescription: project?.description || '',
+      machineName: machine?.name || '未知機台',
+      daysLeft 
+    };
   }).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 10);
 
   // 9. 專案階段分佈
@@ -8635,22 +8785,59 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
           </h3>
           {overdueTasks.length > 0 ? (
             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-              {overdueTasks.map((task, idx) => (
-                <div key={idx} className="p-3 bg-rose-500/10 rounded-xl border border-rose-500/20 flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white font-medium truncate">{task.title}</div>
-                    <div className="text-xs text-slate-400 flex items-center gap-2 mt-1">
-                      <span>{task.projectName}</span>
-                      <span>•</span>
-                      <span>{task.owner}</span>
+              {overdueTasks.map((task, idx) => {
+                const project = projects.find(p => p.id === task.projectId);
+                const handleTaskClick = () => {
+                  if (project?.machineId && onNavigate) {
+                    // 在調用 onNavigate 之前先設置 sessionStorage
+                    sessionStorage.setItem('highlightTaskId', task.id);
+                    onNavigate({ id: project.machineId });
+                  }
+                };
+                return (
+                  <div 
+                    key={idx} 
+                    className="p-4 bg-rose-500/10 rounded-xl border border-rose-500/20 hover:bg-rose-500/20 cursor-pointer transition-all group"
+                    onClick={handleTaskClick}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="text-white font-bold text-base mb-1">{task.title}</div>
+                          <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Cpu size={12} className="text-rose-400" />
+                              {task.machineName}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <FolderKanban size={12} className="text-rose-400" />
+                              {task.projectName}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <UserCircle size={12} className="text-rose-400" />
+                              {task.owner}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right ml-3 flex items-center gap-2">
+                          <div>
+                            <div className="text-rose-400 font-bold text-xl">+{task.daysOverdue}天</div>
+                            <div className="text-xs text-slate-500">截止: {task.endDate}</div>
+                          </div>
+                          <ArrowRight size={18} className="text-slate-500 group-hover:text-rose-400 transition-colors" />
+                        </div>
+                      </div>
+                      {task.projectDescription && (
+                        <div className="text-xs text-slate-500 mt-2 line-clamp-1 italic">
+                          📋 {task.projectDescription}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right ml-3">
-                    <div className="text-rose-400 font-bold text-lg">+{task.daysOverdue}天</div>
-                    <div className="text-xs text-slate-500">截止: {task.endDate}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
@@ -8673,24 +8860,61 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
           </h3>
           {upcomingTasks.length > 0 ? (
             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-              {upcomingTasks.map((task, idx) => (
-                <div key={idx} className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20 flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white font-medium truncate">{task.title}</div>
-                    <div className="text-xs text-slate-400 flex items-center gap-2 mt-1">
-                      <span>{task.projectName}</span>
-                      <span>•</span>
-                      <span>{task.owner}</span>
+              {upcomingTasks.map((task, idx) => {
+                const project = projects.find(p => p.id === task.projectId);
+                const handleTaskClick = () => {
+                  if (project?.machineId && onNavigate) {
+                    // 在調用 onNavigate 之前先設置 sessionStorage
+                    sessionStorage.setItem('highlightTaskId', task.id);
+                    onNavigate({ id: project.machineId });
+                  }
+                };
+                return (
+                  <div 
+                    key={idx} 
+                    className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/20 hover:bg-amber-500/20 cursor-pointer transition-all group"
+                    onClick={handleTaskClick}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="text-white font-bold text-base mb-1">{task.title}</div>
+                          <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Cpu size={12} className="text-amber-400" />
+                              {task.machineName}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <FolderKanban size={12} className="text-amber-400" />
+                              {task.projectName}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <UserCircle size={12} className="text-amber-400" />
+                              {task.owner}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right ml-3 flex items-center gap-2">
+                          <div>
+                            <div className={`font-bold text-xl ${task.daysLeft <= 2 ? 'text-rose-400' : 'text-amber-400'}`}>
+                              {task.daysLeft === 0 ? '今天' : `${task.daysLeft}天後`}
+                            </div>
+                            <div className="text-xs text-slate-500">截止: {task.endDate}</div>
+                          </div>
+                          <ArrowRight size={18} className="text-slate-500 group-hover:text-amber-400 transition-colors" />
+                        </div>
+                      </div>
+                      {task.projectDescription && (
+                        <div className="text-xs text-slate-500 mt-2 line-clamp-1 italic">
+                          📋 {task.projectDescription}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right ml-3">
-                    <div className={`font-bold text-lg ${task.daysLeft <= 2 ? 'text-rose-400' : 'text-amber-400'}`}>
-                      {task.daysLeft === 0 ? '今天' : `${task.daysLeft}天後`}
-                    </div>
-                    <div className="text-xs text-slate-500">截止: {task.endDate}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
@@ -8829,7 +9053,7 @@ const AnalyticsView = ({ projects = [], tasks = [], changes = [] }) => {
   );
 };
 
-const EngineerDashboardView = ({ tasks = [], onUpdateTask, user }) => {
+const EngineerDashboardView = ({ tasks = [], projects = [], machine = {}, onUpdateTask, user }) => {
     const [editingTask, setEditingTask] = useState(null);
     const [highlightTaskId, setHighlightTaskId] = useState(null);
 
@@ -8844,9 +9068,12 @@ const EngineerDashboardView = ({ tasks = [], onUpdateTask, user }) => {
         }
     }, []);
 
-    // Filter tasks for the current user
+    // Filter tasks for the current user and current machine
     const userName = user?.displayName || '陳建宏';
-    const myTasks = tasks.filter(t => t.owner === userName);
+    // 只顯示當前機台的任務
+    const machineProjects = projects.filter(p => p.machineId === machine.id);
+    const machineProjectIds = machineProjects.map(p => p.id);
+    const myTasks = tasks.filter(t => t.owner === userName && machineProjectIds.includes(t.projectId));
     const completedTasks = myTasks.filter(t => t.status === 'Done');
     const todoTasks = myTasks.filter(t => t.status === 'To Do');
     
@@ -8964,10 +9191,14 @@ const HistoryForm = ({ onSubmit, onCancel }) => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        alert("檔案過大！請上傳 10MB 以下的檔案。");
+      if (file.size > 50 * 1024 * 1024) { // 50MB limit (Firebase Storage 支援更大檔案)
+        alert("檔案過大！請上傳 50MB 以下的檔案。");
         e.target.value = null;
         return;
+      }
+      // 提示：檔案會上傳到雲端儲存
+      if (file.size > 500 * 1024) { // 超過 500KB
+        console.log(`檔案大小: ${(file.size / 1024).toFixed(2)} KB，將自動上傳至 Firebase Storage`);
       }
       setFileName(file.name);
       const reader = new FileReader();
@@ -9086,7 +9317,7 @@ const HistoryForm = ({ onSubmit, onCancel }) => {
             </div>
           )}
         </div>
-        <p className="text-xs text-slate-500 mt-2">支援圖片與文件，最大 10MB</p>
+        <p className="text-xs text-slate-500 mt-2">支援圖片與文件，最大 50MB (將自動上傳至雲端儲存)</p>
       </div>
 
       <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
@@ -9922,6 +10153,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   
   // Lifted State - Initialize with filtered data
   const [projects, setProjects] = useState([]);
+  const [allProjects, setAllProjects] = useState([]); // 所有專案（供分析報告使用）
   const [tasks, setTasks] = useState([]);
   const [changes, setChanges] = useState([]);
   const [history, setHistory] = useState([]);
@@ -9929,12 +10161,17 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   const [meetings, setMeetings] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [machines, setMachines] = useState([]); // 訂閱所有機台資料
 
   // Sync with DB
   useEffect(() => {
-    const unsubProjects = db.subscribe('rd_projects', (data) => setProjects(data.filter(p => p.machineId === machine.id)));
+    const unsubProjects = db.subscribe('rd_projects', (data) => {
+      setAllProjects(data); // 儲存所有專案
+      setProjects(data.filter(p => p.machineId === machine.id)); // 過濾當前機台專案
+    });
     const unsubTasks = db.subscribe('rd_tasks', (data) => setTasks(data));
     const unsubChanges = db.subscribe('rd_changes', (data) => setChanges(data));
+    const unsubMachines = db.subscribe('rd_machines', (data) => setMachines(data)); // 訂閱機台
     // 訂閱 history 並按時間排序（越新的越上面）
     const unsubHistory = db.subscribe('rd_history', (data) => {
       const sortedData = [...data].sort((a, b) => {
@@ -9971,6 +10208,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         unsubProjects();
         unsubTasks();
         unsubChanges();
+        unsubMachines();
         unsubHistory();
         unsubMessages();
         unsubMeetings();
@@ -9979,17 +10217,39 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
     };
   }, [machine.id]);
   
-  // 🔥 檢查是否有從跑馬燈點擊跳轉的專案
+  // 🔥 檢查是否有從跑馬燈或分析報告點擊跳轉的專案/任務
   useEffect(() => {
     const openProjectId = sessionStorage.getItem('openProjectId');
+    const highlightTaskId = sessionStorage.getItem('highlightTaskId');
     
     console.log('🔍 ProjectApp 檢查 sessionStorage:', { 
-      openProjectId, 
+      openProjectId,
+      highlightTaskId,
       projectsCount: projects.length,
       projectIds: projects.map(p => p.id)
     });
     
-    if (openProjectId && projects.length > 0) {
+    // 如果有任務ID需要高亮，切換到專案詳情的看板視圖
+    if (highlightTaskId && tasks.length > 0) {
+      const targetTask = tasks.find(t => t.id === highlightTaskId);
+      if (targetTask) {
+        const targetProject = projects.find(p => p.id === targetTask.projectId);
+        if (targetProject) {
+          setSelectedProject(targetProject);
+          setCurrentView('detail'); // 切換到專案詳情
+          console.log('🎯 自動打開專案並高亮任務:', targetProject.name, '/', targetTask.title);
+          // 不要立即清除，讓 ProjectDetailView 處理高亮後再清除
+        } else {
+          console.warn('⚠️ 找不到任務所屬的專案');
+          sessionStorage.removeItem('highlightTaskId');
+        }
+      } else {
+        console.warn('⚠️ 找不到任務 ID:', highlightTaskId);
+        sessionStorage.removeItem('highlightTaskId');
+      }
+    }
+    // 如果有專案ID需要打開
+    else if (openProjectId && projects.length > 0) {
       const targetProject = projects.find(p => p.id === openProjectId);
       if (targetProject) {
         setSelectedProject(targetProject);
@@ -10001,7 +10261,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         console.warn('⚠️ 找不到專案 ID:', openProjectId);
       }
     }
-  }, [projects]);
+  }, [projects, tasks]);
 
   const handleViewDetails = (project) => {
     setSelectedProject(project);
@@ -10229,7 +10489,69 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   };
 
   const handleAddHistory = async (newHistory) => {
-    await db.addDoc('rd_history', newHistory);
+    try {
+      // 如果有附件，先上傳到 Storage
+      if (newHistory.attachment && newHistory.attachment.startsWith('data:')) {
+        console.log('📎 偵測到附件，準備上傳到 Firebase Storage...');
+        // Base64 資料太大，需要上傳到 Storage
+        const fileName = newHistory.fileName || 'attachment';
+        const timestamp = Date.now();
+        const storagePath = `history_attachments/${timestamp}_${fileName}`;
+        
+        // 將 base64 轉換為 blob
+        const base64Data = newHistory.attachment.split(',')[1];
+        const mimeType = newHistory.attachment.split(';')[0].split(':')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType });
+        
+        console.log(`📤 上傳檔案: ${fileName} (${(blob.size / 1024).toFixed(2)} KB)`);
+        
+        // 上傳到 Storage
+        const storageRef = window.firebase.ref(storage, storagePath);
+        const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
+        
+        await new Promise((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
+            },
+            (error) => {
+              console.error('❌ Storage 上傳失敗:', error);
+              reject(error);
+            },
+            async () => {
+              const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
+              console.log('✅ 檔案上傳成功，URL:', downloadURL);
+              // 替換 attachment 為 URL
+              newHistory.attachmentUrl = downloadURL;
+              newHistory.attachmentName = fileName;
+              delete newHistory.attachment; // 移除 base64 資料
+              await db.addDoc('rd_history', newHistory);
+              console.log('✅ 設計履歷新增成功');
+              resolve();
+            }
+          );
+        });
+      } else {
+        await db.addDoc('rd_history', newHistory);
+        console.log('✅ 設計履歷新增成功（無附件）');
+      }
+    } catch (e) {
+      console.error("❌ Error adding history: ", e);
+      const errMsg = e.toString();
+      if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
+        alert('新增失敗: 資料過大！\n\n請重新整理頁面後再試，系統會自動將附件上傳至雲端儲存。');
+      } else {
+        alert('新增失敗: ' + errMsg);
+      }
+      throw e;
+    }
   };
 
   const handleAddMessage = async (newMessage) => {
@@ -10295,7 +10617,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <DashboardView projects={projects} tasks={tasks} changes={changes} history={history} onViewDetails={handleViewDetails} />;
+        return <DashboardView projects={projects} tasks={tasks} changes={changes} history={history} onViewDetails={handleViewDetails} user={user} />;
       case 'list':
         return (
           <ProjectListView 
@@ -10334,11 +10656,16 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
           />
         );
       case 'analytics':
-        return <AnalyticsView projects={projects} tasks={tasks} changes={changes} />;
+        return <AnalyticsView projects={projects} tasks={tasks} changes={changes} machines={machines} onNavigate={(machine) => {
+          // 跳轉到其他機台
+          sessionStorage.setItem('current_system', 'PROJECT'); // 保存當前系統
+          sessionStorage.setItem('openMachineId', machine.id);
+          window.location.reload(); // 重新載入以跳轉到該機台
+        }} />;
       case 'spec-discussion':
         return <SpecDiscussionView machine={machine} />;
       case 'engineer':
-        return <EngineerDashboardView tasks={tasks} onUpdateTask={handleUpdateTask} user={user} />;
+        return <EngineerDashboardView tasks={tasks} projects={projects} machine={machine} onUpdateTask={handleUpdateTask} user={user} />;
       default:
         return <DashboardView projects={projects} tasks={tasks} changes={changes} onViewDetails={handleViewDetails} />;
     }
@@ -20468,7 +20795,10 @@ const ThemeToggle = ({ theme, toggleTheme }) => {
 
 function App() {
   const [user, setUser] = useState(null);
-  const [system, setSystem] = useState(null); // 'TQM', 'KPI', 'PROJECT'
+  const [system, setSystem] = useState(() => {
+    // 從 sessionStorage 恢復系統狀態
+    return sessionStorage.getItem('current_system') || null;
+  }); // 'TQM', 'KPI', 'PROJECT'
   const [loading, setLoading] = useState(true);
   
   // 主題狀態管理
@@ -20489,6 +20819,15 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, []);
+
+  // 保存 system 狀態到 sessionStorage
+  useEffect(() => {
+    if (system) {
+      sessionStorage.setItem('current_system', system);
+    } else {
+      sessionStorage.removeItem('current_system');
+    }
+  }, [system]);
 
   useEffect(() => {
     const savedUser = sessionStorage.getItem('tqm_user');
@@ -20512,6 +20851,7 @@ function App() {
     setUser(null);
     setSystem(null);
     sessionStorage.removeItem('tqm_user');
+    sessionStorage.removeItem('current_system'); // 清除系統狀態
   };
 
   // New DB Import/Export Handlers for Login Screen
