@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -19945,6 +19946,29 @@ const bomStandardizeData = (rawArray) => {
   });
 };
 
+// 計算子階層的最大深度
+const bomGetMaxDepth = (node) => {
+  if (!node.children || node.children.length === 0) return bomGetLevel(node['階次']);
+  const childrenDepths = node.children.map(child => bomGetMaxDepth(child));
+  return Math.max(...childrenDepths);
+};
+
+// 獲取子階層的所有階次
+const bomGetChildLevels = (node) => {
+  const levels = new Set();
+  const traverse = (n) => {
+    if (n.children && n.children.length > 0) {
+      n.children.forEach(child => {
+        const level = bomGetLevel(child['階次']);
+        levels.add(level);
+        traverse(child);
+      });
+    }
+  };
+  traverse(node);
+  return Array.from(levels).sort((a, b) => a - b);
+};
+
 // BOM 子元件
 const BomNavButton = ({ active, onClick, icon, label }) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-2 transition-all relative group w-full py-4`}>
@@ -19974,6 +19998,138 @@ const BomInfoItem = ({ label, value, icon }) => (
     <div className="text-2xl font-bold text-slate-950 truncate">{bomSanitizeStr(value) || 'N/A'}</div>
   </div>
 );
+
+// 列表模式的物料項目組件
+const BomPartListItem = ({ node, isSelected, onToggle, onOpenDetail, onDelete, diffStatus, changes, diffChildren, markedDeleted, onAddChild }) => {
+  const isSelfDeleted = node._isDeleted;
+  const isSelfQtyModified = bomSanitizeStr(node['標準用量']) !== bomSanitizeStr(node._originalData?.['標準用量']);
+  
+  const subDiffStats = useMemo(() => {
+    if (!diffChildren) return { added: 0, removed: 0, changed: 0 };
+    return bomCountDiffStats({ children: diffChildren });
+  }, [diffChildren]);
+
+  const hasSubDiff = subDiffStats.added + subDiffStats.removed + subDiffStats.changed > 0;
+  const hasDeepChanges = useMemo(() => {
+    if (node.children && node.children.length > 0) {
+      return node.children.some(child => bomCheckHasDeepChanges(child));
+    }
+    return false;
+  }, [node.children]);
+
+  const statusLabels = {
+    added: { label: '新增', color: 'bg-emerald-600' },
+    removed: { label: '移除', color: 'bg-rose-600' },
+    changed: { label: '變更', color: 'bg-blue-600' },
+    unchanged: { label: '正常', color: 'bg-slate-600' }
+  };
+
+  const statusKey = diffStatus || 'unchanged';
+  const isMarkedDeleted = markedDeleted || (diffStatus === 'removed' && node._isDeleted);
+  
+  // 計算子階層深度
+  const childLevels = useMemo(() => bomGetChildLevels(node), [node]);
+  const hasChildren = node.children && node.children.length > 0;
+
+  return (
+    <div 
+      className={`group relative bg-white border-2 rounded-2xl p-6 transition-all duration-300 flex items-center gap-6 hover:shadow-xl cursor-pointer ${
+        isSelected ? 'border-indigo-600 shadow-indigo-200 ring-2 ring-indigo-200' : 
+        isSelfDeleted ? 'border-rose-400 bg-rose-50' : 
+        diffStatus === 'added' ? 'border-emerald-500 bg-emerald-50' :
+        diffStatus === 'removed' ? 'border-rose-500 bg-rose-50' :
+        diffStatus === 'changed' ? 'border-blue-500 bg-blue-50' :
+        hasSubDiff ? 'border-orange-400 bg-orange-50' :
+        hasDeepChanges ? 'border-orange-400 bg-orange-50' :
+        'border-slate-200 hover:border-indigo-400'
+      }`}
+      onClick={onOpenDetail}
+    >
+      {/* 左側：階次標籤 */}
+      <div className="flex flex-col gap-2">
+        <div className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase shadow-sm ${isSelected ? 'bg-indigo-600 text-white' : isSelfDeleted ? 'bg-rose-500 text-white' : 'bg-slate-900 text-white'}`}>
+          Level {bomGetNormalizedLevel(node['階次'])}
+        </div>
+        {diffStatus && (
+          <div className={`px-3 py-1 rounded-lg text-xs font-bold text-white flex items-center gap-1 shadow-sm ${statusLabels[statusKey].color}`}>
+            {statusLabels[statusKey].label}
+          </div>
+        )}
+        {diffStatus && isMarkedDeleted && (
+          <div className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-rose-700 animate-pulse">
+            🗑️ 已標記刪除
+          </div>
+        )}
+        {!diffStatus && isSelfDeleted && <div className="bg-rose-600 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm animate-pulse">🗑️ 標記刪除</div>}
+        {!diffStatus && isSelfQtyModified && !isSelfDeleted && <div className="bg-amber-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm">用量變更</div>}
+        {!diffStatus && hasDeepChanges && !isSelfDeleted && !isSelfQtyModified && (
+          <div className="bg-orange-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm">深層變動</div>
+        )}
+        {hasChildren && childLevels.length > 0 && (
+          <div className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1">
+            📦 Lv.{childLevels.join(',')}
+          </div>
+        )}
+      </div>
+
+      {/* 中央：物料資訊 */}
+      <div className="flex-1 min-w-0 grid grid-cols-3 gap-4 items-center">
+        <div className="col-span-1">
+          <div className={`font-mono text-xs font-bold mb-1 truncate uppercase ${isSelfDeleted ? 'text-rose-400' : 'text-indigo-600'}`}>
+            {bomSanitizeStr(node['元件品號']) || 'N/A'}
+          </div>
+          <h4 className={`font-bold text-lg leading-tight truncate ${isSelfDeleted ? 'line-through text-rose-500' : diffStatus === 'removed' ? 'line-through text-rose-600 opacity-50' : 'text-slate-950'}`}>
+            {bomSanitizeStr(node['品    名'])}
+          </h4>
+        </div>
+        <div className="col-span-1">
+          <p className="text-sm text-slate-600 truncate italic">{bomSanitizeStr(node['規    格']) || "無規格說明"}</p>
+          <div className="text-xs font-bold bg-slate-900 text-white px-3 py-1 rounded-lg inline-block mt-1 uppercase">
+            {bomSanitizeStr(node['屬性'])}
+          </div>
+        </div>
+        <div className="col-span-1 text-right">
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-bold text-slate-400 uppercase">用量</span>
+            <div className="flex items-center gap-2">
+              {isSelfQtyModified && !diffStatus && <span className="text-sm line-through text-slate-400 font-mono">{node._originalData?.['標準用量']}</span>}
+              <span className={`text-xl font-bold font-mono ${isSelfQtyModified && !diffStatus ? 'text-indigo-600' : 'text-slate-900'}`}>
+                {bomSanitizeStr(node['標準用量'])} <span className="text-xs text-slate-500">{bomSanitizeStr(node['單位'])}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 右側：操作按鈕 */}
+      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+        {!diffStatus && onAddChild && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onAddChild(node); }}
+            className="w-9 h-9 rounded-lg flex items-center justify-center transition-all shadow bg-emerald-500 text-white hover:bg-emerald-600"
+            title="新增子物料"
+          >
+            <Plus size={18}/>
+          </button>
+        )}
+        {!diffStatus && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all shadow ${isSelfDeleted ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white text-slate-400 hover:text-white hover:bg-rose-500 border border-slate-200'}`}
+            title={isSelfDeleted ? '點擊復原' : '點擊刪除'}
+          >
+            {isSelfDeleted ? <RotateCcw size={18}/> : <Trash2 size={18}/>}
+          </button>
+        )}
+        {!isSelfDeleted && !diffStatus && (
+          <button onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all shadow ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-slate-200 hover:text-indigo-600 border border-slate-200'}`}>
+            {isSelected ? <CheckCircle2 size={20}/> : <Plus size={20}/>}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const BomPartCard = ({ node, isSelected, onToggle, onOpenDetail, onDelete, diffStatus, changes, diffChildren, markedDeleted, onAddChild }) => {
   const isSelfDeleted = node._isDeleted;
@@ -20010,6 +20166,10 @@ const BomPartCard = ({ node, isSelected, onToggle, onOpenDetail, onDelete, diffS
   const statusKey = diffStatus || 'unchanged';
   // 如果是標記刪除的項目，顯示特殊標籤
   const isMarkedDeleted = markedDeleted || (diffStatus === 'removed' && node._isDeleted);
+
+  // 計算子階層深度
+  const childLevels = useMemo(() => bomGetChildLevels(node), [node]);
+  const hasChildren = node.children && node.children.length > 0;
 
   // 刪除狀態的卡片樣式
   const deletedCardStyle = isSelfDeleted ? 'border-rose-400 bg-rose-50 ring-4 ring-rose-200' : '';
@@ -20072,6 +20232,11 @@ const BomPartCard = ({ node, isSelected, onToggle, onOpenDetail, onDelete, diffS
           {!diffStatus && hasDeepChanges && !isSelfDeleted && !isSelfQtyModified && (
             <div className="bg-orange-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow flex items-center gap-1">
               <AlertTriangle size={12}/> 深層變動
+            </div>
+          )}
+          {hasChildren && childLevels.length > 0 && (
+            <div className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs font-bold shadow flex items-center gap-1">
+              📦 Lv.{childLevels.join(',')}
             </div>
           )}
         </div>
@@ -20161,6 +20326,7 @@ const BOMManagerApp = ({ onBackToMenu }) => {
   const [diffFilter, setDiffFilter] = useState('all');
   const [isAddingPart, setIsAddingPart] = useState(false);
   const [newPartParentKey, setNewPartParentKey] = useState(null);
+  const [viewMode, setViewMode] = useState('grid');
   const [newPartForm, setNewPartForm] = useState({
     '元件品號': '',
     '品    名': '',
@@ -20438,6 +20604,10 @@ const BOMManagerApp = ({ onBackToMenu }) => {
       alert('請填寫元件品號和品名');
       return;
     }
+    if (!newPartForm['標準用量']) {
+      alert('請填寫標準用量');
+      return;
+    }
     
     const newPart = {
       ...newPartForm,
@@ -20513,6 +20683,24 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            {bomData.length > 0 && (activeTab === 'inventory' || activeTab === 'compare') && (
+              <div className="flex items-center gap-2 bg-white rounded-xl p-1 shadow-sm border border-slate-200">
+                <button 
+                  onClick={() => setViewMode('grid')} 
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'grid' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}
+                  title="網格排列"
+                >
+                  <LayoutGrid size={16}/>
+                </button>
+                <button 
+                  onClick={() => setViewMode('list')} 
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}
+                  title="列表排列"
+                >
+                  <List size={16}/>
+                </button>
+              </div>
+            )}
             {bomData.length > 0 && activeTab === 'inventory' && (
               <button onClick={() => handleOpenAddPart()} className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer transition-all shadow-lg shadow-emerald-500/25">
                 <Plus size={18}/> 新增物料
@@ -20551,19 +20739,35 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                         </div>
                         <div className="flex-1 h-0.5 bg-slate-200"></div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {items.map((node, idx) => (
-                          <BomPartCard 
-                            key={idx} 
-                            node={node} 
-                            isSelected={selectedItems.some(si => bomGetNodeUniqueKey(si) === bomGetNodeUniqueKey(node))} 
-                            onToggle={() => toggleSelectItem(node)}
-                            onOpenDetail={() => setActiveDetailKey(bomGetNodeUniqueKey(node))}
-                            onDelete={() => handleToggleDelete(node)}
-                            onAddChild={handleOpenAddPart}
-                          />
-                        ))}
-                      </div>
+                      {viewMode === 'grid' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                          {items.map((node, idx) => (
+                            <BomPartCard 
+                              key={idx} 
+                              node={node} 
+                              isSelected={selectedItems.some(si => bomGetNodeUniqueKey(si) === bomGetNodeUniqueKey(node))} 
+                              onToggle={() => toggleSelectItem(node)}
+                              onOpenDetail={() => setActiveDetailKey(bomGetNodeUniqueKey(node))}
+                              onDelete={() => handleToggleDelete(node)}
+                              onAddChild={handleOpenAddPart}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {items.map((node, idx) => (
+                            <BomPartListItem 
+                              key={idx} 
+                              node={node} 
+                              isSelected={selectedItems.some(si => bomGetNodeUniqueKey(si) === bomGetNodeUniqueKey(node))} 
+                              onToggle={() => toggleSelectItem(node)}
+                              onOpenDetail={() => setActiveDetailKey(bomGetNodeUniqueKey(node))}
+                              onDelete={() => handleToggleDelete(node)}
+                              onAddChild={handleOpenAddPart}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </section>
                   ))}
                 </div>
@@ -20599,19 +20803,35 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                         </div>
                         <div className="flex-1 h-0.5 bg-slate-200"></div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {items.map((diffRes, idx) => (
-                          <BomPartCard 
-                            key={idx} 
-                            node={diffRes.node} 
-                            diffStatus={diffRes.status} 
-                            changes={diffRes.changes}
-                            diffChildren={diffRes.children}
-                            markedDeleted={diffRes._markedDeleted}
-                            onOpenDetail={() => setActiveDetailKey(bomGetNodeUniqueKey(diffRes.node))}
-                          />
-                        ))}
-                      </div>
+                      {viewMode === 'grid' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                          {items.map((diffRes, idx) => (
+                            <BomPartCard 
+                              key={idx} 
+                              node={diffRes.node} 
+                              diffStatus={diffRes.status} 
+                              changes={diffRes.changes}
+                              diffChildren={diffRes.children}
+                              markedDeleted={diffRes._markedDeleted}
+                              onOpenDetail={() => setActiveDetailKey(bomGetNodeUniqueKey(diffRes.node))}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {items.map((diffRes, idx) => (
+                            <BomPartListItem 
+                              key={idx} 
+                              node={diffRes.node} 
+                              diffStatus={diffRes.status} 
+                              changes={diffRes.changes}
+                              diffChildren={diffRes.children}
+                              markedDeleted={diffRes._markedDeleted}
+                              onOpenDetail={() => setActiveDetailKey(bomGetNodeUniqueKey(diffRes.node))}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </section>
                   ))}
                 </div>
@@ -20768,10 +20988,21 @@ const BOMManagerApp = ({ onBackToMenu }) => {
               )}
               
               <div className="bg-slate-900 rounded-3xl p-8 shadow-xl">
-                <h3 className="text-2xl font-bold text-white mb-8 flex items-center gap-4">
-                   <Maximize2 size={28} className="text-indigo-500" />
-                   子階層結構
-                </h3>
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-2xl font-bold text-white flex items-center gap-4">
+                    <Maximize2 size={28} className="text-indigo-500" />
+                    子階層結構
+                  </h3>
+                  {activeTab !== 'compare' && (
+                    <button 
+                      onClick={() => handleOpenAddPart(detailData.node)}
+                      className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg"
+                    >
+                      <Plus size={18}/>
+                      新增子物料
+                    </button>
+                  )}
+                </div>
                 { (detailData.children && detailData.children.length > 0) || (detailData.node.children && detailData.node.children.length > 0) ? (
                     <div className="space-y-4">
                         {/* 遞迴顯示子階層 */}
@@ -20846,13 +21077,22 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                                             )}
                                         </div>
                                         { activeTab !== 'compare' && (
-                                          <button 
-                                            onClick={() => handleToggleDelete(nodeData)}
-                                            className={`h-10 w-10 rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg ${isDeleted ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-300' : 'bg-slate-800 text-slate-500 hover:text-white hover:bg-rose-500 border border-slate-700 hover:border-rose-500'}`}
-                                            title={isDeleted ? '點擊復原' : '點擊刪除'}
-                                          >
-                                            {isDeleted ? <RotateCcw size={20}/> : <Trash2 size={20}/>}
-                                          </button>
+                                          <>
+                                            <button 
+                                              onClick={() => handleOpenAddPart(nodeData)}
+                                              className="h-10 w-10 rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                                              title="新增子物料"
+                                            >
+                                              <Plus size={20}/>
+                                            </button>
+                                            <button 
+                                              onClick={() => handleToggleDelete(nodeData)}
+                                              className={`h-10 w-10 rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg ${isDeleted ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-300' : 'bg-slate-800 text-slate-500 hover:text-white hover:bg-rose-500 border border-slate-700 hover:border-rose-500'}`}
+                                              title={isDeleted ? '點擊復原' : '點擊刪除'}
+                                            >
+                                              {isDeleted ? <RotateCcw size={20}/> : <Trash2 size={20}/>}
+                                            </button>
+                                          </>
                                         )}
                                      </div>
                                   </div>
@@ -20941,7 +21181,7 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">標準用量</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">標準用量 *</label>
                   <input 
                     type="text"
                     className="w-full px-4 py-3 border-2 border-slate-200 focus:border-emerald-500 rounded-xl outline-none transition-all"
