@@ -20466,7 +20466,15 @@ const BOMManagerApp = ({ onBackToMenu }) => {
 
   const handleToggleDelete = (targetNode) => {
     const key = bomGetNodeUniqueKey(targetNode);
+    const willBeDeleted = !targetNode._isDeleted;
+    
+    // 更新 BOM 數據
     setBomData(prev => updateTreeRecursive(prev, key, n => ({ ...n, _isDeleted: !n._isDeleted })));
+    
+    // 如果是刪除操作，從選擇列表中移除該項目
+    if (willBeDeleted) {
+      setSelectedItems(prev => prev.filter(item => bomGetNodeUniqueKey(item) !== key));
+    }
   };
 
   const handleUpdateQuantity = (targetNode, newQty) => {
@@ -20561,23 +20569,71 @@ const BOMManagerApp = ({ onBackToMenu }) => {
     else setSelectedItems([...selectedItems, item]);
   };
 
+  const handleSelectAll = (items) => {
+    // 將所有未選中的項目加入 selectedItems
+    const newItems = items.filter(item => {
+      const key = bomGetNodeUniqueKey(item);
+      return !selectedItems.find(si => bomGetNodeUniqueKey(si) === key);
+    });
+    setSelectedItems([...selectedItems, ...newItems]);
+  };
+
+  const handleUnselectAll = (items) => {
+    // 從 selectedItems 中移除這些項目
+    const itemKeys = items.map(item => bomGetNodeUniqueKey(item));
+    setSelectedItems(selectedItems.filter(si => {
+      const key = bomGetNodeUniqueKey(si);
+      return !itemKeys.includes(key);
+    }));
+  };
+
+  const isAllSelected = (items) => {
+    if (items.length === 0) return false;
+    return items.every(item => {
+      const key = bomGetNodeUniqueKey(item);
+      return selectedItems.find(si => bomGetNodeUniqueKey(si) === key);
+    });
+  };
+
   const exportKitBOM = () => {
     if (selectedItems.length === 0) return;
+    
+    // 首先過濾掉所有已刪除的項目
+    const validItems = selectedItems.filter(item => !item._isDeleted);
+    
+    if (validItems.length === 0) {
+      alert('所選項目均已被刪除，無法匯出');
+      return;
+    }
+    
     const processExport = (items) => {
       let result = [];
       const traverse = (list) => {
         list.forEach(i => {
-          if (!i._isDeleted) {
-            const { children, _isDeleted, _originalData, ...rest } = i;
-            result.push(rest);
-            if (children) traverse(children);
+          // 如果項目被刪除，完全跳過（包括其子項目）
+          if (i._isDeleted) return;
+          
+          const { children, _isDeleted, _originalData, ...rest } = i;
+          result.push(rest);
+          
+          // 只處理未被刪除項目的子項目
+          if (children && children.length > 0) {
+            traverse(children);
           }
         });
       };
       traverse(items);
       return result;
     };
-    const ws = window.XLSX.utils.json_to_sheet(processExport(selectedItems));
+    
+    const exportData = processExport(validItems);
+    
+    if (exportData.length === 0) {
+      alert('所有子階層項目均已被刪除，無法匯出');
+      return;
+    }
+    
+    const ws = window.XLSX.utils.json_to_sheet(exportData);
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Export");
     window.XLSX.writeFile(wb, `BOM_Export_${new Date().getTime()}.xlsx`);
@@ -20702,9 +20758,44 @@ const BOMManagerApp = ({ onBackToMenu }) => {
               </div>
             )}
             {bomData.length > 0 && activeTab === 'inventory' && (
-              <button onClick={() => handleOpenAddPart()} className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer transition-all shadow-lg shadow-emerald-500/25">
-                <Plus size={18}/> 新增物料
-              </button>
+              <>
+                <div className="flex items-center gap-2 bg-white rounded-xl p-1 shadow-sm border border-slate-200">
+                  <button 
+                    onClick={() => {
+                      const allItems = Object.values(inventoryGroups).flat();
+                      handleSelectAll(allItems);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all bg-indigo-600 hover:bg-indigo-700 text-white"
+                    title="全選所有項目"
+                  >
+                    <CheckCircle2 size={16}/>
+                    全選
+                  </button>
+                  <button 
+                    onClick={() => setSelectedItems([])}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all bg-slate-600 hover:bg-slate-700 text-white"
+                    title="清除所有選擇"
+                  >
+                    <X size={16}/>
+                    清除
+                  </button>
+                </div>
+                <button onClick={() => handleOpenAddPart()} className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer transition-all shadow-lg shadow-emerald-500/25">
+                  <Plus size={18}/> 新增物料
+                </button>
+              </>
+            )}
+            {bomData.length > 0 && activeTab === 'builder' && selectedItems.length > 0 && (
+              <div className="flex items-center gap-2 bg-amber-100 border-2 border-amber-300 rounded-xl px-4 py-2">
+                <span className="text-sm font-bold text-amber-800">已選擇 {selectedItems.length} 個項目</span>
+                <button 
+                  onClick={() => setSelectedItems([])}
+                  className="p-1 hover:bg-amber-200 rounded transition-all"
+                  title="清除所有選擇"
+                >
+                  <X size={16} className="text-amber-700"/>
+                </button>
+              </div>
             )}
             <label className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer transition-all shadow-lg shadow-indigo-500/25">
               <Upload size={18}/> 匯入資料
@@ -20738,6 +20829,26 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                           <span className="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-md font-bold">{items.length}</span>
                         </div>
                         <div className="flex-1 h-0.5 bg-slate-200"></div>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => handleSelectAll(items)}
+                            disabled={isAllSelected(items)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-all shadow"
+                            title="全選"
+                          >
+                            <CheckCircle2 size={16}/>
+                            全選
+                          </button>
+                          <button 
+                            onClick={() => handleUnselectAll(items)}
+                            disabled={!items.some(item => selectedItems.find(si => bomGetNodeUniqueKey(si) === bomGetNodeUniqueKey(item)))}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-all shadow"
+                            title="全反選"
+                          >
+                            <X size={16}/>
+                            全反選
+                          </button>
+                        </div>
                       </div>
                       {viewMode === 'grid' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -20842,21 +20953,21 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                   <div className="p-8 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white">
                     <div>
                       <h3 className="text-2xl font-bold">套件構建器</h3>
-                      <p className="text-indigo-400 font-medium mt-1">已選定 {selectedItems.length} 個模組</p>
+                      <p className="text-indigo-400 font-medium mt-1">已選定 {selectedItems.filter(item => !item._isDeleted).length} 個模組 {selectedItems.filter(item => item._isDeleted).length > 0 && <span className="text-rose-400">(含 {selectedItems.filter(item => item._isDeleted).length} 個已刪除)</span>}</p>
                     </div>
-                    <button onClick={exportKitBOM} disabled={selectedItems.length === 0} className="flex items-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95">
+                    <button onClick={exportKitBOM} disabled={selectedItems.filter(item => !item._isDeleted).length === 0} className="flex items-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95">
                       <Download size={20} /> 匯出報表
                     </button>
                   </div>
                   <div className="p-6 space-y-4">
                     {selectedItems.length === 0 ? <p className="text-center py-20 text-slate-300 font-bold italic text-xl">尚未選擇任何項目</p> : 
-                      selectedItems.map((item, idx) => (
-                        <div key={idx} className={`flex items-center justify-between p-6 rounded-2xl border-2 transition-all hover:shadow-lg ${item._isDeleted ? 'bg-rose-50 border-rose-200 opacity-60' : 'bg-slate-50 border-slate-200'}`}>
+                      selectedItems.filter(item => !item._isDeleted).map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-6 rounded-2xl border-2 transition-all hover:shadow-lg bg-slate-50 border-slate-200">
                           <div className="flex items-center gap-6">
                             <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow border"><Layers size={28}/></div>
                             <div>
                                 <span className="text-xs font-bold text-indigo-500 block mb-1 uppercase">{bomSanitizeStr(item['元件品號'])}</span>
-                                <span className={`font-bold text-xl ${item._isDeleted ? 'line-through text-rose-600 opacity-50' : 'text-slate-900'}`}>{bomSanitizeStr(item['品    名'])}</span>
+                                <span className="font-bold text-xl text-slate-900">{bomSanitizeStr(item['品    名'])}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
