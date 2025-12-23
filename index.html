@@ -20680,80 +20680,99 @@ const BOMManagerApp = ({ onBackToMenu }) => {
                 </h3>
                 { (detailData.children && detailData.children.length > 0) || (detailData.node.children && detailData.node.children.length > 0) ? (
                     <div className="space-y-4">
-                        {(detailData.children || detailData.node.children).map((child, idx) => {
-                          const isDiffItem = !!child.node;
-                          const nodeData = isDiffItem ? child.node : child;
-                          const status = isDiffItem ? child.status : 'unchanged';
-                          const isDeleted = nodeData._isDeleted;
-                          const isQtyModified = !isDiffItem && bomSanitizeStr(nodeData['標準用量']) !== bomSanitizeStr(nodeData._originalData?.['標準用量']);
-                          const qtyDiff = isDiffItem && child.changes?.find(c => c.field === '標準用量');
+                        {/* 遞迴顯示子階層 */}
+                        {(() => {
+                          const renderChildren = (children, depth = 0) => {
+                            return children.map((child, idx) => {
+                              const isDiffItem = !!child.node;
+                              const nodeData = isDiffItem ? child.node : child;
+                              const status = isDiffItem ? child.status : 'unchanged';
+                              const isDeleted = nodeData._isDeleted;
+                              const isQtyModified = !isDiffItem && bomSanitizeStr(nodeData['標準用量']) !== bomSanitizeStr(nodeData._originalData?.['標準用量']);
+                              const qtyDiff = isDiffItem && child.changes?.find(c => c.field === '標準用量');
+                              
+                              // 檢查是否還有更深層的子階層
+                              const hasChildren = (nodeData.children && nodeData.children.length > 0);
 
-                          // 根據狀態設定背景樣式
-                          const rowBgClass = isDeleted 
-                            ? 'bg-rose-500/20 border-rose-500 ring-2 ring-rose-400/50' 
-                            : status === 'removed' 
-                            ? 'bg-rose-900/30 border-rose-800' 
-                            : status === 'added' 
-                            ? 'bg-emerald-900/30 border-emerald-800' 
-                            : 'bg-slate-800 border-slate-700 hover:border-indigo-500';
+                              // 根據狀態設定背景樣式
+                              const rowBgClass = isDeleted 
+                                ? 'bg-rose-500/20 border-rose-500 ring-2 ring-rose-400/50' 
+                                : status === 'removed' 
+                                ? 'bg-rose-900/30 border-rose-800' 
+                                : status === 'added' 
+                                ? 'bg-emerald-900/30 border-emerald-800' 
+                                : 'bg-slate-800 border-slate-700 hover:border-indigo-500';
 
-                          return (
-                            <div key={idx} className={`flex items-center gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${rowBgClass}`}>
-                               <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-sm transition-all ${status === 'added' ? 'bg-emerald-500 text-white' : (status === 'removed' || isDeleted) ? 'bg-rose-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-                                  Lv.{bomGetLevel(nodeData['階次'])}
-                               </div>
-                               <div className="flex-1 min-w-0">
-                                  <div className={`font-mono text-xs flex items-center gap-3 mb-1 ${isDeleted ? 'text-rose-300' : 'text-slate-500'}`}>
-                                      {bomSanitizeStr(nodeData['元件品號'])}
-                                      {status !== 'unchanged' && <span className={`px-2 py-0.5 rounded text-xs text-white font-bold uppercase ${status === 'added' ? 'bg-emerald-600' : status === 'removed' ? 'bg-rose-600' : 'bg-blue-600'}`}>{status}</span>}
-                                      {isDeleted && <span className="px-2 py-0.5 rounded text-xs bg-rose-600 text-white font-bold animate-pulse">🗑️ 已刪除</span>}
-                                  </div>
-                                  <div className={`font-bold text-lg truncate transition-all ${isDeleted ? 'line-through text-rose-300' : status === 'removed' ? 'line-through text-rose-400 opacity-50' : 'text-white'}`}>
-                                      {bomSanitizeStr(nodeData['品    名'])}
-                                  </div>
-                               </div>
-                               <div className="flex items-center gap-6">
-                                  <div className="flex flex-col items-end">
-                                      { activeTab === 'compare' ? (
-                                        <div className="flex items-center gap-4">
-                                           { qtyDiff ? (
-                                             <div className="flex items-center gap-3 bg-blue-900 px-4 py-2 rounded-xl border border-blue-700">
-                                               <span className="text-sm line-through text-slate-400 font-mono">{qtyDiff.old}</span>
-                                               <ArrowRight size={16} className="text-blue-400"/>
-                                               <span className="text-xl font-bold text-blue-300 font-mono">{qtyDiff.new}</span>
-                                             </div>
-                                           ) : (
-                                             <span className="font-bold text-slate-300 text-xl font-mono">x{bomSanitizeStr(nodeData['標準用量'])}</span>
-                                           )}
-                                           <span className="text-xs font-bold text-slate-600 uppercase">{bomSanitizeStr(nodeData['單位'])}</span>
+                              return (
+                                <div key={`${depth}-${idx}`}>
+                                  <div className={`flex items-center gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${rowBgClass}`} style={{ marginLeft: `${depth * 40}px` }}>
+                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-sm transition-all ${status === 'added' ? 'bg-emerald-500 text-white' : (status === 'removed' || isDeleted) ? 'bg-rose-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                        Lv.{bomGetLevel(nodeData['階次'])}
+                                     </div>
+                                     <div className="flex-1 min-w-0">
+                                        <div className={`font-mono text-xs flex items-center gap-3 mb-1 ${isDeleted ? 'text-rose-300' : 'text-slate-500'}`}>
+                                            {bomSanitizeStr(nodeData['元件品號'])}
+                                            {status !== 'unchanged' && <span className={`px-2 py-0.5 rounded text-xs text-white font-bold uppercase ${status === 'added' ? 'bg-emerald-600' : status === 'removed' ? 'bg-rose-600' : 'bg-blue-600'}`}>{status}</span>}
+                                            {isDeleted && <span className="px-2 py-0.5 rounded text-xs bg-rose-600 text-white font-bold animate-pulse">🗑️ 已刪除</span>}
+                                            {hasChildren && <span className="px-2 py-0.5 rounded text-xs bg-indigo-600 text-white font-bold">📦 含子階層</span>}
                                         </div>
-                                      ) : (
-                                        <div className={`flex items-center gap-4 p-2 rounded-xl border ${isDeleted ? 'bg-rose-900/50 border-rose-700' : 'bg-black border-slate-800'}`}>
-                                            {isQtyModified && <span className="text-xs font-bold text-slate-600 line-through font-mono">原:{nodeData._originalData?.['標準用量']}</span>}
-                                            <input 
-                                              type="text" 
-                                              className={`w-20 border-none text-right font-bold px-3 py-1.5 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-all font-mono outline-none ${isDeleted ? 'bg-rose-900 text-rose-300' : 'bg-slate-900 text-indigo-400'}`}
-                                              value={nodeData['標準用量']}
-                                              onChange={(e) => handleUpdateQuantity(nodeData, e.target.value)}
-                                              disabled={isDeleted}
-                                            />
-                                            <span className="text-xs font-bold text-slate-600 uppercase">{bomSanitizeStr(nodeData['單位'])}</span>
+                                        <div className={`font-bold text-lg truncate transition-all ${isDeleted ? 'line-through text-rose-300' : status === 'removed' ? 'line-through text-rose-400 opacity-50' : 'text-white'}`}>
+                                            {bomSanitizeStr(nodeData['品    名'])}
                                         </div>
-                                      )}
+                                     </div>
+                                     <div className="flex items-center gap-6">
+                                        <div className="flex flex-col items-end">
+                                            { activeTab === 'compare' ? (
+                                              <div className="flex items-center gap-4">
+                                                 { qtyDiff ? (
+                                                   <div className="flex items-center gap-3 bg-blue-900 px-4 py-2 rounded-xl border border-blue-700">
+                                                     <span className="text-sm line-through text-slate-400 font-mono">{qtyDiff.old}</span>
+                                                     <ArrowRight size={16} className="text-blue-400"/>
+                                                     <span className="text-xl font-bold text-blue-300 font-mono">{qtyDiff.new}</span>
+                                                   </div>
+                                                 ) : (
+                                                   <span className="font-bold text-slate-300 text-xl font-mono">x{bomSanitizeStr(nodeData['標準用量'])}</span>
+                                                 )}
+                                                 <span className="text-xs font-bold text-slate-600 uppercase">{bomSanitizeStr(nodeData['單位'])}</span>
+                                              </div>
+                                            ) : (
+                                              <div className={`flex items-center gap-4 p-2 rounded-xl border ${isDeleted ? 'bg-rose-900/50 border-rose-700' : 'bg-black border-slate-800'}`}>
+                                                  {isQtyModified && <span className="text-xs font-bold text-slate-600 line-through font-mono">原:{nodeData._originalData?.['標準用量']}</span>}
+                                                  <input 
+                                                    type="text" 
+                                                    className={`w-20 border-none text-right font-bold px-3 py-1.5 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-all font-mono outline-none ${isDeleted ? 'bg-rose-900 text-rose-300' : 'bg-slate-900 text-indigo-400'}`}
+                                                    value={nodeData['標準用量']}
+                                                    onChange={(e) => handleUpdateQuantity(nodeData, e.target.value)}
+                                                    disabled={isDeleted}
+                                                  />
+                                                  <span className="text-xs font-bold text-slate-600 uppercase">{bomSanitizeStr(nodeData['單位'])}</span>
+                                              </div>
+                                            )}
+                                        </div>
+                                        { activeTab !== 'compare' && (
+                                          <button 
+                                            onClick={() => handleToggleDelete(nodeData)}
+                                            className={`h-10 w-10 rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg ${isDeleted ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-300' : 'bg-slate-800 text-slate-500 hover:text-white hover:bg-rose-500 border border-slate-700 hover:border-rose-500'}`}
+                                            title={isDeleted ? '點擊復原' : '點擊刪除'}
+                                          >
+                                            {isDeleted ? <RotateCcw size={20}/> : <Trash2 size={20}/>}
+                                          </button>
+                                        )}
+                                     </div>
                                   </div>
-                                  { activeTab !== 'compare' && (
-                                    <button 
-                                      onClick={() => handleToggleDelete(nodeData)}
-                                      className={`h-10 w-10 rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg ${isDeleted ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-300' : 'bg-slate-800 text-slate-500 hover:text-white hover:bg-rose-500 border border-slate-700 hover:border-rose-500'}`}
-                                      title={isDeleted ? '點擊復原' : '點擊刪除'}
-                                    >
-                                      {isDeleted ? <RotateCcw size={20}/> : <Trash2 size={20}/>}
-                                    </button>
+                                  {/* 遞迴渲染子階層的子階層 */}
+                                  {hasChildren && (
+                                    <div className="mt-2">
+                                      {renderChildren(nodeData.children, depth + 1)}
+                                    </div>
                                   )}
-                               </div>
-                            </div>
-                          );
-                        })}
+                                </div>
+                              );
+                            });
+                          };
+                          
+                          return renderChildren(detailData.children || detailData.node.children);
+                        })()}
                     </div>
                 ) : (
                     <div className="py-16 text-center text-slate-600 font-bold uppercase bg-slate-800 rounded-2xl border-2 border-dashed border-slate-700">
