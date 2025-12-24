@@ -6603,32 +6603,72 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
   
   // 載入公告並清除過期公告
   React.useEffect(() => {
-    const storageKey = `dashboard_announcements_${machineCode}`;
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      try {
-        const loadedAnnouncements = JSON.parse(saved);
-        
-        // 過濾掉超過 3 天的公告
-        const now = new Date();
-        const validAnnouncements = loadedAnnouncements.filter(announcement => {
-          const announcementDate = new Date(announcement.timestamp);
-          const diffTime = now - announcementDate;
-          const diffDays = diffTime / (1000 * 60 * 60 * 24);
-          return diffDays <= 3; // 保留 3 天內的公告
-        });
-        
-        // 如果有公告被清除，更新 localStorage
-        if (validAnnouncements.length !== loadedAnnouncements.length) {
-          localStorage.setItem(storageKey, JSON.stringify(validAnnouncements));
-          console.log(`🗑️ 已自動清除 ${loadedAnnouncements.length - validAnnouncements.length} 則過期公告`);
+    const loadAnnouncements = async () => {
+      const storageKey = `dashboard_announcements_${machineCode}`;
+      
+      // 先從 localStorage 載入
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const loadedAnnouncements = JSON.parse(saved);
+          
+          // 過濾掉超過 3 天的公告
+          const now = new Date();
+          const validAnnouncements = loadedAnnouncements.filter(announcement => {
+            const announcementDate = new Date(announcement.timestamp);
+            const diffTime = now - announcementDate;
+            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+            return diffDays <= 3; // 保留 3 天內的公告
+          });
+          
+          // 如果有公告被清除，更新 localStorage
+          if (validAnnouncements.length !== loadedAnnouncements.length) {
+            localStorage.setItem(storageKey, JSON.stringify(validAnnouncements));
+            console.log(`🗑️ 已自動清除 ${loadedAnnouncements.length - validAnnouncements.length} 則過期公告`);
+          }
+          
+          setAnnouncements(validAnnouncements);
+          console.log(`📦 從本地載入公告 (機台: ${machineCode})`, validAnnouncements);
+        } catch (err) {
+          console.error('載入公告失敗:', err);
         }
-        
-        setAnnouncements(validAnnouncements);
-      } catch (err) {
-        console.error('載入公告失敗:', err);
       }
-    }
+      
+      // 嘗試從 Firebase 同步最新公告
+      try {
+        const data = await Promise.race([
+          db.getDocs('dashboard_announcements'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        
+        if (data && data.length > 0) {
+          // 過濾出當前機台的公告
+          const filtered = data.filter(a => a.machineCode === machineCode);
+          
+          // 過濾掉超過 3 天的公告
+          const now = new Date();
+          const validAnnouncements = filtered.filter(announcement => {
+            const announcementDate = new Date(announcement.timestamp);
+            const diffTime = now - announcementDate;
+            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+            return diffDays <= 3;
+          });
+          
+          // 按時間排序（最新的在前）
+          const sorted = validAnnouncements.sort((a, b) => 
+            new Date(b.timestamp) - new Date(a.timestamp)
+          );
+          
+          setAnnouncements(sorted);
+          localStorage.setItem(storageKey, JSON.stringify(sorted));
+          console.log(`✅ 從 Firebase 同步公告 (機台: ${machineCode})`, sorted);
+        }
+      } catch (err) {
+        console.log('ℹ️ Firebase 公告同步失敗，使用本地資料:', err.message);
+      }
+    };
+    
+    loadAnnouncements();
   }, [machineCode]);
   
   // 定期檢查並清除過期公告（每小時檢查一次）
@@ -7194,7 +7234,27 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
           const [showHistory, setShowHistory] = React.useState(false);
           const [isSaving, setIsSaving] = React.useState(false);
           const [ownerFilter, setOwnerFilter] = React.useState(''); // 負責人篩選
+          const [currentMachineCode, setCurrentMachineCode] = React.useState(localStorage.getItem('selected_machine') || 'default');
           const currentUser = user?.displayName || user?.name || user?.username || '未知使用者';
+
+          // 監聽機台切換
+          React.useEffect(() => {
+            const handleMachineChange = () => {
+              const newMachineCode = localStorage.getItem('selected_machine') || 'default';
+              if (newMachineCode !== currentMachineCode) {
+                console.log(`🔄 機台切換: ${currentMachineCode} → ${newMachineCode}`);
+                setCurrentMachineCode(newMachineCode);
+              }
+            };
+            
+            window.addEventListener('storage', handleMachineChange);
+            window.addEventListener('machineChanged', handleMachineChange);
+            
+            return () => {
+              window.removeEventListener('storage', handleMachineChange);
+              window.removeEventListener('machineChanged', handleMachineChange);
+            };
+          }, [currentMachineCode]);
 
           // 獲取所有負責人列表（去重）
           const allOwners = React.useMemo(() => {
@@ -7254,15 +7314,39 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
             const loadData = async () => {
               try {
                 // 先從 localStorage 載入（按機台）
-                const machineCode = localStorage.getItem('selected_machine') || 'default';
+                const machineCode = currentMachineCode;
                 const storageKey = `progress_control_table_${machineCode}`;
                 const historyKey = `progress_control_history_${machineCode}`;
+                
+                console.log(`🔍 嘗試載入機台資料: ${machineCode}`);
                 
                 const localData = localStorage.getItem(storageKey);
                 if (localData) {
                   const parsed = JSON.parse(localData);
                   setScheduleData(parsed);
-                  console.log(`📦 從本地載入專案進度表 (機台: ${machineCode})`);
+                  console.log(`📦 從本地載入專案進度表 (機台: ${machineCode})`, parsed);
+                } else {
+                  // 如果沒有資料，重置為初始狀態
+                  console.log(`ℹ️ 機台 ${machineCode} 沒有儲存的資料，使用空白表格`);
+                  setScheduleData({
+                    productCode: '',
+                    createdDate: new Date().toISOString().split('T')[0],
+                    approver: '',
+                    rdManager: '',
+                    creator: '',
+                    rows: Array.from({ length: 25 }, (_, i) => ({
+                      id: `row-${Date.now()}-${i}`,
+                      seq: i + 1,
+                      taskName: '',
+                      plannedStart: '',
+                      plannedEnd: '',
+                      actualStart: '',
+                      actualEnd: '',
+                      workDays: 0,
+                      owner: '',
+                      note: ''
+                    }))
+                  });
                 }
                 
                 const localHistory = localStorage.getItem(historyKey);
@@ -7270,7 +7354,12 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
                   const parsed = JSON.parse(localHistory);
                   setChangeHistory(parsed);
                   console.log(`📦 從本地載入歷程記錄 (機台: ${machineCode})`);
+                } else {
+                  setChangeHistory([]);
                 }
+                
+                // 清空待儲存清單（切換機台時）
+                setPendingChanges([]);
                 
                 // 嘗試從 Firebase 載入（但不強制）
                 try {
@@ -7316,7 +7405,7 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
               }
             };
             loadData();
-          }, []);
+          }, [currentMachineCode]); // 監聽機台變化
 
           // 更新行資料
           const updateRow = (index, field, value) => {
@@ -7334,8 +7423,8 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
                 newRows[index].workDays = workDays;
               }
               
-              // 記錄到待儲存清單（不立即加入歷程）
-              if (oldValue !== value && value !== '') {
+              // 記錄到待儲存清單（不立即加入歷程）- 修正：允許記錄清空欄位的操作
+              if (oldValue !== value) {
                 const fieldNames = {
                   taskName: '任務名稱',
                   plannedStart: '預計開始時間',
@@ -7356,7 +7445,7 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
                     rowSeq: newRows[index].seq,
                     field: fieldNames[field],
                     oldValue: oldValue || '(空白)',
-                    newValue: value
+                    newValue: value || '(空白)'
                   };
                   
                   if (existingIndex >= 0) {
@@ -7444,12 +7533,12 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
               };
               
               // 先儲存到本地（依機台分別儲存）
-              const machineCode = localStorage.getItem('selected_machine') || 'default';
+              const machineCode = currentMachineCode;
               const storageKey = `progress_control_table_${machineCode}`;
               // 在資料中記錄機台代碼
               saveDataObj.machineCode = machineCode;
               localStorage.setItem(storageKey, JSON.stringify(saveDataObj));
-              console.log(`💾 已儲存到本地存儲 (機台: ${machineCode})`);
+              console.log(`💾 已儲存到本地存儲 (機台: ${machineCode})`, saveDataObj);
               
               // 嘗試儲存到 Firebase（但不強制）
               try {
@@ -21763,12 +21852,48 @@ const BOMManagerApp = ({ onBackToMenu }) => {
           const wb = window.XLSX.read(ab, { type: 'array' });
           data = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
         } else {
-          const lines = event.target.result.split(/\r?\n/).filter(l => l.trim() !== "");
-          const headers = lines[0].split(',').map(h => bomSanitizeStr(h));
+          // 改善的 CSV 解析邏輯
+          const text = event.target.result;
+          const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+          
+          // 解析 CSV 行，正確處理引號內的逗號
+          const parseCsvLine = (line) => {
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              const nextChar = line[i + 1];
+              
+              if (char === '"') {
+                if (inQuotes && nextChar === '"') {
+                  // 轉義的引號 ("") -> "
+                  current += '"';
+                  i++; // 跳過下一個引號
+                } else {
+                  // 切換引號狀態
+                  inQuotes = !inQuotes;
+                }
+              } else if (char === ',' && !inQuotes) {
+                // 欄位分隔符（不在引號內）
+                values.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            values.push(current.trim()); // 加入最後一個欄位
+            return values;
+          };
+          
+          const headers = parseCsvLine(lines[0]);
           data = lines.slice(1).map(line => {
-            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            const values = parseCsvLine(line);
             const row = {};
-            headers.forEach((h, i) => row[h] = values[i]?.replace(/^"|"$/g, '').trim() || "");
+            headers.forEach((h, i) => {
+              row[h] = values[i] || "";
+            });
             return row;
           });
         }
@@ -21896,103 +22021,44 @@ const BOMManagerApp = ({ onBackToMenu }) => {
       return;
     }
     
-    // 定義欄位順序（按照用戶提供的順序）
-    const fieldOrder = [
-      '主件品號', '階次', '元件品號', '品    名', '價格', '單位', '小單位', '屬性',
-      '標準品件數', '標準批量', '標準用時', '標準材料', '標準人工', '本階人工',
-      '本階加工', '標準批次', '本階設備', '本階數量', '規    格'
+    // 定義固定欄位順序，確保匯出匯入一致
+    const standardFields = [
+      '主件品號', '階次', '元件品號', '品    名', '規    格', '標準用量', '單位', 
+      '小單位', '屬性', '價格', '標準品件數', '標準批量', '標準用時', 
+      '標準材料', '標準人工', '本階人工', '本階加工', '標準批次', '本階設備', '本階數量'
     ];
     
-    // 檢查哪些欄位有資料
-    const fieldsWithData = fieldOrder.filter(field => {
-      return exportData.some(item => item[field] && item[field].toString().trim() !== '');
+    // 取得所有實際存在的欄位（包括標準欄位和其他自訂欄位）
+    const allFieldsSet = new Set();
+    exportData.forEach(item => {
+      Object.keys(item).forEach(key => allFieldsSet.add(key));
     });
     
-    // 如果沒有任何欄位有資料，至少顯示基本欄位
-    const displayFields = fieldsWithData.length > 0 ? fieldsWithData : ['主件品號', '階次', '元件品號', '品    名'];
+    // 組合欄位：標準欄位在前，其他欄位在後
+    const orderedFields = [
+      ...standardFields.filter(f => allFieldsSet.has(f)),
+      ...Array.from(allFieldsSet).filter(f => !standardFields.includes(f))
+    ];
     
-    // 欄位寬度映射
-    const fieldWidths = {
-      '主件品號': 80,
-      '階次': 35,
-      '元件品號': 80,
-      '品    名': 180,
-      '規    格': 150,
-      '價格': 60,
-      '單位': 40,
-      '小單位': 50,
-      '屬性': 60,
-      '標準用量': 50,
-      '標準品件數': 70,
-      '標準批量': 70,
-      '標準用時': 70,
-      '標準材料': 70,
-      '標準人工': 70,
-      '本階人工': 70,
-      '本階加工': 70,
-      '標準批次': 70,
-      '本階設備': 70,
-      '本階數量': 70
+    // CSV格式 - 正確處理包含逗號、引號和換行的值
+    const escapeCsvValue = (value) => {
+      const str = (value || '').toString();
+      // 如果包含逗號、引號或換行，需要用引號包裹並轉義內部引號
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
     };
     
-    // 生成精美的 HTML Excel 格式
-    const htmlContent = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          table { border-collapse: collapse; width: 100%; font-family: "微軟正黑體", Arial; }
-          th, td { border: 1px solid #000; padding: 6px; text-align: left; font-size: 10px; }
-          th { background-color: #4472C4; color: white; font-weight: bold; text-align: center; }
-          .header { font-size: 18px; font-weight: bold; text-align: center; padding: 15px; color: #1e3a8a; }
-          .subtitle { font-size: 14px; text-align: center; padding: 5px; color: #334155; font-weight: bold; }
-          .info { font-size: 12px; padding: 5px; margin: 10px 0; }
-          .level { text-align: center; background-color: #E7E6E6; font-weight: bold; }
-          .partno { background-color: #DEEAF6; font-weight: bold; }
-          .qty { text-align: center; background-color: #FFF4E6; }
-          .footer { margin-top: 20px; font-size: 10px; color: #666; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="header">飛絡力電子股份有限公司<br/>BOM 物料清單</div>
-        <div class="subtitle">套件構建報表</div>
-        <div class="info">匯出日期：${new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })} ${new Date().toLocaleTimeString('zh-TW')}</div>
-        <div class="info">項目數量：${exportData.length} 項</div>
-        <br/>
-        <table>
-          <thead>
-            <tr>
-              ${displayFields.map(field => `<th width="${fieldWidths[field] || 70}">${field}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>
-            ${exportData.map((item, index) => `
-              <tr>
-                ${displayFields.map(field => {
-                  const value = item[field] || '';
-                  let className = '';
-                  if (field === '階次') className = 'level';
-                  else if (field === '元件品號' || field === '主件品號') className = 'partno';
-                  else if (field.includes('用量') || field.includes('數量') || field === '單位' || field === '小單位') className = 'qty';
-                  return `<td class="${className}">${value}</td>`;
-                }).join('')}
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="footer">
-          表單編號：BOM-001<br/>
-          匯出時間：${new Date().toLocaleString('zh-TW')}<br/>
-          © ${new Date().getFullYear()} 飛絡力電子股份有限公司
-        </div>
-      </body>
-      </html>
-    `;
+    const csvContent = [
+      orderedFields.map(f => escapeCsvValue(f)).join(','),
+      ...exportData.map(item => orderedFields.map(field => escapeCsvValue(item[field])).join(','))
+    ].join('\n');
     
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `BOM物料清單_${new Date().toISOString().split('T')[0]}_${new Date().getTime()}.xls`;
+    link.download = `BOM物料清單_${new Date().toISOString().split('T')[0]}_${new Date().getTime()}.csv`;
     link.click();
   };
 
