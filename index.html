@@ -390,7 +390,7 @@
 
     <script type="text/babel" data-type="module">
 import ReactDOM from 'react-dom/client';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   LayoutDashboard, 
   PlusCircle, 
@@ -478,6 +478,9 @@ import {
   Box,
   PackageCheck,
   LayoutGrid,
+  ClipboardList,
+  Archive,
+  Camera,
   Diff,
   ArrowRightLeft,
   MinusCircle,
@@ -1707,7 +1710,8 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
     { id: 'WAR_ROOM', name: '產品開發戰情室' },
     { id: 'APPRAISAL', name: 'Appraisal 績效表' },
     { id: 'ELEC_SPEC', name: '電規追蹤系統' },
-    { id: 'BOM_MANAGER', name: 'BOM 智慧管理大師' }
+    { id: 'BOM_MANAGER', name: 'BOM 智慧管理大師' },
+    { id: 'DCO_MANAGER', name: 'DCO 設計變更系統' }
   ];
 
   useEffect(() => {
@@ -1808,6 +1812,7 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
                 <th className="px-6 py-4 font-semibold">姓名</th>
                 <th className="px-6 py-4 font-semibold">部門</th>
                 <th className="px-6 py-4 font-semibold">權限角色</th>
+                <th className="px-6 py-4 text-center font-semibold">設變權限</th>
                 <th className="px-6 py-4 text-center font-semibold">操作</th>
               </tr>
             </thead>
@@ -1818,6 +1823,19 @@ const UserManagement = ({ currentUser, onBackToMenu }) => {
                   <td className="px-6 py-4 text-slate-300">{u.displayName}</td>
                   <td className="px-6 py-4"><span className="px-3 py-1.5 bg-slate-700/50 rounded-lg text-xs text-slate-300 border border-slate-600/50">{u.department}</span></td>
                   <td className="px-6 py-4"><span className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${u.role === 'admin' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'}`}>{u.role === 'admin' ? '管理員' : '一般使用者'}</span></td>
+                  <td className="px-6 py-4 text-center">
+                    {u.role === 'admin' || (u.permissions && u.permissions.includes('DCO_MANAGER')) ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-xl text-xs font-semibold">
+                        <Edit3 size={12} />
+                        已開啟
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-500/20 text-slate-500 border border-slate-500/30 rounded-xl text-xs">
+                        <Shield size={12} />
+                        未開啟
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center gap-2">
                       <button onClick={() => startEdit(u)} className="text-blue-400 hover:text-blue-300 p-2 hover:bg-blue-500/20 rounded-lg transition-all"><Edit size={16}/></button>
@@ -15972,6 +15990,20 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
               <p className="text-slate-400 text-sm">BOM 結構分析、差異比對、套件組合匯出。</p>
             </button>
           )}
+
+          {hasPermission('DCO_MANAGER') && (
+            <button 
+              onClick={() => onSelect('DCO_MANAGER')}
+              className="bg-white/10 backdrop-blur-xl p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-orange-500/30 group text-left hover:bg-orange-500/10 relative overflow-hidden"
+            >
+              <div className="absolute top-3 right-3 bg-gradient-to-r from-orange-400 to-red-500 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg">設變</div>
+              <div className="bg-gradient-to-br from-orange-500 to-red-600 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform">
+                <Edit3 className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">設計變更管理系統</h2>
+              <p className="text-slate-400 text-sm">DCO 流程管理、單位簽核、變更追蹤紀錄。</p>
+            </button>
+          )}
           
           {user.role === 'admin' && (
             <button 
@@ -21224,6 +21256,1083 @@ const bomBuildBOMTree = (flatData) => {
   return tree;
 };
 
+// === 設計變更系統 (DCO Manager) ===
+const DCOManagerApp = ({ onBackToMenu, user }) => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [orders, setOrders] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const imageInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // 執行單位主數據
+  const EXECUTION_UNITS_MASTER = [
+    { id: 'mech', label: '機構設計' },
+    { id: 'elec', label: '電子設計' },
+    { id: 'art', label: '美術設計' },
+    { id: 'wire', label: '配線設計' },
+    { id: 'func', label: '功能中心' }
+  ];
+
+  // 格式化時間工具
+  const getCurrentTimestamp = () => {
+    const now = new Date();
+    return now.toLocaleString('zh-TW', { 
+      year: 'numeric', month: '2-digit', day: '2-digit', 
+      hour: '2-digit', minute: '2-digit', second: '2-digit' 
+    });
+  };
+
+  // 表單狀態
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [newOrder, setNewOrder] = useState({
+    orderNumber: '',
+    title: '',
+    productName: '',
+    machineModel: '',
+    requester: user?.displayName || '管理員 A001',
+    requireDate: '',
+    changeReason: '',
+    beforeChange: '',
+    afterChange: '',
+    priority: '中',
+    category: '結構變更',
+    customCategory: '',
+    reason: '',
+    impact: '',
+    images: [],
+    files: [],
+    executionUnits: EXECUTION_UNITS_MASTER.map(u => ({
+      ...u,
+      selected: false,
+      startDate: '',
+      endDate: '',
+      hours: '',
+      owner: '',
+      approved: false
+    }))
+  });
+
+  // 載入資料
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // 優先從 localStorage 載入
+        const localData = localStorage.getItem('dco_orders');
+        if (localData) {
+          setOrders(JSON.parse(localData));
+        }
+        
+        // 從 Firebase 同步
+        const firebaseData = await db.getDocs('dco_orders');
+        if (firebaseData && firebaseData.length > 0) {
+          setOrders(firebaseData);
+          localStorage.setItem('dco_orders', JSON.stringify(firebaseData));
+        }
+      } catch (err) {
+        console.error('載入 DCO 資料失敗:', err);
+      }
+    };
+    loadData();
+  }, []);
+
+  // 分流資料
+  const activeOrders = useMemo(() => orders.filter(o => o.status !== '已核准'), [orders]);
+  const completedOrders = useMemo(() => orders.filter(o => o.status === '已核准'), [orders]);
+
+  // 統計數據
+  const statsValues = useMemo(() => {
+    return {
+      total: orders.length,
+      pending: orders.filter(o => o.status === '單位執行中').length,
+      approved: orders.filter(o => o.status === '已核准').length,
+      waiting: orders.filter(o => o.status === '待主管核准').length
+    };
+  }, [orders]);
+
+  // 每月數據統計
+  const monthlyStats = useMemo(() => {
+    const monthsMap = {};
+    orders.forEach(order => {
+      const datePart = order.createdTime.split(' ')[0];
+      const yearMonth = datePart.substring(0, 7);
+      monthsMap[yearMonth] = (monthsMap[yearMonth] || 0) + 1;
+    });
+
+    return Object.entries(monthsMap)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, count]) => ({ month, count }));
+  }, [orders]);
+
+  // 建立/更新變更單
+  const handleCreateOrder = async (e) => {
+    e.preventDefault();
+    
+    const selectedUnits = newOrder.executionUnits.filter(u => u.selected);
+    
+    if (isEditing && editingOrderId) {
+      // 編輯模式 - 更新現有單據
+      const updatedOrder = {
+        ...newOrder,
+        id: newOrder.orderNumber || editingOrderId,
+        category: isCustomCategory ? newOrder.customCategory : newOrder.category,
+        status: selectedUnits.length > 0 ? (selectedUnits.every(u => u.approved) ? '待主管核准' : '單位執行中') : '待主管核准',
+        executionUnits: selectedUnits,
+        thumbnail: newOrder.images.length > 0 ? newOrder.images[0].preview : null
+      };
+      
+      const updatedOrders = orders.map(o => o.id === editingOrderId ? { ...o, ...updatedOrder } : o);
+      setOrders(updatedOrders);
+      
+      // 儲存到 localStorage 和 Firebase
+      try {
+        localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+        await db.updateDoc('dco_orders', editingOrderId, updatedOrder);
+      } catch (err) {
+        console.error('更新 DCO 資料失敗:', err);
+      }
+    } else {
+      // 新增模式 - 建立新單據
+      const autoGeneratedId = `DCO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(3, '0')}`;
+      const id = newOrder.orderNumber || autoGeneratedId;
+      const timestamp = getCurrentTimestamp();
+      
+      const createdOrder = {
+        ...newOrder,
+        id,
+        createdTime: timestamp,
+        completedTime: null,
+        category: isCustomCategory ? newOrder.customCategory : newOrder.category,
+        status: selectedUnits.length > 0 ? '單位執行中' : '待主管核准',
+        executionUnits: selectedUnits,
+        thumbnail: newOrder.images.length > 0 ? newOrder.images[0].preview : null
+      };
+      
+      const updatedOrders = [createdOrder, ...orders];
+      setOrders(updatedOrders);
+      
+      // 儲存到 localStorage 和 Firebase
+      try {
+        localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+        await db.addDoc('dco_orders', createdOrder);
+      } catch (err) {
+        console.error('儲存 DCO 資料失敗:', err);
+      }
+    }
+    
+    setActiveTab('list');
+    resetForm();
+  };
+
+  const resetForm = () => {
+    // 新建時自動產生單號
+    const autoOrderNumber = `DCO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(3, '0')}`;
+    
+    setNewOrder({
+      orderNumber: autoOrderNumber,
+      title: '', 
+      productName: '',
+      machineModel: '',
+      requester: user?.displayName || '管理員 A001', 
+      requireDate: '',
+      changeReason: '',
+      beforeChange: '',
+      afterChange: '',
+      priority: '中', 
+      category: '結構變更', 
+      customCategory: '', 
+      reason: '', 
+      impact: '', 
+      images: [], 
+      files: [],
+      executionUnits: EXECUTION_UNITS_MASTER.map(u => ({
+        ...u, 
+        selected: false, 
+        startDate: '', 
+        endDate: '', 
+        hours: '', 
+        owner: '', 
+        approved: false
+      }))
+    });
+    setIsCustomCategory(false);
+    setIsEditing(false);
+    setEditingOrderId(null);
+  };
+
+  const handleEditOrder = (order) => {
+    setIsEditing(true);
+    setEditingOrderId(order.id);
+    setNewOrder({
+      orderNumber: order.id || '',
+      title: order.title || '',
+      productName: order.productName || '',
+      machineModel: order.machineModel || '',
+      requester: order.requester || '',
+      requireDate: order.requireDate || '',
+      changeReason: order.changeReason || '',
+      beforeChange: order.beforeChange || '',
+      afterChange: order.afterChange || '',
+      priority: order.priority || '中',
+      category: order.category || '結構變更',
+      customCategory: order.customCategory || '',
+      reason: order.reason || '',
+      impact: order.impact || '',
+      images: order.images || [],
+      files: order.files || [],
+      executionUnits: (order.executionUnits && order.executionUnits.length > 0) 
+        ? order.executionUnits 
+        : EXECUTION_UNITS_MASTER.map(u => ({
+            ...u,
+            selected: false,
+            startDate: '',
+            endDate: '',
+            hours: '',
+            owner: '',
+            approved: false
+          }))
+    });
+    setActiveTab('create');
+  };
+
+  const handleFileUpload = (e, targetType) => {
+    const uploadedFiles = Array.from(e.target.files);
+    uploadedFiles.forEach(file => {
+      const isImage = file.type.startsWith('image/');
+      const fileData = { 
+        name: file.name, 
+        size: (file.size / 1024 / 1024).toFixed(2) + ' MB', 
+        type: file.type 
+      };
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          fileData.preview = event.target.result;
+          setNewOrder(prev => ({ ...prev, images: [...prev.images, fileData] }));
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setNewOrder(prev => ({ ...prev, files: [...prev.files, fileData] }));
+      }
+    });
+  };
+
+  const removeMedia = (index, type) => {
+    setNewOrder(prev => ({ ...prev, [type]: prev[type].filter((_, i) => i !== index) }));
+  };
+
+  const toggleUnit = (id) => {
+    setNewOrder(prev => ({ 
+      ...prev, 
+      executionUnits: prev.executionUnits.map(u => 
+        u.id === id ? { ...u, selected: !u.selected } : u
+      ) 
+    }));
+  };
+
+  const updateUnitField = (id, field, value) => {
+    setNewOrder(prev => ({ 
+      ...prev, 
+      executionUnits: prev.executionUnits.map(u => 
+        u.id === id ? { ...u, [field]: value } : u
+      ) 
+    }));
+  };
+
+  const handleUnitApprove = async (orderId, unitId) => {
+    const updatedOrders = orders.map(order => {
+      if (order.id !== orderId) return order;
+      const updatedUnits = order.executionUnits.map(u => 
+        u.id === unitId ? { ...u, approved: true } : u
+      );
+      const allApproved = updatedUnits.every(u => u.approved);
+      const newOrderState = { 
+        ...order, 
+        executionUnits: updatedUnits, 
+        status: allApproved ? '待主管核准' : '單位執行中' 
+      };
+      if (selectedOrder?.id === orderId) setSelectedOrder(newOrderState);
+      return newOrderState;
+    });
+    
+    setOrders(updatedOrders);
+    
+    try {
+      localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+      const orderToUpdate = updatedOrders.find(o => o.id === orderId);
+      if (orderToUpdate) {
+        await db.updateDoc('dco_orders', orderId, orderToUpdate);
+      }
+    } catch (err) {
+      console.error('更新 DCO 資料失敗:', err);
+    }
+  };
+
+  const handleDownloadFile = (file) => {
+    if (file.preview) {
+      // 處理圖片（base64格式）
+      const link = document.createElement('a');
+      link.href = file.preview;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      // 處理一般文件
+      alert('此文件為模擬數據，實際環境中會從伺服器下載');
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case '已核准': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case '待主管核准': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+      case '單位執行中': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case '退回': return 'bg-rose-100 text-rose-700 border-rose-200';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
+  const renderTable = (dataList) => {
+    const displayData = dataList.filter(o => 
+      o.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      o.id.includes(searchQuery)
+    );
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-in fade-in duration-500">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold">
+            <tr>
+              <th className="px-6 py-4">單號</th>
+              <th className="px-6 py-4">變更主題 / 分類</th>
+              <th className="px-6 py-4">品名 / 機種</th>
+              <th className="px-6 py-4 text-center">狀態</th>
+              <th className="px-6 py-4">建立時間</th>
+              <th className="px-6 py-4 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {displayData.length > 0 ? displayData.map(order => (
+              <tr key={order.id} className="hover:bg-slate-50 transition-colors group">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                      {order.thumbnail ? (
+                        <img src={order.thumbnail} alt="DCO preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon size={20} className="text-slate-300" />
+                      )}
+                    </div>
+                    <span className="font-mono text-xs font-bold text-slate-600">{order.id}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="font-medium text-slate-800">{order.title}</div>
+                  <div className="text-xs text-indigo-500 font-medium">{order.category}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-sm text-slate-700">{order.productName || '-'}</div>
+                  <div className="text-xs text-slate-500">{order.machineModel || '-'}</div>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${getStatusColor(order.status)}`}>
+                    {order.status}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-xs text-slate-500 flex items-center gap-1">
+                    <Calendar size={12} className="text-slate-400" />
+                    {order.createdTime.split(' ')[0]}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button 
+                      onClick={() => handleEditOrder(order)} 
+                      className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg"
+                      title="編輯"
+                    >
+                      <Edit size={18} />
+                    </button>
+                    <button 
+                      onClick={() => { setSelectedOrder(order); setShowDetail(true); }} 
+                      className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-lg"
+                      title="查看詳情"
+                    >
+                      <Eye size={18} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan="6" className="px-6 py-12 text-center text-slate-400 italic">查無資料</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-64 bg-slate-900 text-white flex flex-col hidden lg:flex shrink-0">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+          <div className="bg-indigo-600 p-2 rounded-lg"><Layers size={24} /></div>
+          <span className="font-bold text-xl tracking-tight">DCO Manager</span>
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
+          <button 
+            onClick={() => setActiveTab('dashboard')} 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+          >
+            <LayoutDashboard size={20} />
+            <span className="font-medium">系統總覽</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('list')} 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'list' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+          >
+            <ClipboardList size={20} />
+            <span className="font-medium">變更單管理</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('archive')} 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'archive' ? 'bg-emerald-600 shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+          >
+            <Archive size={20} />
+            <span className="font-medium">完成區 (History)</span>
+          </button>
+          <button 
+            onClick={() => { resetForm(); setActiveTab('create'); }} 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'create' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+          >
+            <PlusCircle size={20} />
+            <span className="font-medium">建立新設變單</span>
+          </button>
+        </nav>
+        <div className="p-4 border-t border-slate-800">
+          <button 
+            onClick={onBackToMenu} 
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors text-sm font-medium"
+          >
+            <ArrowLeft size={18} />
+            返回主選單
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto flex flex-col relative">
+        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-20">
+          <h2 className="text-xl font-bold text-slate-800">
+            {activeTab === 'dashboard' && '系統總覽'}
+            {activeTab === 'list' && '進行中設變單'}
+            {activeTab === 'archive' && '完成區存檔'}
+            {activeTab === 'create' && '建立新設計變更單'}
+          </h2>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="搜尋標題或編號..."
+              className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-indigo-500 w-64"
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </header>
+
+        <div className="p-8">
+          {activeTab === 'dashboard' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                  { label: '總變更單', value: statsValues.total, bg: 'bg-blue-100', text: 'text-blue-600', icon: FileText },
+                  { label: '單位執行中', value: statsValues.pending, bg: 'bg-amber-100', text: 'text-amber-600', icon: Clock },
+                  { label: '待主管核准', value: statsValues.waiting, bg: 'bg-indigo-100', text: 'text-indigo-600', icon: ClipboardList },
+                  { label: '已完成 (存檔)', value: statsValues.approved, bg: 'bg-emerald-100', text: 'text-emerald-600', icon: Archive },
+                ].map((s, idx) => {
+                  const Icon = s.icon;
+                  return (
+                    <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                      <div className={`${s.bg} w-10 h-10 rounded-lg flex items-center justify-center ${s.text} mb-4`}>
+                        <Icon size={20} />
+                      </div>
+                      <div className="text-slate-500 text-sm font-medium">{s.label}</div>
+                      <div className="text-3xl font-bold mt-1">{s.value}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Monthly Statistics Chart */}
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <BarChart3 className="text-indigo-600" size={20} />
+                      設變單每月建立趨勢圖
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">根據系統建立時間自動統計各月份案件總數</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+                    <TrendingUp size={14} /> 近期數據
+                  </div>
+                </div>
+
+                <div className="flex items-end justify-between h-48 px-4 gap-4">
+                  {monthlyStats.length > 0 ? monthlyStats.map((item, idx) => {
+                    const maxCount = Math.max(...monthlyStats.map(i => i.count));
+                    const heightPercent = (item.count / maxCount) * 100;
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col items-center group relative">
+                        <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[10px] px-2 py-1 rounded shadow-xl pointer-events-none mb-2 font-bold">
+                          {item.count} 筆單據
+                        </div>
+                        <div 
+                          className="w-full bg-indigo-500/10 group-hover:bg-indigo-500/20 rounded-t-lg transition-all relative flex items-end justify-center overflow-hidden"
+                          style={{ height: '100%' }}
+                        >
+                          <div 
+                            className="w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-lg transition-all duration-700 ease-out"
+                            style={{ height: `${heightPercent}%` }}
+                          ></div>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-bold mt-4 transform -rotate-45 md:rotate-0">
+                          {item.month}
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm italic">
+                      暫無足夠數據進行統計
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border border-slate-100">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <History size={16} className="text-slate-400" /> 近期動態
+                  </h4>
+                  <div className="space-y-3">
+                    {orders.slice(0, 3).map(order => (
+                      <div key={order.id} className="flex items-center justify-between text-xs p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all">
+                        <span className="font-bold text-slate-700 truncate max-w-[150px]">{order.title}</span>
+                        <span className="text-slate-400 font-mono">{order.id}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-xl shadow-indigo-200 flex flex-col justify-center">
+                  <h4 className="font-bold mb-2">管理提醒</h4>
+                  <p className="text-sm opacity-90 leading-relaxed">
+                    目前共有 <span className="font-bold underline">{statsValues.pending + statsValues.waiting}</span> 筆案件正在處理中。
+                    請主辦人員留意各單位的簽核進度，以確保設計變更如期導入。
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'list' && renderTable(activeOrders)}
+
+          {activeTab === 'archive' && renderTable(completedOrders)}
+
+          {activeTab === 'create' && (
+            <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="p-8 border-b border-slate-100 bg-slate-50/50">
+                <h3 className="text-xl font-bold flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl ${isEditing ? 'bg-amber-600' : 'bg-indigo-600'} text-white flex items-center justify-center`}>
+                    {isEditing ? <Edit size={22} /> : <PlusCircle size={22} />}
+                  </div>
+                  {isEditing ? `編輯設計變更單 (${editingOrderId})` : '建立新設計變更單 (DCO)'}
+                </h3>
+              </div>
+              <form onSubmit={handleCreateOrder} className="p-8 space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">單號 *</label>
+                    <input 
+                      required 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono font-bold" 
+                      value={newOrder.orderNumber} 
+                      onChange={(e) => setNewOrder({...newOrder, orderNumber: e.target.value})} 
+                      placeholder="DCO-2025-001"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">💡 系統已自動產生單號，您可以手動修改</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">變更主題 *</label>
+                    <input 
+                      required 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      value={newOrder.title} 
+                      onChange={(e) => setNewOrder({...newOrder, title: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">品名</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      value={newOrder.productName} 
+                      onChange={(e) => setNewOrder({...newOrder, productName: e.target.value})} 
+                      placeholder="請輸入產品名稱"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">機種</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      value={newOrder.machineModel} 
+                      onChange={(e) => setNewOrder({...newOrder, machineModel: e.target.value})} 
+                      placeholder="請輸入機種型號"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">申請人</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      value={newOrder.requester} 
+                      onChange={(e) => setNewOrder({...newOrder, requester: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">需求日</label>
+                    <input 
+                      type="date" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      value={newOrder.requireDate} 
+                      onChange={(e) => setNewOrder({...newOrder, requireDate: e.target.value})} 
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">設變原因</label>
+                    <textarea 
+                      rows="4"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" 
+                      value={newOrder.changeReason} 
+                      onChange={(e) => setNewOrder({...newOrder, changeReason: e.target.value})} 
+                      placeholder="請詳細說明設計變更的原因..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">變更前</label>
+                    <textarea 
+                      rows="3"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" 
+                      value={newOrder.beforeChange} 
+                      onChange={(e) => setNewOrder({...newOrder, beforeChange: e.target.value})} 
+                      placeholder="變更前的狀態或規格..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">變更後</label>
+                    <textarea 
+                      rows="3"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" 
+                      value={newOrder.afterChange} 
+                      onChange={(e) => setNewOrder({...newOrder, afterChange: e.target.value})} 
+                      placeholder="變更後的狀態或規格..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">分類</label>
+                    <div className="flex gap-2">
+                      <select 
+                        className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={isCustomCategory ? 'custom' : newOrder.category}
+                        onChange={(e) => { 
+                          e.target.value === 'custom' ? setIsCustomCategory(true) : (setIsCustomCategory(false), setNewOrder({...newOrder, category: e.target.value})) 
+                        }}
+                      >
+                        <option>結構變更</option>
+                        <option>電子變更</option>
+                        <option>包材變更</option>
+                        <option>韌體變更</option>
+                        <option value="custom">-- 自定義名稱 --</option>
+                      </select>
+                      {isCustomCategory && (
+                        <input 
+                          required 
+                          placeholder="輸入名稱" 
+                          className="flex-1 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl" 
+                          value={newOrder.customCategory} 
+                          onChange={(e) => setNewOrder({...newOrder, customCategory: e.target.value})} 
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">優先級</label>
+                    <select 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" 
+                      value={newOrder.priority} 
+                      onChange={(e) => setNewOrder({...newOrder, priority: e.target.value})}
+                    >
+                      <option>低</option>
+                      <option>中</option>
+                      <option>高</option>
+                      <option>緊急</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="border border-slate-100 rounded-2xl overflow-hidden">
+                  <div className="bg-slate-50 px-6 py-3 border-b border-slate-100">
+                    <h4 className="text-sm font-bold text-slate-600">設變執行單位配置</h4>
+                  </div>
+                  <div className="p-2 overflow-x-auto text-xs">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-slate-400">
+                          <th className="px-4 py-2 text-left">勾選</th>
+                          <th className="px-4 py-2 text-left">單位</th>
+                          <th className="px-4 py-2 text-left">期間 (起 ~ 迄)</th>
+                          <th className="px-4 py-2 text-left">工時(H)</th>
+                          <th className="px-4 py-2 text-left">主辦</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {newOrder.executionUnits.map((u) => (
+                          <tr key={u.id} className={u.selected ? 'bg-indigo-50/30' : ''}>
+                            <td className="px-4 py-3">
+                              <input 
+                                type="checkbox" 
+                                checked={u.selected} 
+                                onChange={() => toggleUnit(u.id)} 
+                                className="rounded text-indigo-600" 
+                              />
+                            </td>
+                            <td className="px-4 py-3 font-medium">{u.label}</td>
+                            <td className="px-4 py-3 flex gap-2">
+                              <input 
+                                disabled={!u.selected} 
+                                type="date" 
+                                className="border rounded px-1 disabled:opacity-30" 
+                                value={u.startDate} 
+                                onChange={(e) => updateUnitField(u.id, 'startDate', e.target.value)} 
+                              />
+                              <input 
+                                disabled={!u.selected} 
+                                type="date" 
+                                className="border rounded px-1 disabled:opacity-30" 
+                                value={u.endDate} 
+                                onChange={(e) => updateUnitField(u.id, 'endDate', e.target.value)} 
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input 
+                                disabled={!u.selected} 
+                                type="number" 
+                                className="w-12 border rounded px-1" 
+                                value={u.hours} 
+                                onChange={(e) => updateUnitField(u.id, 'hours', e.target.value)} 
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input 
+                                disabled={!u.selected} 
+                                type="text" 
+                                className="w-20 border rounded px-1" 
+                                value={u.owner} 
+                                onChange={(e) => updateUnitField(u.id, 'owner', e.target.value)} 
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
+                      <Camera size={14} className="text-indigo-500" /> 影像/相片資料 (Images)
+                    </label>
+                    <div 
+                      onClick={() => imageInputRef.current?.click()} 
+                      className="border-2 border-dashed border-slate-200 rounded-3xl p-6 text-center bg-slate-50 hover:bg-indigo-50/50 cursor-pointer group transition-all"
+                    >
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        multiple 
+                        hidden 
+                        ref={imageInputRef} 
+                        onChange={(e) => handleFileUpload(e, 'images')} 
+                      />
+                      <ImageIcon className="mx-auto text-slate-300 group-hover:text-indigo-500 mb-2" size={28} />
+                      <p className="text-xs font-bold text-slate-600">點擊上傳圖片</p>
+                    </div>
+                    {newOrder.images.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3">
+                        {newOrder.images.map((img, idx) => (
+                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group shadow-sm">
+                            <img src={img.preview} className="w-full h-full object-cover" alt="upload" />
+                            <button 
+                              type="button" 
+                              onClick={() => removeMedia(idx, 'images')} 
+                              className="absolute top-1 right-1 bg-white/80 p-1 rounded-full text-rose-500 opacity-0 group-hover:opacity-100"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
+                      <File size={14} className="text-blue-500" /> 工程/附件檔案 (Documents)
+                    </label>
+                    <div 
+                      onClick={() => fileInputRef.current?.click()} 
+                      className="border-2 border-dashed border-slate-200 rounded-3xl p-6 text-center bg-slate-50 hover:bg-blue-50/50 cursor-pointer group transition-all"
+                    >
+                      <input 
+                        type="file" 
+                        multiple 
+                        hidden 
+                        ref={fileInputRef} 
+                        onChange={(e) => handleFileUpload(e, 'files')} 
+                      />
+                      <Paperclip className="mx-auto text-slate-300 group-hover:text-blue-500 mb-2" size={28} />
+                      <p className="text-xs font-bold text-slate-600">點擊上傳文件 (PDF, CAD...)</p>
+                    </div>
+                    {newOrder.files.length > 0 && (
+                      <div className="space-y-2">
+                        {newOrder.files.map((file, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm text-xs">
+                            <div className="flex items-center gap-2 truncate">
+                              <FileText size={16} className="text-blue-500 shrink-0" />
+                              <span className="truncate font-medium">{file.name}</span>
+                            </div>
+                            <button 
+                              type="button" 
+                              onClick={() => removeMedia(idx, 'files')} 
+                              className="text-slate-300 hover:text-rose-500"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-6 flex justify-end gap-4 border-t">
+                  <button 
+                    type="button" 
+                    onClick={() => { setActiveTab('list'); resetForm(); }} 
+                    className="px-6 py-3 font-bold text-slate-500 hover:bg-slate-100 rounded-xl"
+                  >
+                    取消
+                  </button>
+                  <button 
+                    type="submit" 
+                    className={`px-12 py-3 ${isEditing ? 'bg-amber-600 shadow-amber-100' : 'bg-indigo-600 shadow-indigo-100'} text-white rounded-xl font-bold shadow-lg`}
+                  >
+                    {isEditing ? '更新變更單' : '送出申請'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+
+        {/* 詳細資訊 Modal */}
+        {showDetail && selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowDetail(false)}></div>
+            <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-8 max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex gap-4">
+                    <div className="w-16 h-16 rounded-2xl border bg-slate-50 overflow-hidden flex items-center justify-center">
+                      {selectedOrder.thumbnail ? (
+                        <img src={selectedOrder.thumbnail} className="w-full h-full object-cover" alt="thumb" />
+                      ) : (
+                        <ImageIcon className="text-slate-300" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-xs font-mono font-bold text-indigo-400 mb-1">{selectedOrder.id}</div>
+                      <h3 className="text-2xl font-bold text-slate-800">{selectedOrder.title}</h3>
+                    </div>
+                  </div>
+                  <span className={`px-4 py-1 rounded-full text-xs font-bold border ${getStatusColor(selectedOrder.status)}`}>
+                    {selectedOrder.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8 mb-8 text-sm border-b pb-8">
+                  <div>
+                    <div className="text-slate-400 font-bold mb-3 uppercase text-xs tracking-wider">流程與時間紀錄</div>
+                    <div className="space-y-1 text-xs">
+                      <p className="flex items-center gap-2">
+                        <User size={12} className="text-slate-400"/> 申請人：{selectedOrder.requester}
+                      </p>
+                      <p className="flex items-center gap-2 font-medium text-slate-600">
+                        <PlusCircle size={12} className="text-indigo-400"/> 建立時間：{selectedOrder.createdTime}
+                      </p>
+                      {selectedOrder.completedTime && (
+                        <p className="flex items-center gap-2 font-bold text-emerald-600">
+                          <CheckCircle2 size={12} className="text-emerald-500"/> 核准完成：{selectedOrder.completedTime}
+                        </p>
+                      )}
+                    </div>
+                    <p className="mt-3">分類：<span className="font-bold text-indigo-600">{selectedOrder.category}</span></p>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 font-bold mb-3 uppercase text-xs tracking-wider">優先級與權重</div>
+                    <p className="font-bold text-rose-500 uppercase flex items-center gap-2">
+                      <AlertCircle size={14}/> {selectedOrder.priority}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mb-8">
+                  <div className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">單位執行進度</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedOrder.executionUnits.map((u) => (
+                      <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="text-xs">
+                          <div className="font-bold text-slate-700 flex items-center gap-1 mb-1">
+                            {u.label} {u.approved ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Clock size={12} className="text-amber-500" />}
+                          </div>
+                          <div className="text-slate-500">主辦: {u.owner || '-'} | 期間: {u.startDate || '-'} ~ {u.endDate || '-'}</div>
+                        </div>
+                        {!u.approved && (
+                          <button 
+                            onClick={() => handleUnitApprove(selectedOrder.id, u.id)} 
+                            className="text-[10px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold"
+                          >
+                            簽核
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedOrder.images && selectedOrder.images.length > 0 && (
+                  <div className="mb-8">
+                    <div className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">影像/相片展示</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {selectedOrder.images.map((img, i) => (
+                        <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-slate-200 group relative">
+                          <img src={img.preview} className="w-full h-full object-cover" alt="gallery" />
+                          <div 
+                            onClick={() => handleDownloadFile(img)}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
+                          >
+                            <Download size={20} className="text-white" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mb-8">
+                  <div className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">工程附件清單</div>
+                  <div className="space-y-2">
+                    {selectedOrder.files && selectedOrder.files.length > 0 ? selectedOrder.files.map((file, i) => (
+                      <div key={i} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
+                            <FileText size={18}/>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium">{file.name}</div>
+                            <div className="text-[10px] text-slate-400">{file.size}</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDownloadFile(file)}
+                          className="p-2 hover:bg-indigo-50 rounded-lg transition-colors"
+                          title="下載檔案"
+                        >
+                          <Download size={18} className="text-slate-400 hover:text-indigo-600" />
+                        </button>
+                      </div>
+                    )) : (
+                      <div className="text-xs text-slate-400 italic py-4 border-2 border-dashed rounded-2xl text-center">無附件文件</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t flex justify-between items-center">
+                  <button 
+                    onClick={() => setShowDetail(false)} 
+                    className="text-sm font-bold text-slate-400 hover:text-slate-600 flex items-center gap-2"
+                  >
+                    <ArrowLeft size={16}/> 返回
+                  </button>
+                  <div className="flex gap-3">
+                    {selectedOrder.status === '待主管核准' && (
+                      <button 
+                        onClick={async () => {
+                          const finishTimestamp = getCurrentTimestamp();
+                          const updatedOrders = orders.map(o => o.id === selectedOrder.id ? { 
+                            ...o, 
+                            status: '已核准',
+                            completedTime: finishTimestamp
+                          } : o);
+                          setOrders(updatedOrders);
+                          
+                          try {
+                            localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+                            await db.updateDoc('dco_orders', selectedOrder.id, { 
+                              status: '已核准', 
+                              completedTime: finishTimestamp 
+                            });
+                          } catch (err) {
+                            console.error('更新狀態失敗:', err);
+                          }
+                          
+                          setShowDetail(false);
+                          setActiveTab('archive'); 
+                        }}
+                        className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200"
+                      >
+                        主管核准結案
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setShowDetail(false)} 
+                      className="px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold"
+                    >
+                      關閉
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
 const bomStandardizeData = (rawArray) => {
   if (!rawArray || !Array.isArray(rawArray)) return [];
   return rawArray.map(item => {
@@ -23110,6 +24219,10 @@ function App() {
 
   if (system === 'BOM_MANAGER') {
     return renderWithThemeToggle(<BOMManagerApp onBackToMenu={() => setSystem(null)} />);
+  }
+
+  if (system === 'DCO_MANAGER') {
+    return renderWithThemeToggle(<DCOManagerApp onBackToMenu={() => setSystem(null)} user={user} />);
   }
   
   if (system === 'ADMIN') {
