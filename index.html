@@ -6496,6 +6496,32 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
   const displayTasks = tasks || [];
   const displayChanges = changes || [];
   const displayHistory = history || [];
+  
+  // 公告欄狀態
+  const [announcements, setAnnouncements] = React.useState([]);
+  const [newAnnouncement, setNewAnnouncement] = React.useState('');
+  const [showAnnouncementInput, setShowAnnouncementInput] = React.useState(false);
+  const [machineCode, setMachineCode] = React.useState(localStorage.getItem('selected_machine') || 'default');
+  const currentUser = user?.displayName || user?.name || user?.username || '未知使用者';
+
+  // 監聽機台切換
+  React.useEffect(() => {
+    const handleStorageChange = () => {
+      const newMachineCode = localStorage.getItem('selected_machine') || 'default';
+      if (newMachineCode !== machineCode) {
+        setMachineCode(newMachineCode);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    // 也監聽自定義事件（同頁面切換）
+    window.addEventListener('machineChanged', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('machineChanged', handleStorageChange);
+    };
+  }, [machineCode]);
 
   // Calculate Stats
   const projectIds = displayProjects.map(p => p.id);
@@ -6520,9 +6546,234 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
     const days = Math.floor((new Date() - new Date(t.endDate)) / (1000 * 60 * 60 * 24));
     return sum + days;
   }, 0);
+  
+  const addAnnouncement = () => {
+    if (!newAnnouncement.trim()) {
+      alert('⚠️ 請輸入公告內容');
+      return;
+    }
+    
+    const announcement = {
+      id: `announcement-${Date.now()}`,
+      content: newAnnouncement,
+      author: currentUser,
+      timestamp: new Date().toISOString(),
+      machineCode: machineCode
+    };
+    
+    const updatedAnnouncements = [announcement, ...announcements];
+    setAnnouncements(updatedAnnouncements);
+    
+    // 儲存到 localStorage（按機台儲存）
+    const storageKey = `dashboard_announcements_${machineCode}`;
+    localStorage.setItem(storageKey, JSON.stringify(updatedAnnouncements));
+    
+    // 嘗試儲存到 Firebase
+    try {
+      db.addDoc('dashboard_announcements', announcement).catch(err => {
+        console.log('ℹ️ Firebase 同步失敗，但本地已儲存:', err.message);
+      });
+    } catch (err) {
+      console.log('Firebase 不可用');
+    }
+    
+    setNewAnnouncement('');
+    setShowAnnouncementInput(false);
+  };
+  
+  const deleteAnnouncement = (id) => {
+    if (!confirm('確定要刪除此公告嗎？')) return;
+    
+    const updatedAnnouncements = announcements.filter(a => a.id !== id);
+    setAnnouncements(updatedAnnouncements);
+    
+    // 更新 localStorage
+    const storageKey = `dashboard_announcements_${machineCode}`;
+    localStorage.setItem(storageKey, JSON.stringify(updatedAnnouncements));
+    
+    // 嘗試從 Firebase 刪除
+    try {
+      db.deleteDoc('dashboard_announcements', id).catch(err => {
+        console.log('ℹ️ Firebase 刪除失敗:', err.message);
+      });
+    } catch (err) {
+      console.log('Firebase 不可用');
+    }
+  };
+  
+  // 載入公告並清除過期公告
+  React.useEffect(() => {
+    const storageKey = `dashboard_announcements_${machineCode}`;
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const loadedAnnouncements = JSON.parse(saved);
+        
+        // 過濾掉超過 3 天的公告
+        const now = new Date();
+        const validAnnouncements = loadedAnnouncements.filter(announcement => {
+          const announcementDate = new Date(announcement.timestamp);
+          const diffTime = now - announcementDate;
+          const diffDays = diffTime / (1000 * 60 * 60 * 24);
+          return diffDays <= 3; // 保留 3 天內的公告
+        });
+        
+        // 如果有公告被清除，更新 localStorage
+        if (validAnnouncements.length !== loadedAnnouncements.length) {
+          localStorage.setItem(storageKey, JSON.stringify(validAnnouncements));
+          console.log(`🗑️ 已自動清除 ${loadedAnnouncements.length - validAnnouncements.length} 則過期公告`);
+        }
+        
+        setAnnouncements(validAnnouncements);
+      } catch (err) {
+        console.error('載入公告失敗:', err);
+      }
+    }
+  }, [machineCode]);
+  
+  // 定期檢查並清除過期公告（每小時檢查一次）
+  React.useEffect(() => {
+    const checkExpiredAnnouncements = () => {
+      const now = new Date();
+      const validAnnouncements = announcements.filter(announcement => {
+        const announcementDate = new Date(announcement.timestamp);
+        const diffTime = now - announcementDate;
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        return diffDays <= 3;
+      });
+      
+      if (validAnnouncements.length !== announcements.length) {
+        setAnnouncements(validAnnouncements);
+        const storageKey = `dashboard_announcements_${machineCode}`;
+        localStorage.setItem(storageKey, JSON.stringify(validAnnouncements));
+        console.log(`🗑️ 已自動清除 ${announcements.length - validAnnouncements.length} 則過期公告`);
+      }
+    };
+    
+    // 每小時檢查一次
+    const interval = setInterval(checkExpiredAnnouncements, 60 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [announcements, machineCode]);
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* 公告欄 */}
+      <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+              </svg>
+            </div>
+            <div>
+              <h4 className="text-xl font-bold text-amber-100">📢 專案公告欄</h4>
+              <p className="text-xs text-amber-300/70">({announcements.length} 則公告)</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowAnnouncementInput(!showAnnouncementInput)}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium transition-colors shadow-lg"
+          >
+            <Plus size={16} />
+            新增公告
+          </button>
+        </div>
+        
+        {/* 新增公告輸入框 */}
+        {showAnnouncementInput && (
+          <div className="mb-4 p-4 bg-white/10 rounded-xl border border-amber-500/30">
+            <textarea
+              value={newAnnouncement}
+              onChange={(e) => setNewAnnouncement(e.target.value)}
+              placeholder="輸入公告內容... (例如：明天停電，進度延後一天)"
+              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30 resize-none"
+              rows={3}
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={addAnnouncement}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium transition-colors shadow-lg"
+              >
+                發布
+              </button>
+              <button
+                onClick={() => {
+                  setShowAnnouncementInput(false);
+                  setNewAnnouncement('');
+                }}
+                className="px-5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-medium transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* 公告列表 */}
+        <div className="space-y-3 max-h-80 overflow-y-auto">
+          {announcements.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">
+              <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+              </div>
+              <p className="text-sm">📭 目前沒有公告</p>
+              <p className="text-xs mt-1">點擊上方「新增公告」按鈕來發布第一則公告</p>
+            </div>
+          ) : (
+            announcements.map(announcement => {
+              // 計算剩餘天數
+              const announcementDate = new Date(announcement.timestamp);
+              const now = new Date();
+              const diffTime = now - announcementDate;
+              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+              const remainingDays = 3 - diffDays;
+              
+              return (
+              <div key={announcement.id} className="bg-white/10 rounded-xl p-4 border border-white/10 hover:border-amber-400/50 transition-colors group">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex-1">
+                    <p className="text-white leading-relaxed whitespace-pre-wrap">{announcement.content}</p>
+                    <div className="flex items-center gap-4 mt-3 text-xs text-slate-400">
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                        </svg>
+                        {announcement.author}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                        </svg>
+                        {new Date(announcement.timestamp).toLocaleString('zh-TW')}
+                      </span>
+                      <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-medium ${
+                        remainingDays === 0 ? 'bg-red-500/20 text-red-300' :
+                        remainingDays === 1 ? 'bg-orange-500/20 text-orange-300' :
+                        'bg-green-500/20 text-green-300'
+                      }`}>
+                        ⏱️ {remainingDays === 0 ? '今日到期' : `剩${remainingDays}天`}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => deleteAnnouncement(announcement.id)}
+                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/20 rounded-lg text-red-400 transition-all"
+                    title="刪除公告"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+      
       {/* KPI Cards - 專業深色玻璃風格 */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
         <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10 hover:border-white/20 transition-all group">
@@ -6914,6 +7165,903 @@ const DashboardView = ({ projects, tasks, changes, history, onViewDetails, user 
           </div>
         </div>
       </div>
+
+{/* 專案進度管制表組件 */}
+      {(() => {
+        const ProgressControlTable = () => {
+          const [scheduleData, setScheduleData] = React.useState({
+            productCode: '',
+            createdDate: new Date().toISOString().split('T')[0],
+            approver: '',
+            rdManager: '',
+            creator: '',
+            rows: Array.from({ length: 25 }, (_, i) => ({
+              id: `row-${Date.now()}-${i}`,
+              seq: i + 1,
+              taskName: '',
+              plannedStart: '',
+              plannedEnd: '',
+              actualStart: '',
+              actualEnd: '',
+              workDays: 0,
+              owner: '',
+              note: ''
+            }))
+          });
+          
+          const [changeHistory, setChangeHistory] = React.useState([]);
+          const [pendingChanges, setPendingChanges] = React.useState([]); // 待儲存的修改記錄
+          const [showHistory, setShowHistory] = React.useState(false);
+          const [isSaving, setIsSaving] = React.useState(false);
+          const [ownerFilter, setOwnerFilter] = React.useState(''); // 負責人篩選
+          const currentUser = user?.displayName || user?.name || user?.username || '未知使用者';
+
+          // 獲取所有負責人列表（去重）
+          const allOwners = React.useMemo(() => {
+            const owners = scheduleData.rows
+              .map(row => row.owner)
+              .filter(owner => owner && owner.trim() !== '');
+            return [...new Set(owners)].sort();
+          }, [scheduleData.rows]);
+
+          // 篩選後的行
+          const filteredRows = React.useMemo(() => {
+            if (!ownerFilter) return scheduleData.rows;
+            return scheduleData.rows.filter(row => 
+              row.owner && row.owner.includes(ownerFilter)
+            );
+          }, [scheduleData.rows, ownerFilter]);
+
+          // 台灣國定假日 2025-2026
+          const taiwanHolidays = [
+            '2025-01-01', '2025-01-27', '2025-01-28', '2025-01-29', '2025-01-30', '2025-01-31',
+            '2025-02-28', '2025-04-03', '2025-04-04', '2025-04-05', '2025-05-01',
+            '2025-06-02', '2025-10-10', '2025-10-11',
+            '2026-01-01', '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20',
+            '2026-02-28', '2026-04-03', '2026-04-04', '2026-04-05', '2026-05-01',
+            '2026-06-22', '2026-10-10'
+          ];
+
+          // 計算工作天數（扣除週末和國定假日）
+          const calculateWorkDays = (startDate, endDate) => {
+            if (!startDate || !endDate) return 0;
+            
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            if (start > end) return 0;
+            
+            let workDays = 0;
+            let current = new Date(start);
+            
+            while (current <= end) {
+              const dateStr = current.toISOString().split('T')[0];
+              const dayOfWeek = current.getDay();
+              
+              // 不是週末且不是國定假日
+              if (dayOfWeek !== 0 && dayOfWeek !== 6 && !taiwanHolidays.includes(dateStr)) {
+                workDays++;
+              }
+              
+              current.setDate(current.getDate() + 1);
+            }
+            
+            return workDays;
+          };
+
+          // 載入已儲存的資料
+          React.useEffect(() => {
+            const loadData = async () => {
+              try {
+                // 先從 localStorage 載入（按機台）
+                const machineCode = localStorage.getItem('selected_machine') || 'default';
+                const storageKey = `progress_control_table_${machineCode}`;
+                const historyKey = `progress_control_history_${machineCode}`;
+                
+                const localData = localStorage.getItem(storageKey);
+                if (localData) {
+                  const parsed = JSON.parse(localData);
+                  setScheduleData(parsed);
+                  console.log(`📦 從本地載入專案進度表 (機台: ${machineCode})`);
+                }
+                
+                const localHistory = localStorage.getItem(historyKey);
+                if (localHistory) {
+                  const parsed = JSON.parse(localHistory);
+                  setChangeHistory(parsed);
+                  console.log(`📦 從本地載入歷程記錄 (機台: ${machineCode})`);
+                }
+                
+                // 嘗試從 Firebase 載入（但不強制）
+                try {
+                  const data = await Promise.race([
+                    db.getDocs('progress_control_tables'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+                  ]);
+                  
+                  if (data && data.length > 0) {
+                    // 過濾出當前機台的資料
+                    const filtered = data.filter(d => d.machineCode === machineCode);
+                    if (filtered.length > 0) {
+                      const latest = filtered.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))[0];
+                      setScheduleData(latest);
+                      localStorage.setItem(storageKey, JSON.stringify(latest));
+                      console.log(`✅ 從 Firebase 同步專案進度表 (機台: ${machineCode})`);
+                    }
+                  }
+                } catch (err) {
+                  console.log('ℹ️ Firebase 同步失敗，使用本地資料:', err.message);
+                }
+                
+                try {
+                  const history = await Promise.race([
+                    db.getDocs('progress_control_history'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+                  ]);
+                  
+                  if (history && history.length > 0) {
+                    // 過濾出當前機台的歷程
+                    const filtered = history.filter(h => h.machineCode === machineCode);
+                    const sorted = filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    setChangeHistory(sorted);
+                    localStorage.setItem(historyKey, JSON.stringify(sorted));
+                    console.log('✅ 從 Firebase 同步歷程記錄');
+                  }
+                } catch (err) {
+                  console.log('ℹ️ Firebase 歷程同步失敗，使用本地資料:', err.message);
+                }
+                
+              } catch (err) {
+                console.error('載入資料失敗:', err);
+              }
+            };
+            loadData();
+          }, []);
+
+          // 更新行資料
+          const updateRow = (index, field, value) => {
+            setScheduleData(prev => {
+              const newRows = [...prev.rows];
+              const oldValue = newRows[index][field];
+              newRows[index] = { ...newRows[index], [field]: value };
+              
+              // 自動計算工作天數
+              if (field === 'plannedStart' || field === 'plannedEnd') {
+                const workDays = calculateWorkDays(
+                  field === 'plannedStart' ? value : newRows[index].plannedStart,
+                  field === 'plannedEnd' ? value : newRows[index].plannedEnd
+                );
+                newRows[index].workDays = workDays;
+              }
+              
+              // 記錄到待儲存清單（不立即加入歷程）
+              if (oldValue !== value && value !== '') {
+                const fieldNames = {
+                  taskName: '任務名稱',
+                  plannedStart: '預計開始時間',
+                  plannedEnd: '預計完成時間',
+                  actualStart: '實際開始時間',
+                  actualEnd: '實際完成時間',
+                  owner: '負責擔當',
+                  note: '備註'
+                };
+                
+                setPendingChanges(prev => {
+                  // 檢查是否已有相同的變更記錄，如果有就更新
+                  const existingIndex = prev.findIndex(
+                    c => c.rowSeq === newRows[index].seq && c.field === fieldNames[field]
+                  );
+                  
+                  const change = {
+                    rowSeq: newRows[index].seq,
+                    field: fieldNames[field],
+                    oldValue: oldValue || '(空白)',
+                    newValue: value
+                  };
+                  
+                  if (existingIndex >= 0) {
+                    const updated = [...prev];
+                    updated[existingIndex] = change;
+                    return updated;
+                  } else {
+                    return [...prev, change];
+                  }
+                });
+              }
+              
+              return { ...prev, rows: newRows };
+            });
+          };
+
+          // 新增列
+          const addRow = () => {
+            setScheduleData(prev => {
+              const newSeq = prev.rows.length + 1;
+              const newRow = {
+                id: `row-${Date.now()}`,
+                seq: newSeq,
+                taskName: '',
+                plannedStart: '',
+                plannedEnd: '',
+                actualStart: '',
+                actualEnd: '',
+                workDays: 0,
+                owner: '',
+                note: ''
+              };
+              
+              // 記錄到待儲存清單
+              setPendingChanges(prev => [...prev, {
+                rowSeq: newSeq,
+                field: '新增列',
+                oldValue: '-',
+                newValue: '新增一列'
+              }]);
+              
+              return { ...prev, rows: [...prev.rows, newRow] };
+            });
+          };
+
+          // 刪除列
+          const deleteRow = (index) => {
+            if (!confirm(`確定要刪除第 ${scheduleData.rows[index].seq} 列嗎？`)) return;
+            
+            setScheduleData(prev => {
+              const deletedRow = prev.rows[index];
+              const newRows = prev.rows.filter((_, i) => i !== index).map((row, i) => ({
+                ...row,
+                seq: i + 1
+              }));
+              
+              // 記錄到待儲存清單
+              setPendingChanges(prevChanges => [...prevChanges, {
+                rowSeq: deletedRow.seq,
+                field: '刪除列',
+                oldValue: deletedRow.taskName || '(空白)',
+                newValue: '-'
+              }]);
+              
+              return { ...prev, rows: newRows };
+            });
+          };
+
+          // 儲存資料
+          const saveData = async () => {
+            if (pendingChanges.length === 0) {
+              alert('⚠️ 沒有需要儲存的修改');
+              return;
+            }
+            
+            setIsSaving(true);
+            try {
+              const timestamp = new Date().toISOString();
+              let currentTableId = scheduleData.id;
+              
+              const saveDataObj = {
+                ...scheduleData,
+                updatedAt: timestamp,
+                updatedBy: currentUser
+              };
+              
+              // 先儲存到本地（依機台分別儲存）
+              const machineCode = localStorage.getItem('selected_machine') || 'default';
+              const storageKey = `progress_control_table_${machineCode}`;
+              // 在資料中記錄機台代碼
+              saveDataObj.machineCode = machineCode;
+              localStorage.setItem(storageKey, JSON.stringify(saveDataObj));
+              console.log(`💾 已儲存到本地存儲 (機台: ${machineCode})`);
+              
+              // 嘗試儲存到 Firebase（但不強制）
+              try {
+                if (currentTableId) {
+                  await Promise.race([
+                    db.updateDoc('progress_control_tables', currentTableId, saveDataObj),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+                  ]);
+                  console.log('✅ 已同步到 Firebase');
+                } else {
+                  const newId = await Promise.race([
+                    db.addDoc('progress_control_tables', {
+                      ...saveDataObj,
+                      createdAt: timestamp,
+                      createdBy: currentUser
+                    }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+                  ]);
+                  currentTableId = newId;
+                  setScheduleData(prev => ({ ...prev, id: newId }));
+                  // 更新本地存儲的ID
+                  saveDataObj.id = newId;
+                  localStorage.setItem(storageKey, JSON.stringify(saveDataObj));
+                  console.log('✅ 已同步到 Firebase (新文檔)');
+                }
+              } catch (err) {
+                console.log('ℹ️ Firebase 同步失敗，但本地已儲存:', err.message);
+                // 如果沒有ID，生成一個本地ID
+                if (!currentTableId) {
+                  currentTableId = `local-${Date.now()}`;
+                  setScheduleData(prev => ({ ...prev, id: currentTableId }));
+                  saveDataObj.id = currentTableId;
+                  localStorage.setItem(storageKey, JSON.stringify(saveDataObj));
+                }
+              }
+              
+              // 將待儲存的變更批次加入歷程記錄
+              const newHistoryRecords = pendingChanges.map(change => ({
+                ...change,
+                timestamp: timestamp,
+                user: currentUser,
+                action: change.field === '新增列' || change.field === '刪除列' ? change.field : '修改',
+                saved: true,
+                tableId: currentTableId // 確保有ID
+              }));
+              
+              // 更新歷程記錄狀態（依機台分別儲存）
+              const updatedHistory = [...newHistoryRecords, ...changeHistory];
+              setChangeHistory(updatedHistory);
+              const historyKey = `progress_control_history_${machineCode}`;
+              localStorage.setItem(historyKey, JSON.stringify(updatedHistory));
+              
+              // 嘗試儲存歷程到 Firebase（只在有真實Firebase ID時）
+              if (currentTableId && typeof currentTableId === 'string' && !currentTableId.startsWith('local-')) {
+                try {
+                  for (const record of newHistoryRecords) {
+                    await Promise.race([
+                      db.addDoc('progress_control_history', record),
+                      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+                    ]);
+                  }
+                  console.log('✅ 歷程已同步到 Firebase');
+                } catch (err) {
+                  console.log('ℹ️ 歷程 Firebase 同步失敗，但本地已儲存:', err.message);
+                }
+              }
+              
+              // 清空待儲存清單
+              setPendingChanges([]);
+              
+              alert(`✅ 儲存成功！共記錄 ${newHistoryRecords.length} 項修改\n💾 資料已保存至本地`);
+            } catch (err) {
+              console.error('儲存失敗:', err);
+              alert('❌ 儲存失敗：' + err.message);
+            } finally {
+              setIsSaving(false);
+            }
+          };
+
+          // 匯出為 CSV（改善格式）
+          const exportToCSV = () => {
+            // 使用 TAB 分隔符號,讓 Excel 更好識別
+            const headers = ['序次', '任務名稱', '預計開始時間', '預計完成時間', '實際開始時間', '實際完成時間', '預定工作天數', '負責擔當', '備註'];
+            const rows = scheduleData.rows.map(row => [
+              row.seq,
+              row.taskName || '',
+              row.plannedStart || '',
+              row.plannedEnd || '',
+              row.actualStart || '',
+              row.actualEnd || '',
+              row.workDays || 0,
+              row.owner || '',
+              row.note || ''
+            ]);
+            
+            // 使用 TAB 作為分隔符，Excel 會自動識別為表格
+            const csvContent = [
+              `飛絡力電子股份有限公司 - 專案進度管制表`,
+              ``,
+              `產品編號/名稱：\t${scheduleData.productCode || ''}`,
+              `制訂日期：\t${scheduleData.createdDate || ''}`,
+              ``,
+              headers.join('\t'),
+              ...rows.map(row => row.join('\t')),
+              ``,
+              `核准：\t${scheduleData.approver || ''}\t研發主管：\t${scheduleData.rdManager || ''}\t製表：\t${scheduleData.creator || ''}`,
+              ``,
+              `表單編號：QP-010-F05`
+            ].join('\n');
+            
+            const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/plain;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `專案進度管制表_${scheduleData.productCode || '未命名'}_${new Date().toISOString().split('T')[0]}.txt`;
+            link.click();
+          };
+
+          // 匯出為 Excel HTML (可在 Excel 中完美開啟)
+          const exportToExcel = () => {
+            const htmlContent = `
+              <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+              <head>
+                <meta charset="utf-8">
+                <style>
+                  table { border-collapse: collapse; width: 100%; font-family: "微軟正黑體", Arial; }
+                  th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                  th { background-color: #4472C4; color: white; font-weight: bold; text-align: center; }
+                  .header { font-size: 18px; font-weight: bold; text-align: center; padding: 10px; }
+                  .info { font-size: 12px; padding: 5px; }
+                  .seq { text-align: center; background-color: #E7E6E6; font-weight: bold; }
+                  .workdays { text-align: center; background-color: #DEEAF6; font-weight: bold; }
+                  .footer { margin-top: 20px; font-size: 11px; color: #666; }
+                </style>
+              </head>
+              <body>
+                <div class="header">飛絡力電子股份有限公司<br/>專案進度管制表</div>
+                <div class="info">產品編號／名稱：${scheduleData.productCode || ''}</div>
+                <div class="info">制訂日期：${scheduleData.createdDate || ''}</div>
+                <br/>
+                <table>
+                  <thead>
+                    <tr>
+                      <th width="30">序次</th>
+                      <th width="200">任務名稱</th>
+                      <th width="100">預計開始時間</th>
+                      <th width="100">預計完成時間</th>
+                      <th width="100">實際開始時間</th>
+                      <th width="100">實際完成時間</th>
+                      <th width="60">預定工作天數</th>
+                      <th width="120">負責擔當</th>
+                      <th width="200">備註</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${scheduleData.rows.map(row => `
+                      <tr>
+                        <td class="seq">${row.seq}</td>
+                        <td>${row.taskName || ''}</td>
+                        <td>${row.plannedStart || ''}</td>
+                        <td>${row.plannedEnd || ''}</td>
+                        <td>${row.actualStart || ''}</td>
+                        <td>${row.actualEnd || ''}</td>
+                        <td class="workdays">${row.workDays || 0}</td>
+                        <td>${row.owner || ''}</td>
+                        <td>${row.note || ''}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+                <br/>
+                <table style="border: none;">
+                  <tr style="border: none;">
+                    <td style="border: none; width: 33%;">核准：${scheduleData.approver || '________________'}</td>
+                    <td style="border: none; width: 33%;">研發主管：${scheduleData.rdManager || '________________'}</td>
+                    <td style="border: none; width: 33%;">製表：${scheduleData.creator || '________________'}</td>
+                  </tr>
+                </table>
+                <div class="footer">
+                  表單編號：QP-010-F05<br/>
+                  ${scheduleData.updatedAt ? `最後更新：${new Date(scheduleData.updatedAt).toLocaleString('zh-TW')} by ${scheduleData.updatedBy || ''}` : ''}
+                </div>
+              </body>
+              </html>
+            `;
+            
+            const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `專案進度管制表_${scheduleData.productCode || '未命名'}_${new Date().toISOString().split('T')[0]}.xls`;
+            link.click();
+          };
+
+          return (
+            <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+                <h3 className="text-xl font-bold text-white text-center">飛絡力電子股份有限公司</h3>
+                <p className="text-center text-blue-100 text-lg mt-1">專案進度管制表</p>
+              </div>
+              
+              <div className="p-6">
+                {/* 操作按鈕列 */}
+                <div className="flex gap-3 mb-4 flex-wrap items-center">
+                  <button 
+                    onClick={saveData}
+                    disabled={isSaving || pendingChanges.length === 0}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-600 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <Save size={16} />
+                    {isSaving ? '儲存中...' : `儲存修改 ${pendingChanges.length > 0 ? `(${pendingChanges.length}項)` : ''}`}
+                  </button>
+                  <button 
+                    onClick={exportToCSV}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-medium hover:from-blue-600 hover:to-cyan-600 shadow-lg transition-all"
+                    title="匯出為文字檔（可複製到 Excel）"
+                  >
+                    <Download size={16} />
+                    匯出文字檔
+                  </button>
+                  <button 
+                    onClick={exportToExcel}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-600 shadow-lg transition-all"
+                    title="匯出為 Excel 格式（推薦）"
+                  >
+                    <FileSpreadsheet size={16} />
+                    匯出 Excel
+                  </button>
+                  <button 
+                    onClick={addRow}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 shadow-lg transition-all"
+                  >
+                    <Plus size={16} />
+                    新增列
+                  </button>
+                  <button 
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white/10 border border-white/20 text-white rounded-xl font-medium hover:bg-white/20 transition-all"
+                  >
+                    <History size={16} />
+                    修改歷程 ({changeHistory.length})
+                  </button>
+                  
+                  {/* 負責人篩選 */}
+                  <div className="flex items-center gap-2 ml-auto">
+                    <label className="text-sm font-medium text-slate-300">篩選負責人:</label>
+                    <select
+                      value={ownerFilter}
+                      onChange={(e) => setOwnerFilter(e.target.value)}
+                      className="px-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 backdrop-blur"
+                    >
+                      <option value="" className="bg-slate-800">全部顯示 ({scheduleData.rows.length})</option>
+                      {allOwners.map(owner => (
+                        <option key={owner} value={owner} className="bg-slate-800">
+                          {owner} ({scheduleData.rows.filter(r => r.owner === owner).length})
+                        </option>
+                      ))}
+                    </select>
+                    {ownerFilter && (
+                      <button
+                        onClick={() => setOwnerFilter('')}
+                        className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+                        title="清除篩選"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {pendingChanges.length > 0 && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-xl text-sm">
+                      <AlertCircle size={16} />
+                      有 {pendingChanges.length} 項未儲存的修改
+                    </div>
+                  )}
+                </div>
+
+                {/* 修改歷程記錄 */}
+                {showHistory && (
+                  <div className="mb-4 p-4 bg-white/5 border border-white/10 rounded-xl max-h-64 overflow-y-auto">
+                    <h4 className="font-bold text-white mb-3 flex items-center gap-2">
+                      <History size={18} className="text-blue-400" />
+                      修改歷程記錄
+                    </h4>
+                    {changeHistory.length === 0 ? (
+                      <p className="text-slate-400 text-sm">尚無修改記錄</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {changeHistory.slice(0, 20).map((change, i) => (
+                          <div key={i} className="text-xs bg-white/5 p-2 rounded border border-white/10">
+                            <div className="flex justify-between items-start">
+                              <span className="text-blue-400 font-medium">{change.action}</span>
+                              <span className="text-slate-500">{new Date(change.timestamp).toLocaleString('zh-TW')}</span>
+                            </div>
+                            <div className="text-slate-300 mt-1">
+                              <span className="text-slate-500">第{change.rowSeq}列</span> - 
+                              <span className="text-slate-400"> {change.field}:</span>
+                              <span className="text-red-400"> {change.oldValue}</span> → 
+                              <span className="text-green-400"> {change.newValue}</span>
+                            </div>
+                            <div className="text-slate-500 mt-1">操作人員: {change.user}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 表頭資訊 */}
+                <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-white/10">
+                  <div>
+                    <label className="text-sm font-medium text-slate-300">產品編號／名稱：</label>
+                    <input 
+                      type="text" 
+                      value={scheduleData.productCode}
+                      onChange={(e) => {
+                        const oldValue = scheduleData.productCode;
+                        const newValue = e.target.value;
+                        if (oldValue !== newValue) {
+                          setPendingChanges(prev => {
+                            const existingIndex = prev.findIndex(c => c.field === '產品編號／名稱');
+                            const change = {
+                              rowSeq: 0,
+                              field: '產品編號／名稱',
+                              oldValue: oldValue || '(空白)',
+                              newValue: newValue
+                            };
+                            if (existingIndex >= 0) {
+                              const updated = [...prev];
+                              updated[existingIndex] = change;
+                              return updated;
+                            } else {
+                              return [...prev, change];
+                            }
+                          });
+                        }
+                        setScheduleData(prev => ({ ...prev, productCode: newValue }));
+                      }}
+                      className="ml-2 px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 w-64 text-white placeholder-slate-500" 
+                      placeholder="請輸入產品編號或名稱" 
+                    />
+                  </div>
+                  <div className="text-right">
+                    <label className="text-sm font-medium text-slate-300">制訂日期：</label>
+                    <input 
+                      type="date" 
+                      value={scheduleData.createdDate}
+                      onChange={(e) => {
+                        const oldValue = scheduleData.createdDate;
+                        const newValue = e.target.value;
+                        if (oldValue !== newValue) {
+                          setPendingChanges(prev => {
+                            const existingIndex = prev.findIndex(c => c.field === '制訂日期');
+                            const change = {
+                              rowSeq: 0,
+                              field: '制訂日期',
+                              oldValue: oldValue || '(空白)',
+                              newValue: newValue
+                            };
+                            if (existingIndex >= 0) {
+                              const updated = [...prev];
+                              updated[existingIndex] = change;
+                              return updated;
+                            } else {
+                              return [...prev, change];
+                            }
+                          });
+                        }
+                        setScheduleData(prev => ({ ...prev, createdDate: newValue }));
+                      }}
+                      className="ml-2 px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 text-white" 
+                    />
+                  </div>
+                </div>
+
+                {/* 進度管制表格 */}
+                <div className="overflow-x-auto">
+                  {ownerFilter && (
+                    <div className="mb-3 px-4 py-2 bg-blue-500/20 border border-blue-500/40 text-blue-300 rounded-lg text-sm flex items-center justify-between">
+                      <span>📋 篩選結果: 顯示 {filteredRows.length} / {scheduleData.rows.length} 列（負責人: {ownerFilter}）</span>
+                      <button
+                        onClick={() => setOwnerFilter('')}
+                        className="text-blue-300 hover:text-white underline"
+                      >
+                        清除篩選
+                      </button>
+                    </div>
+                  )}
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-white/10">
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-12">序次</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white min-w-[200px]">任務名稱</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-28">預計開始<br/>時間</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-28">預計完成<br/>時間</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-28">實際開始<br/>時間</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-28">實際完成<br/>時間</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-16">預定工作<br/>天數</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-32">負責擔當</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white min-w-[150px]">備註</th>
+                        <th className="border border-white/20 px-3 py-3 text-sm font-bold text-white w-20">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRows.map((row, index) => {
+                        const originalIndex = scheduleData.rows.findIndex(r => r.id === row.id);
+                        return (
+                          <tr key={row.id} className="hover:bg-white/5 transition-colors">
+                            <td className="border border-white/10 px-2 py-2 text-center text-sm font-medium text-slate-300">{row.seq}</td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="text" 
+                                value={row.taskName}
+                                onChange={(e) => updateRow(originalIndex, 'taskName', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white placeholder-slate-500 rounded" 
+                                placeholder="輸入任務名稱" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="date" 
+                                value={row.plannedStart}
+                                onChange={(e) => updateRow(originalIndex, 'plannedStart', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white rounded" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="date" 
+                                value={row.plannedEnd}
+                                onChange={(e) => updateRow(originalIndex, 'plannedEnd', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white rounded" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="date" 
+                                value={row.actualStart}
+                                onChange={(e) => updateRow(originalIndex, 'actualStart', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white rounded" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="date" 
+                                value={row.actualEnd}
+                                onChange={(e) => updateRow(originalIndex, 'actualEnd', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white rounded" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <div className="w-full px-2 py-1.5 text-sm text-white text-center font-bold bg-blue-500/20 rounded">
+                                {row.workDays}
+                              </div>
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="text" 
+                                value={row.owner}
+                                onChange={(e) => updateRow(originalIndex, 'owner', e.target.value)}
+                                list="owner-list"
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white placeholder-slate-500 rounded" 
+                                placeholder="選擇或輸入負責人" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1">
+                              <input 
+                                type="text" 
+                                value={row.note}
+                                onChange={(e) => updateRow(originalIndex, 'note', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-transparent border-0 focus:outline-none focus:bg-white/10 text-white placeholder-slate-500 rounded" 
+                                placeholder="備註" 
+                              />
+                            </td>
+                            <td className="border border-white/10 px-2 py-1 text-center">
+                              <button 
+                                onClick={() => deleteRow(originalIndex)}
+                                className="p-1.5 hover:bg-red-500/20 rounded text-red-400 transition-colors"
+                                title="刪除此列"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  
+                  {/* 負責人下拉選項資料列表 */}
+                  <datalist id="owner-list">
+                    {allOwners.map(owner => (
+                      <option key={owner} value={owner} />
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* 表尾簽核 */}
+                <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-300">核准：</label>
+                    <input 
+                      type="text" 
+                      value={scheduleData.approver}
+                      onChange={(e) => {
+                        const oldValue = scheduleData.approver;
+                        const newValue = e.target.value;
+                        if (oldValue !== newValue) {
+                          setPendingChanges(prev => {
+                            const existingIndex = prev.findIndex(c => c.field === '核准');
+                            const change = {
+                              rowSeq: 0,
+                              field: '核准',
+                              oldValue: oldValue || '(空白)',
+                              newValue: newValue
+                            };
+                            if (existingIndex >= 0) {
+                              const updated = [...prev];
+                              updated[existingIndex] = change;
+                              return updated;
+                            } else {
+                              return [...prev, change];
+                            }
+                          });
+                        }
+                        setScheduleData(prev => ({ ...prev, approver: newValue }));
+                      }}
+                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 text-white placeholder-slate-500" 
+                      placeholder="簽名" 
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-300">研發主管：</label>
+                    <input 
+                      type="text" 
+                      value={scheduleData.rdManager}
+                      onChange={(e) => {
+                        const oldValue = scheduleData.rdManager;
+                        const newValue = e.target.value;
+                        if (oldValue !== newValue) {
+                          setPendingChanges(prev => {
+                            const existingIndex = prev.findIndex(c => c.field === '研發主管');
+                            const change = {
+                              rowSeq: 0,
+                              field: '研發主管',
+                              oldValue: oldValue || '(空白)',
+                              newValue: newValue
+                            };
+                            if (existingIndex >= 0) {
+                              const updated = [...prev];
+                              updated[existingIndex] = change;
+                              return updated;
+                            } else {
+                              return [...prev, change];
+                            }
+                          });
+                        }
+                        setScheduleData(prev => ({ ...prev, rdManager: newValue }));
+                      }}
+                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 text-white placeholder-slate-500" 
+                      placeholder="簽名" 
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-300">製表：</label>
+                    <input 
+                      type="text" 
+                      value={scheduleData.creator}
+                      onChange={(e) => {
+                        const oldValue = scheduleData.creator;
+                        const newValue = e.target.value;
+                        if (oldValue !== newValue) {
+                          setPendingChanges(prev => {
+                            const existingIndex = prev.findIndex(c => c.field === '製表');
+                            const change = {
+                              rowSeq: 0,
+                              field: '製表',
+                              oldValue: oldValue || '(空白)',
+                              newValue: newValue
+                            };
+                            if (existingIndex >= 0) {
+                              const updated = [...prev];
+                              updated[existingIndex] = change;
+                              return updated;
+                            } else {
+                              return [...prev, change];
+                            }
+                          });
+                        }
+                        setScheduleData(prev => ({ ...prev, creator: newValue }));
+                      }}
+                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 text-white placeholder-slate-500" 
+                      placeholder="簽名" 
+                    />
+                  </div>
+                </div>
+
+                {/* 表單編號和狀態資訊 */}
+                <div className="mt-4 flex justify-between items-center text-sm">
+                  <p className="text-slate-400">QP-010-F05</p>
+                  {scheduleData.updatedAt && (
+                    <p className="text-slate-500">
+                      最後更新: {new Date(scheduleData.updatedAt).toLocaleString('zh-TW')} 
+                      {scheduleData.updatedBy && ` by ${scheduleData.updatedBy}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        return <ProgressControlTable />;
+      })()}
     </div>
   );
 };
@@ -10164,6 +11312,13 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
   const [allUsers, setAllUsers] = useState([]);
   const [machines, setMachines] = useState([]); // 訂閱所有機台資料
 
+  // 確保 localStorage 中的 selected_machine 與當前機台一致
+  useEffect(() => {
+    const machineCode = machine.code || machine.id;
+    localStorage.setItem('selected_machine', machineCode);
+    console.log('🎯 ProjectApp 初始化，設置機台:', machineCode);
+  }, [machine]);
+
   // Sync with DB
   useEffect(() => {
     const unsubProjects = db.subscribe('rd_projects', (data) => {
@@ -11918,6 +13073,99 @@ ${calculateCostScore.details.overBudget > 0 ? `• 有 ${calculateCostScore.deta
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* 專案進度管制表 */}
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+                <h3 className="text-xl font-bold text-white text-center">飛絡力電子股份有限公司</h3>
+                <p className="text-center text-blue-100 text-lg mt-1">專案進度管制表</p>
+              </div>
+              
+              <div className="p-6">
+                {/* 表頭資訊 */}
+                <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-slate-200">
+                  <div>
+                    <label className="text-sm font-medium text-slate-600">產品編號／名稱：</label>
+                    <input type="text" className="ml-2 px-3 py-1 border border-slate-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-200 w-64" placeholder="請輸入產品編號或名稱" />
+                  </div>
+                  <div className="text-right">
+                    <label className="text-sm font-medium text-slate-600">制訂日期：</label>
+                    <input type="date" defaultValue={new Date().toISOString().split('T')[0]} className="ml-2 px-3 py-1 border border-slate-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-200" />
+                  </div>
+                </div>
+
+                {/* 進度管制表格 */}
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-12">序次</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 min-w-[200px]">任務名稱</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-28">預計開始<br/>時間</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-28">預計完成<br/>時間</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-28">實際開始<br/>時間</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-28">實際完成<br/>時間</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-24">預定工作<br/>天數</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 w-28">負責擔當</th>
+                        <th className="border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 min-w-[150px]">備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: 25 }, (_, i) => i + 1).map(num => (
+                        <tr key={num} className="hover:bg-slate-50">
+                          <td className="border border-slate-300 px-2 py-2 text-center text-sm font-medium text-slate-600">{num}</td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="text" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" placeholder="" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="date" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="date" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="date" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="date" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="number" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50 text-center" placeholder="" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="text" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" placeholder="" />
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1">
+                            <input type="text" className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:bg-blue-50" placeholder="" />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 表尾簽核 */}
+                <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-600">核准：</label>
+                    <input type="text" className="flex-1 px-3 py-1 border border-slate-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-200" placeholder="" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-600">研發主管：</label>
+                    <input type="text" className="flex-1 px-3 py-1 border border-slate-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-200" placeholder="" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-600">製表：</label>
+                    <input type="text" className="flex-1 px-3 py-1 border border-slate-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-200" placeholder="" />
+                  </div>
+                </div>
+
+                {/* 表單編號 */}
+                <div className="mt-4 text-sm text-slate-500">
+                  <p>QP-010-F05</p>
+                </div>
               </div>
             </div>
           </div>
@@ -14773,6 +16021,17 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
         await db.updateDoc('rd_machines', updatedMachine.id, updatedMachine);
     };
 
+    // 處理機台選擇，同步更新 localStorage 和觸發事件
+    const handleSelectMachine = (machine) => {
+        if (machine) {
+            localStorage.setItem('selected_machine', machine.code || machine.id);
+            console.log('🎯 機台已選擇:', machine.code || machine.id);
+            // 觸發自定義事件，通知其他組件機台已切換
+            window.dispatchEvent(new Event('machineChanged'));
+        }
+        setSelectedMachine(machine);
+    };
+
     // 顯示載入動畫 - 深色專業主題
     if (loading) {
         return (
@@ -14800,13 +16059,17 @@ const RDNexusSystem = ({ onBackToMenu, user }) => {
     }
 
     if (selectedMachine) {
-        return <ProjectApp machine={selectedMachine} user={user} onBackToMachines={() => setSelectedMachine(null)} />;
+        return <ProjectApp machine={selectedMachine} user={user} onBackToMachines={() => {
+            localStorage.removeItem('selected_machine');
+            window.dispatchEvent(new Event('machineChanged'));
+            setSelectedMachine(null);
+        }} />;
     }
 
     return (
         <MachineSelectionView 
             machines={machines}
-            onSelect={setSelectedMachine} 
+            onSelect={handleSelectMachine} 
             onBack={onBackToMenu} 
             onAddMachine={handleAddMachine}
             onUpdateMachine={handleUpdateMachine}
@@ -20633,10 +21896,104 @@ const BOMManagerApp = ({ onBackToMenu }) => {
       return;
     }
     
-    const ws = window.XLSX.utils.json_to_sheet(exportData);
-    const wb = window.XLSX.utils.book_new();
-    window.XLSX.utils.book_append_sheet(wb, ws, "Export");
-    window.XLSX.writeFile(wb, `BOM_Export_${new Date().getTime()}.xlsx`);
+    // 定義欄位順序（按照用戶提供的順序）
+    const fieldOrder = [
+      '主件品號', '階次', '元件品號', '品    名', '價格', '單位', '小單位', '屬性',
+      '標準品件數', '標準批量', '標準用時', '標準材料', '標準人工', '本階人工',
+      '本階加工', '標準批次', '本階設備', '本階數量', '規    格'
+    ];
+    
+    // 檢查哪些欄位有資料
+    const fieldsWithData = fieldOrder.filter(field => {
+      return exportData.some(item => item[field] && item[field].toString().trim() !== '');
+    });
+    
+    // 如果沒有任何欄位有資料，至少顯示基本欄位
+    const displayFields = fieldsWithData.length > 0 ? fieldsWithData : ['主件品號', '階次', '元件品號', '品    名'];
+    
+    // 欄位寬度映射
+    const fieldWidths = {
+      '主件品號': 80,
+      '階次': 35,
+      '元件品號': 80,
+      '品    名': 180,
+      '規    格': 150,
+      '價格': 60,
+      '單位': 40,
+      '小單位': 50,
+      '屬性': 60,
+      '標準用量': 50,
+      '標準品件數': 70,
+      '標準批量': 70,
+      '標準用時': 70,
+      '標準材料': 70,
+      '標準人工': 70,
+      '本階人工': 70,
+      '本階加工': 70,
+      '標準批次': 70,
+      '本階設備': 70,
+      '本階數量': 70
+    };
+    
+    // 生成精美的 HTML Excel 格式
+    const htmlContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: "微軟正黑體", Arial; }
+          th, td { border: 1px solid #000; padding: 6px; text-align: left; font-size: 10px; }
+          th { background-color: #4472C4; color: white; font-weight: bold; text-align: center; }
+          .header { font-size: 18px; font-weight: bold; text-align: center; padding: 15px; color: #1e3a8a; }
+          .subtitle { font-size: 14px; text-align: center; padding: 5px; color: #334155; font-weight: bold; }
+          .info { font-size: 12px; padding: 5px; margin: 10px 0; }
+          .level { text-align: center; background-color: #E7E6E6; font-weight: bold; }
+          .partno { background-color: #DEEAF6; font-weight: bold; }
+          .qty { text-align: center; background-color: #FFF4E6; }
+          .footer { margin-top: 20px; font-size: 10px; color: #666; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="header">飛絡力電子股份有限公司<br/>BOM 物料清單</div>
+        <div class="subtitle">套件構建報表</div>
+        <div class="info">匯出日期：${new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })} ${new Date().toLocaleTimeString('zh-TW')}</div>
+        <div class="info">項目數量：${exportData.length} 項</div>
+        <br/>
+        <table>
+          <thead>
+            <tr>
+              ${displayFields.map(field => `<th width="${fieldWidths[field] || 70}">${field}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${exportData.map((item, index) => `
+              <tr>
+                ${displayFields.map(field => {
+                  const value = item[field] || '';
+                  let className = '';
+                  if (field === '階次') className = 'level';
+                  else if (field === '元件品號' || field === '主件品號') className = 'partno';
+                  else if (field.includes('用量') || field.includes('數量') || field === '單位' || field === '小單位') className = 'qty';
+                  return `<td class="${className}">${value}</td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="footer">
+          表單編號：BOM-001<br/>
+          匯出時間：${new Date().toLocaleString('zh-TW')}<br/>
+          © ${new Date().getFullYear()} 飛絡力電子股份有限公司
+        </div>
+      </body>
+      </html>
+    `;
+    
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `BOM物料清單_${new Date().toISOString().split('T')[0]}_${new Date().getTime()}.xls`;
+    link.click();
   };
 
   const handleOpenAddPart = (parentNode = null) => {
