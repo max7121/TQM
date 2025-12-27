@@ -1,0 +1,1000 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>飛絡力電子股份有限公司 - 設計變更申請單</title>
+  <style>
+    :root{ 
+      --bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --card:#fff; 
+      --muted:#64748b; 
+      --line:#e2e8f0;
+      --primary:#6366f1;
+      --primary-dark:#4f46e5;
+      --success:#10b981;
+      --text:#1e293b;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      margin:0;
+      background:var(--bg);
+      font-family: "Segoe UI", ui-sans-serif, system-ui, -apple-system, "Noto Sans TC","Microsoft JhengHei", Arial;
+      color:var(--text);
+      min-height:100vh;
+    }
+    .wrap{
+      max-width:1400px;
+      margin:0 auto;
+      padding:24px 16px;
+    }
+    .topbar{
+      display:flex;
+      gap:16px;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:24px;
+      flex-wrap:wrap;
+      background:rgba(255,255,255,0.95);
+      padding:20px 24px;
+      border-radius:20px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.15);
+      backdrop-filter:blur(10px);
+    }
+    .title{
+      font-size:22px;
+      font-weight:800;
+      background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+    .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    button{
+      border:none;
+      background:#fff;
+      border-radius:12px;
+      padding:12px 20px;
+      cursor:pointer;
+      font-weight:600;
+      font-size:13px;
+      transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow:0 2px 8px rgba(0,0,0,0.1);
+      color:var(--text);
+    }
+    button:hover{
+      transform:translateY(-2px);
+      box-shadow:0 8px 20px rgba(0,0,0,0.15);
+    }
+    button.primary{
+      background:linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color:#fff;
+    }
+    button.primary:hover{
+      box-shadow:0 8px 25px rgba(99,102,241,0.4);
+    }
+    button:active{transform:translateY(0);box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+    .grid{display:grid;grid-template-columns: 1fr;gap:20px;max-width:1200px;margin:0 auto;}
+    .panel{
+      background:rgba(255,255,255,0.95);
+      border:1px solid rgba(255,255,255,0.5);
+      border-radius:20px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.15);
+      overflow:hidden;
+      backdrop-filter:blur(10px);
+    }
+    .panel h3{
+      margin:0;
+      padding:18px 20px;
+      background:linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-bottom:2px solid #e9ecef;
+      font-size:15px;
+      color:var(--text);
+      font-weight:700;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .panel .body{padding:20px}
+    .field{
+      display:grid;
+      grid-template-columns: 140px 1fr;
+      gap:12px;
+      align-items:center;
+      margin-bottom:14px;
+    }
+    .field label{
+      font-size:13px;
+      color:var(--text);
+      font-weight:600;
+    }
+    input[type="text"], input[type="date"], input[type="number"], textarea, select{
+      width:100%;
+      border:2px solid var(--line);
+      border-radius:12px;
+      padding:10px 14px;
+      font-size:14px;
+      background:#fff;
+      transition:all 0.3s;
+      font-family:inherit;
+    }
+    input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus, textarea:focus, select:focus{
+      outline:none;
+      border-color:var(--primary);
+      box-shadow:0 0 0 4px rgba(99,102,241,0.1);
+      transform:translateY(-1px);
+    }
+    input[type="date"]{
+      cursor:pointer;
+    }
+    textarea{
+      min-height:75px;
+      resize:vertical;
+      line-height:1.6;
+    }
+    .checks{
+      display:flex;
+      gap:14px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .checks label{
+      display:flex;
+      gap:7px;
+      align-items:center;
+      font-size:13px;
+      color:var(--text);
+      cursor:pointer;
+      padding:6px 12px;
+      border-radius:8px;
+      transition:all 0.2s;
+    }
+    .checks label:hover{
+      background:#f1f5f9;
+    }
+    .checks input[type="checkbox"]{
+      width:18px;
+      height:18px;
+      cursor:pointer;
+      accent-color:var(--primary);
+    }
+    .mini{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .hint{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.6;
+      margin-top:10px;
+      padding:12px 16px;
+      background:linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border-radius:12px;
+      border-left:4px solid var(--primary);
+    }
+
+    /* --- A4 canvas --- */
+    .paper{padding:0}
+    .formCanvas{
+      position:relative;
+      width:210mm; height:297mm;
+      background:#fff;
+      margin:0 auto;
+      box-shadow:0 12px 32px rgba(16,24,40,.12);
+      border-radius:4px;
+      overflow:hidden;
+    }
+    .formBg{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit:contain;
+      user-select:none; -webkit-user-drag:none;
+      pointer-events:none;
+    }
+    .overlay{position:absolute; inset:0;}
+    .f{
+      position:absolute;
+      font-size:11.5px;
+      line-height:1.3;
+      white-space:pre-wrap;
+      color:#000;
+      transform: translateZ(0);
+      font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;
+    }
+    .f.box{font-size:15px; font-weight:900; line-height:1}
+    .f.bold{font-weight:700}
+    .edit .f{outline:1px dashed rgba(180,35,24,.6); background:rgba(255,255,255,.5); cursor:move;transition:all 0.15s}
+    .edit .f:hover{outline:2px solid rgba(180,35,24,.8);background:rgba(255,255,255,.75)}
+    .badge{display:inline-block;padding:3px 10px;border-radius:999px;background:#111;color:#fff;font-size:11px;font-weight:700}
+    .auto-save-indicator{
+      position:fixed;
+      bottom:24px;
+      right:24px;
+      background:rgba(16,185,129,0.95);
+      color:#fff;
+      padding:12px 20px;
+      border-radius:12px;
+      font-size:13px;
+      font-weight:600;
+      box-shadow:0 8px 24px rgba(0,0,0,0.2);
+      opacity:0;
+      transform:translateY(20px);
+      transition:all 0.3s;
+      pointer-events:none;
+    }
+    .auto-save-indicator.show{
+      opacity:1;
+      transform:translateY(0);
+    }
+    .required::after{
+      content:' *';
+      color:#ef4444;
+      font-weight:700;
+    }
+    input.error, textarea.error, select.error{
+      border-color:#ef4444 !important;
+      background:#fef2f2;
+    }
+    .calc-btn{
+      background:linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color:#fff;
+      border:none;
+      padding:8px 16px;
+      border-radius:8px;
+      font-size:12px;
+      cursor:pointer;
+      font-weight:600;
+      transition:all 0.3s;
+    }
+    .calc-btn:hover{
+      transform:translateY(-2px);
+      box-shadow:0 4px 12px rgba(16,185,129,0.3);
+    }
+    @media print{
+      body{background:#fff}
+      .wrap{max-width:none;margin:0;padding:0}
+      .topbar, .grid .panel:first-child{display:none !important}
+      .grid{grid-template-columns:1fr}
+      .panel{border:none;box-shadow:none}
+      .panel h3{display:none}
+      .panel .body{padding:0}
+      .formCanvas{box-shadow:none}
+      @page{size:A4; margin:0;}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">飛絡力電子股份有限公司 - 設計變更申請單（PDF 同版填寫 + 匯出）</div>
+      <div class="actions">
+        <button id="btnBackToMenu">🏠 返回主選單</button>
+        <button id="btnLoadDemo">📝 載入示範資料</button>
+        <button id="btnSaveJson">💾 匯出資料</button>
+        <button id="btnImportJson">📂 匯入資料</button>
+        <button id="btnLayout">🎯 校正位置</button>
+        <button id="btnSaveLayout">💾 保存位置配置</button>
+        <button id="btnLoadLayout">📂 載入位置配置</button>
+        <button class="primary" id="btnPrint">🖨️ 列印 / 匯出 PDF</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Left: inputs -->
+      <div class="panel">
+        <h3>📋 填寫資料</h3>
+        <div class="body">
+          <div class="field"><label class="required">NO.</label><input id="no" type="text" placeholder="表單編號"></div>
+          <div class="field"><label class="required">日期</label>
+            <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:8px">
+              <input id="dateYear" type="number" placeholder="年" min="2000" max="2100">
+              <input id="dateMonth" type="number" placeholder="月" min="1" max="12">
+              <input id="dateDay" type="number" placeholder="日" min="1" max="31">
+            </div>
+          </div>
+          <div class="field"><label class="required">料號</label><input id="partNo" type="text" placeholder="產品料號"></div>
+          <div class="field"><label class="required">品名</label><input id="itemName" type="text" placeholder="產品名稱"></div>
+          <div class="field"><label class="required">機種</label><input id="model" type="text" placeholder="機種型號"></div>
+          <div class="field"><label class="required">申請人</label><input id="applicant" type="text" placeholder="申請人姓名"></div>
+          <div class="field"><label>申請單位主管</label><input id="appLeader" type="text" placeholder="主管姓名"></div>
+
+          <div class="field" style="align-items:start">
+            <label>設變執行單位</label>
+            <div class="checks">
+              <label><input type="checkbox" id="exec_mech" />機構</label>
+              <label><input type="checkbox" id="exec_elec" />電子</label>
+              <label><input type="checkbox" id="exec_art" />美術</label>
+              <label><input type="checkbox" id="exec_wire" />配線</label>
+            </div>
+          </div>
+
+          <div class="field" style="align-items:start">
+            <label>設變原因</label>
+            <div class="checks">
+              <label><input type="checkbox" id="reason_spec" />產品規格變更</label>
+              <label><input type="checkbox" id="reason_process" />製程工序變更</label>
+              <label><input type="checkbox" id="reason_vendor" />供應商變更</label>
+              <label><input type="checkbox" id="reason_customer" />客戶需求</label>
+              <label><input type="checkbox" id="reason_data" />資料建立錯誤</label>
+              <label><input type="checkbox" id="reason_other" />其他</label>
+            </div>
+          </div>
+
+          <div class="field"><label>說明</label><textarea id="reasonDesc" placeholder="請說明設變原因的詳細內容..."></textarea></div>
+          <div class="mini">
+            <div class="field" style="grid-template-columns:140px 1fr;margin:0"><label>預估效益</label><input id="benefit" type="number" placeholder="NT$" min="0"></div>
+            <div class="field" style="grid-template-columns:140px 1fr;margin:0">
+              <label>優先順序</label>
+              <select id="priority"><option>高</option><option selected>中</option><option>低</option></select>
+            </div>
+            <div class="field" style="grid-template-columns:140px 1fr;margin:0"><label>需求日期</label><input id="requireDate" type="date"></div>
+          </div>
+
+          <div class="field"><label>變更前</label><textarea id="before" placeholder="描述變更前的現況..."></textarea></div>
+          <div class="field"><label>變更建議</label><textarea id="proposal" placeholder="提出具體的變更建議..."></textarea></div>
+
+          <div style="margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px">
+            <div class="hint" style="margin-bottom:10px">⏱️ 變更時程（填寫涉及的單位即可）</div>
+            <div class="field" style="grid-template-columns:140px 1fr"><label>機構設計</label>
+              <div style="display:grid;grid-template-columns:1.2fr 1.2fr 0.6fr 0.6fr 1fr;gap:8px">
+                <input id="mech_start" type="date">
+                <input id="mech_end" type="date">
+                <input id="mech_days" type="number" placeholder="天" min="0">
+                <input id="mech_hours" type="number" placeholder="Hr" min="0">
+                <input id="mech_leader" type="text" placeholder="主辦">
+              </div>
+            </div>
+            <div class="field" style="grid-template-columns:140px 1fr"><label>電子設計</label>
+              <div style="display:grid;grid-template-columns:1.2fr 1.2fr 0.6fr 0.6fr 1fr;gap:8px">
+                <input id="elec_start" type="date">
+                <input id="elec_end" type="date">
+                <input id="elec_days" type="number" placeholder="天" min="0">
+                <input id="elec_hours" type="number" placeholder="Hr" min="0">
+                <input id="elec_leader" type="text" placeholder="主辦">
+              </div>
+            </div>
+            <div class="field" style="grid-template-columns:140px 1fr"><label>美術設計</label>
+              <div style="display:grid;grid-template-columns:1.2fr 1.2fr 0.6fr 0.6fr 1fr;gap:8px">
+                <input id="art_start" type="date">
+                <input id="art_end" type="date">
+                <input id="art_days" type="number" placeholder="天" min="0">
+                <input id="art_hours" type="number" placeholder="Hr" min="0">
+                <input id="art_leader" type="text" placeholder="主辦">
+              </div>
+            </div>
+            <div class="field" style="grid-template-columns:140px 1fr"><label>配線設計</label>
+              <div style="display:grid;grid-template-columns:1.2fr 1.2fr 0.6fr 0.6fr 1fr;gap:8px">
+                <input id="wire_start" type="date">
+                <input id="wire_end" type="date">
+                <input id="wire_days" type="number" placeholder="天" min="0">
+                <input id="wire_hours" type="number" placeholder="Hr" min="0">
+                <input id="wire_leader" type="text" placeholder="主辦">
+              </div>
+            </div>
+            <div class="field" style="grid-template-columns:140px 1fr"><label>工程中心</label>
+              <div style="display:grid;grid-template-columns:1.2fr 1.2fr 0.6fr 0.6fr 1fr;gap:8px">
+                <input id="eng_start" type="date">
+                <input id="eng_end" type="date">
+                <input id="eng_days" type="number" placeholder="天" min="0">
+                <input id="eng_hours" type="number" placeholder="Hr" min="0">
+                <input id="eng_leader" type="text" placeholder="主辦">
+              </div>
+            </div>
+            <div class="mini">
+              <div class="field" style="grid-template-columns:140px 1fr;margin:0"><label>人事成本</label><input id="laborCost" type="number" placeholder="NT$" min="0"></div>
+              <div class="field" style="grid-template-columns:140px 1fr;margin:0"><label>總工時</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px">
+                  <input id="laborDays" type="number" placeholder="天" min="0" readonly style="background:#f8fafc">
+                  <input id="laborHours" type="number" placeholder="Hr" min="0" readonly style="background:#f8fafc">
+                  <button type="button" class="calc-btn" onclick="calculateTotalTime()">⚙️ 自動計算</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px">
+            <div class="hint" style="margin-bottom:10px">📊 研發評估部分</div>
+            <div class="field"><label>評估分析</label><textarea id="analysis" placeholder="研發評估分析內容..."></textarea></div>
+          </div>
+
+          <div class="hint" style="margin-top:12px">
+            <span class="badge">💡 同版關鍵</span>
+            右側為 PDF 底圖,格線與原檔 100% 一致。如需更精準對齊文字位置,請按「🎯 校正位置」拖曳調整（自動儲存）。</div>
+        </div>
+      </div>
+
+      <!-- Right: PDF background + overlay -->
+      <div class="panel">
+        <h3>📄 預覽（PDF 底圖 + 文字疊加）</h3>
+        <div class="body">
+          <div class="paper">
+            <div class="formCanvas" id="formCanvas">
+              <img class="formBg" src="./設變單_page1.png" alt="飛絡力電子設計變更申請單">
+              <div class="overlay" id="overlay"></div>
+            </div>
+          </div>
+          <input id="jsonFile" type="file" accept="application/json" style="display:none" />
+          <input id="layoutFile" type="file" accept="application/json" style="display:none" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="autoSaveIndicator" class="auto-save-indicator">
+    ✅ 已自動保存草稿
+  </div>
+
+<script>
+  const $ = (id)=>document.getElementById(id);
+  let autoSaveTimer;
+  
+  const state = {
+    no:"", dateYear:"", dateMonth:"", dateDay:"", 
+    partNo:"", itemName:"", model:"", applicant:"", appLeader:"",
+    exec:{mech:false, elec:false, art:false, wire:false},
+    reasons:{spec:false, process:false, vendor:false, customer:false, data:false, other:false},
+    reasonDesc:"", benefit:"", priority:"中", requireDate:"",
+    before:"", proposal:"",
+    schedule:{
+      mech_start:"", mech_end:"", mech_days:"", mech_hours:"", mech_leader:"",
+      elec_start:"", elec_end:"", elec_days:"", elec_hours:"", elec_leader:"",
+      art_start:"", art_end:"", art_days:"", art_hours:"", art_leader:"",
+      wire_start:"", wire_end:"", wire_days:"", wire_hours:"", wire_leader:"",
+      eng_start:"", eng_end:"", eng_days:"", eng_hours:"", eng_leader:""
+    },
+    laborCost:"", laborDays:"", laborHours:"",
+    analysis:""
+  };
+
+  let layout = [
+    {id:"no", key:"no", left:80.97, top:3.93, width:15, align:"left"},
+    {id:"dateYear", key:"dateYear", left:77.82, top:6.13, width:5, align:"left"},
+    {id:"dateMonth", key:"dateMonth", left:84.33, top:6.22, width:3, align:"left"},
+    {id:"dateDay", key:"dateDay", left:90.09, top:6.13, width:3, align:"left"},
+    {id:"partNo", key:"partNo", left:11.93, top:8.26, width:40, align:"left"},
+    {id:"applicant", key:"applicant", left:64.99, top:8.26, width:25, align:"left"},
+    {id:"itemName", key:"itemName", left:11.80, top:10.48, width:40, align:"left"},
+    {id:"appLeader", key:"appLeader", left:64.87, top:10.39, width:25, align:"left"},
+    {id:"model", key:"model", left:11.80, top:12.61, width:70, align:"left"},
+    {id:"exec_mech", key:"exec_mech_box", left:66.36, top:12.33, width:2, cls:"box"},
+    {id:"exec_elec", key:"exec_elec_box", left:73.50, top:12.33, width:2, cls:"box"},
+    {id:"exec_art", key:"exec_art_box", left:80.52, top:12.42, width:2, cls:"box"},
+    {id:"exec_wire", key:"exec_wire_box", left:87.66, top:12.33, width:2, cls:"box"},
+    {id:"r_spec", key:"reason_spec_box", left:12.43, top:14.44, width:2, cls:"box"},
+    {id:"r_proc", key:"reason_process_box", left:27.51, top:14.44, width:2, cls:"box"},
+    {id:"r_vendor", key:"reason_vendor_box", left:42.59, top:14.44, width:2, cls:"box"},
+    {id:"r_cust", key:"reason_customer_box", left:55.78, top:14.44, width:2, cls:"box"},
+    {id:"r_data", key:"reason_data_box", left:66.83, top:14.44, width:2, cls:"box"},
+    {id:"r_other", key:"reason_other_box", left:81.91, top:14.44, width:2, cls:"box"},
+    {id:"reasonDesc", key:"reasonDesc", left:17.35, top:16.75, width:70, height:6, font:11.5},
+    {id:"benefit", key:"benefit", left:82.23, top:18.04, width:20, align:"left"},
+    {id:"requireDate", key:"requireDate", left:42.04, top:18.62, width:25, align:"left", font:14, bold:true},
+    {id:"before", key:"before", left:11.80, top:20.89, width:70, height:7, font:11.5},
+    {id:"proposal", key:"proposal", left:54.01, top:20.96, width:70, height:7, font:11.5},
+    {id:"sch_mech_box", key:"sch_mech_box", left:12.31, top:27.98, width:2, cls:"box"},
+    {id:"mech_start", key:"mech_start", left:33.18, top:28.07, width:12, align:"left"},
+    {id:"mech_end", key:"mech_end", left:48.83, top:28.16, width:12, align:"left"},
+    {id:"mech_days", key:"mech_days", left:62.21, top:28.07, width:5, align:"center"},
+    {id:"mech_hours", key:"mech_hours", left:69.47, top:28.07, width:5, align:"center"},
+    {id:"mech_leader", key:"mech_leader", left:84.66, top:28.16, width:15, align:"left"},
+    {id:"sch_elec_box", key:"sch_elec_box", left:12.18, top:30.18, width:2, cls:"box"},
+    {id:"elec_start", key:"elec_start", left:33.18, top:30.27, width:12, align:"left"},
+    {id:"elec_end", key:"elec_end", left:48.70, top:30.09, width:12, align:"left"},
+    {id:"elec_days", key:"elec_days", left:62.21, top:30.18, width:5, align:"center"},
+    {id:"elec_hours", key:"elec_hours", left:69.47, top:30.27, width:5, align:"center"},
+    {id:"elec_leader", key:"elec_leader", left:84.79, top:30.35, width:15, align:"left"},
+    {id:"sch_art_box", key:"sch_art_box", left:12.31, top:32.29, width:2, cls:"box"},
+    {id:"art_start", key:"art_start", left:32.93, top:32.37, width:12, align:"left"},
+    {id:"art_end", key:"art_end", left:48.83, top:32.20, width:12, align:"left"},
+    {id:"art_days", key:"art_days", left:62.21, top:32.29, width:5, align:"center"},
+    {id:"art_hours", key:"art_hours", left:69.47, top:32.29, width:5, align:"center"},
+    {id:"art_leader", key:"art_leader", left:84.79, top:32.37, width:15, align:"left"},
+    {id:"sch_wire_box", key:"sch_wire_box", left:12.31, top:34.31, width:2, cls:"box"},
+    {id:"wire_start", key:"wire_start", left:32.93, top:34.39, width:12, align:"left"},
+    {id:"wire_end", key:"wire_end", left:48.70, top:34.31, width:12, align:"left"},
+    {id:"wire_days", key:"wire_days", left:62.21, top:34.39, width:5, align:"center"},
+    {id:"wire_hours", key:"wire_hours", left:69.47, top:34.39, width:5, align:"center"},
+    {id:"wire_leader", key:"wire_leader", left:84.79, top:34.31, width:15, align:"left"},
+    {id:"sch_eng_box", key:"sch_eng_box", left:12.31, top:36.06, width:2, cls:"box"},
+    {id:"eng_start", key:"eng_start", left:32.93, top:36.24, width:12, align:"left"},
+    {id:"eng_end", key:"eng_end", left:48.83, top:36.24, width:12, align:"left"},
+    {id:"eng_days", key:"eng_days", left:62.33, top:36.15, width:5, align:"center"},
+    {id:"eng_hours", key:"eng_hours", left:69.34, top:36.24, width:5, align:"center"},
+    {id:"eng_leader", key:"eng_leader", left:84.79, top:36.15, width:15, align:"left"},
+    {id:"laborCost", key:"laborCost", left:66.86, top:38.10, width:15, align:"left"},
+    {id:"laborDays", key:"laborDays", left:79.58, top:38.10, width:6, align:"center"},
+    {id:"laborHours", key:"laborHours", left:86.45, top:38.10, width:6, align:"center"},
+    {id:"p_high", key:"pri_high_box", left:22.39, top:39.96, width:2, cls:"box"},
+    {id:"p_mid", key:"pri_mid_box", left:29.53, top:40.05, width:2, cls:"box"},
+    {id:"p_low", key:"pri_low_box", left:36.54, top:40.05, width:2, cls:"box"}
+  ];
+
+  function box(v){ return v ? "■" : "□"; }
+
+  function makeDict(){
+    return {
+      no: state.no,
+      dateYear: state.dateYear,
+      dateMonth: state.dateMonth,
+      dateDay: state.dateDay,
+      partNo: state.partNo,
+      itemName: state.itemName,
+      model: state.model,
+      applicant: state.applicant,
+      appLeader: state.appLeader,
+      exec_mech_box: box(state.exec.mech),
+      exec_elec_box: box(state.exec.elec),
+      exec_art_box: box(state.exec.art),
+      exec_wire_box: box(state.exec.wire),
+      reason_spec_box: box(state.reasons.spec),
+      reason_process_box: box(state.reasons.process),
+      reason_vendor_box: box(state.reasons.vendor),
+      reason_customer_box: box(state.reasons.customer),
+      reason_data_box: box(state.reasons.data),
+      reason_other_box: box(state.reasons.other),
+      reasonDesc: state.reasonDesc,
+      benefit: state.benefit,
+      requireDate: state.requireDate ? `需求日期：${state.requireDate}` : "",
+      before: state.before,
+      proposal: state.proposal,
+      sch_mech_box: box(!!(state.schedule.mech_start || state.schedule.mech_end)),
+      sch_elec_box: box(!!(state.schedule.elec_start || state.schedule.elec_end)),
+      sch_art_box: box(!!(state.schedule.art_start || state.schedule.art_end)),
+      sch_wire_box: box(!!(state.schedule.wire_start || state.schedule.wire_end)),
+      sch_eng_box: box(!!(state.schedule.eng_start || state.schedule.eng_end)),
+      mech_start: state.schedule.mech_start,
+      mech_end: state.schedule.mech_end,
+      mech_days: state.schedule.mech_days,
+      mech_hours: state.schedule.mech_hours,
+      mech_leader: state.schedule.mech_leader,
+      elec_start: state.schedule.elec_start,
+      elec_end: state.schedule.elec_end,
+      elec_days: state.schedule.elec_days,
+      elec_hours: state.schedule.elec_hours,
+      elec_leader: state.schedule.elec_leader,
+      art_start: state.schedule.art_start,
+      art_end: state.schedule.art_end,
+      art_days: state.schedule.art_days,
+      art_hours: state.schedule.art_hours,
+      art_leader: state.schedule.art_leader,
+      wire_start: state.schedule.wire_start,
+      wire_end: state.schedule.wire_end,
+      wire_days: state.schedule.wire_days,
+      wire_hours: state.schedule.wire_hours,
+      wire_leader: state.schedule.wire_leader,
+      eng_start: state.schedule.eng_start,
+      eng_end: state.schedule.eng_end,
+      eng_days: state.schedule.eng_days,
+      eng_hours: state.schedule.eng_hours,
+      eng_leader: state.schedule.eng_leader,
+      laborCost: state.laborCost,
+      laborDays: state.laborDays,
+      laborHours: state.laborHours,
+      pri_high_box: box(state.priority==="高"),
+      pri_mid_box: box(state.priority==="中"),
+      pri_low_box: box(state.priority==="低"),
+    }
+  }
+
+  function syncFromInputs(){
+    state.no = $("no").value.trim();
+    state.dateYear = $("dateYear").value.trim();
+    state.dateMonth = $("dateMonth").value.trim();
+    state.dateDay = $("dateDay").value.trim();
+    state.partNo = $("partNo").value.trim();
+    state.itemName = $("itemName").value.trim();
+    state.model = $("model").value.trim();
+    state.applicant = $("applicant").value.trim();
+    state.appLeader = $("appLeader").value.trim();
+
+    state.exec.mech = $("exec_mech").checked;
+    state.exec.elec = $("exec_elec").checked;
+    state.exec.art  = $("exec_art").checked;
+    state.exec.wire = $("exec_wire").checked;
+
+    state.reasons.spec = $("reason_spec").checked;
+    state.reasons.process = $("reason_process").checked;
+    state.reasons.vendor = $("reason_vendor").checked;
+    state.reasons.customer = $("reason_customer").checked;
+    state.reasons.data = $("reason_data").checked;
+    state.reasons.other = $("reason_other").checked;
+
+    state.reasonDesc = $("reasonDesc").value;
+    state.benefit = $("benefit").value.trim();
+    state.priority = $("priority").value;
+    state.requireDate = $("requireDate").value.trim();
+    state.before = $("before").value;
+    state.proposal = $("proposal").value;
+
+    state.schedule.mech_start = $("mech_start").value.trim();
+    state.schedule.mech_end = $("mech_end").value.trim();
+    state.schedule.mech_days = $("mech_days").value.trim();
+    state.schedule.mech_hours = $("mech_hours").value.trim();
+    state.schedule.mech_leader = $("mech_leader").value.trim();
+
+    state.schedule.elec_start = $("elec_start").value.trim();
+    state.schedule.elec_end = $("elec_end").value.trim();
+    state.schedule.elec_days = $("elec_days").value.trim();
+    state.schedule.elec_hours = $("elec_hours").value.trim();
+    state.schedule.elec_leader = $("elec_leader").value.trim();
+
+    state.schedule.art_start = $("art_start").value.trim();
+    state.schedule.art_end = $("art_end").value.trim();
+    state.schedule.art_days = $("art_days").value.trim();
+    state.schedule.art_hours = $("art_hours").value.trim();
+    state.schedule.art_leader = $("art_leader").value.trim();
+
+    state.schedule.wire_start = $("wire_start").value.trim();
+    state.schedule.wire_end = $("wire_end").value.trim();
+    state.schedule.wire_days = $("wire_days").value.trim();
+    state.schedule.wire_hours = $("wire_hours").value.trim();
+    state.schedule.wire_leader = $("wire_leader").value.trim();
+
+    state.schedule.eng_start = $("eng_start").value.trim();
+    state.schedule.eng_end = $("eng_end").value.trim();
+    state.schedule.eng_days = $("eng_days").value.trim();
+    state.schedule.eng_hours = $("eng_hours").value.trim();
+    state.schedule.eng_leader = $("eng_leader").value.trim();
+
+    state.laborCost = $("laborCost").value.trim();
+    state.laborDays = $("laborDays").value.trim();
+    state.laborHours = $("laborHours").value.trim();
+
+    state.analysis = $("analysis").value;
+
+    renderOverlay();
+    autoSaveDraft();
+  }
+
+  function renderOverlay(){
+    const dict = makeDict();
+    const host = $("overlay");
+    host.innerHTML = "";
+    layout.forEach(f=>{
+      const el = document.createElement("div");
+      el.className = "f" + (f.cls ? " "+f.cls : "") + (f.bold ? " bold" : "");
+      el.dataset.id = f.id;
+      el.style.left = f.left + "%";
+      el.style.top = f.top + "%";
+      el.style.width = (f.width || 10) + "%";
+      if(f.height) el.style.height = f.height + "%";
+      if(f.font) el.style.fontSize = f.font + "px";
+      el.style.textAlign = f.align || "left";
+      el.textContent = dict[f.key] ?? "";
+      host.appendChild(el);
+    });
+    if(isEdit) enableDrag();
+  }
+
+  function download(name, content, type){
+    const blob = new Blob([content], {type});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 500);
+  }
+  
+  function exportData(){
+    syncFromInputs();
+    download((state.no || "QP-012-F01") + ".json", JSON.stringify(state, null, 2), "application/json");
+  }
+  
+  function importData(file){
+    const r = new FileReader();
+    r.onload = ()=>{
+      try{
+        const obj = JSON.parse(r.result);
+        Object.assign(state, obj);
+        fillInputsFromState();
+      }catch(e){
+        alert("JSON 匯入失敗：格式不正確");
+      }
+    };
+    r.readAsText(file);
+  }
+  
+  function fillInputsFromState(){
+    $("no").value = state.no || "";
+    $("dateYear").value = state.dateYear || "";
+    $("dateMonth").value = state.dateMonth || "";
+    $("dateDay").value = state.dateDay || "";
+    $("partNo").value = state.partNo || "";
+    $("itemName").value = state.itemName || "";
+    $("model").value = state.model || "";
+    $("applicant").value = state.applicant || "";
+    $("appLeader").value = state.appLeader || "";
+
+    $("exec_mech").checked = !!state.exec?.mech;
+    $("exec_elec").checked = !!state.exec?.elec;
+    $("exec_art").checked  = !!state.exec?.art;
+    $("exec_wire").checked = !!state.exec?.wire;
+
+    $("reason_spec").checked = !!state.reasons?.spec;
+    $("reason_process").checked = !!state.reasons?.process;
+    $("reason_vendor").checked = !!state.reasons?.vendor;
+    $("reason_customer").checked = !!state.reasons?.customer;
+    $("reason_data").checked = !!state.reasons?.data;
+    $("reason_other").checked = !!state.reasons?.other;
+
+    $("reasonDesc").value = state.reasonDesc || "";
+    $("benefit").value = state.benefit || "";
+    $("priority").value = state.priority || "中";
+    $("requireDate").value = state.requireDate || "";
+    $("before").value = state.before || "";
+    $("proposal").value = state.proposal || "";
+
+    $("mech_start").value = state.schedule?.mech_start || "";
+    $("mech_end").value = state.schedule?.mech_end || "";
+    $("mech_days").value = state.schedule?.mech_days || "";
+    $("mech_hours").value = state.schedule?.mech_hours || "";
+    $("mech_leader").value = state.schedule?.mech_leader || "";
+
+    $("elec_start").value = state.schedule?.elec_start || "";
+    $("elec_end").value = state.schedule?.elec_end || "";
+    $("elec_days").value = state.schedule?.elec_days || "";
+    $("elec_hours").value = state.schedule?.elec_hours || "";
+    $("elec_leader").value = state.schedule?.elec_leader || "";
+
+    $("art_start").value = state.schedule?.art_start || "";
+    $("art_end").value = state.schedule?.art_end || "";
+    $("art_days").value = state.schedule?.art_days || "";
+    $("art_hours").value = state.schedule?.art_hours || "";
+    $("art_leader").value = state.schedule?.art_leader || "";
+
+    $("wire_start").value = state.schedule?.wire_start || "";
+    $("wire_end").value = state.schedule?.wire_end || "";
+    $("wire_days").value = state.schedule?.wire_days || "";
+    $("wire_hours").value = state.schedule?.wire_hours || "";
+    $("wire_leader").value = state.schedule?.wire_leader || "";
+
+    $("eng_start").value = state.schedule?.eng_start || "";
+    $("eng_end").value = state.schedule?.eng_end || "";
+    $("eng_days").value = state.schedule?.eng_days || "";
+    $("eng_hours").value = state.schedule?.eng_hours || "";
+    $("eng_leader").value = state.schedule?.eng_leader || "";
+
+    $("laborCost").value = state.laborCost || "";
+    $("laborDays").value = state.laborDays || "";
+    $("laborHours").value = state.laborHours || "";
+
+    $("analysis").value = state.analysis || "";
+
+    renderOverlay();
+  }
+
+  let isEdit = false;
+  let drag = null;
+
+  function enableDrag(){
+    document.querySelectorAll(".f").forEach(el=>{
+      el.onmousedown = (e)=>{
+        if(!isEdit) return;
+        const rect = $("formCanvas").getBoundingClientRect();
+        const id = el.dataset.id;
+        const item = layout.find(x=>x.id===id);
+        drag = {el, item, rect, startX:e.clientX, startY:e.clientY, startL:item.left, startT:item.top};
+        e.preventDefault();
+      };
+    });
+  }
+
+  window.addEventListener("mousemove", (e)=>{
+    if(!drag) return;
+    const dx = (e.clientX - drag.startX) / drag.rect.width * 100;
+    const dy = (e.clientY - drag.startY) / drag.rect.height * 100;
+    drag.item.left = Math.max(0, Math.min(98, drag.startL + dx));
+    drag.item.top  = Math.max(0, Math.min(98, drag.startT + dy));
+    drag.el.style.left = drag.item.left + "%";
+    drag.el.style.top  = drag.item.top + "%";
+  });
+  
+  window.addEventListener("mouseup", ()=>{
+    if(!drag) return;
+    localStorage.setItem("qp012_layout", JSON.stringify(layout));
+    drag = null;
+  });
+
+  function toggleEdit(){
+    isEdit = !isEdit;
+    const canvas = $("formCanvas");
+    canvas.classList.toggle("edit", isEdit);
+    renderOverlay();
+    alert(isEdit
+      ? "🎯 校正位置已開啟\\n\\n您現在可以直接拖曳右側的文字與勾選框到正確位置。\\n調整完成後會自動儲存。\\n\\n完成後請再按一次「校正位置」按鈕關閉編輯模式。"
+      : "✅ 校正位置已關閉\\n\\n您的版面配置已儲存。");
+  }
+
+  function saveLayoutConfig(){
+    const config = {
+      version: "1.0",
+      savedAt: new Date().toISOString(),
+      layout: layout
+    };
+    download("位置配置_" + (state.no || "未命名") + ".json", JSON.stringify(config, null, 2), "application/json");
+    alert("✅ 位置配置已保存！");
+  }
+
+  function loadLayoutConfig(file){
+    const r = new FileReader();
+    r.onload = ()=>{
+      try{
+        const config = JSON.parse(r.result);
+        if(config.layout && Array.isArray(config.layout)){
+          layout = config.layout;
+          localStorage.setItem("qp012_layout", JSON.stringify(layout));
+          renderOverlay();
+          alert("✅ 位置配置載入成功！");
+        }else{
+          alert("❌ 配置文件格式不正確！");
+        }
+      }catch(e){
+        alert("❌ 配置文件讀取失敗！\\n" + e.message);
+      }
+    };
+    r.readAsText(file);
+  }
+
+  function validateForm(){
+    const required = ['no', 'dateYear', 'dateMonth', 'dateDay', 'partNo', 'itemName', 'model', 'applicant'];
+    const missing = required.filter(field => !state[field]?.trim());
+    
+    if(missing.length > 0){
+      alert("⚠️ 請填寫必填欄位\\n\\n缺少：" + missing.join('、'));
+      return false;
+    }
+    return true;
+  }
+
+  function calculateTotalTime(){
+    const units = ['mech', 'elec', 'art', 'wire', 'eng'];
+    let totalDays = 0;
+    let totalHours = 0;
+    
+    units.forEach(unit => {
+      const days = parseInt($(unit + '_days').value) || 0;
+      const hours = parseInt($(unit + '_hours').value) || 0;
+      totalDays += days;
+      totalHours += hours;
+    });
+    
+    const extraDays = Math.floor(totalHours / 8);
+    totalDays += extraDays;
+    totalHours = totalHours % 8;
+    
+    $("laborDays").value = totalDays;
+    $("laborHours").value = totalHours;
+    
+    state.laborDays = totalDays.toString();
+    state.laborHours = totalHours.toString();
+    renderOverlay();
+    
+    alert("✅ 計算完成！\\n\\n總工時：" + totalDays + "天 " + totalHours + "Hr");
+  }
+
+  function showAutoSaveIndicator(){
+    const indicator = $("autoSaveIndicator");
+    indicator.classList.add("show");
+    setTimeout(()=>indicator.classList.remove("show"), 2000);
+  }
+
+  function autoSaveDraft(){
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(()=>{
+      localStorage.setItem("qp012_draft", JSON.stringify({
+        data: state,
+        savedAt: new Date().toISOString()
+      }));
+      showAutoSaveIndicator();
+    }, 2000);
+  }
+
+  function loadDraft(){
+    const draft = localStorage.getItem("qp012_draft");
+    if(draft){
+      try{
+        const {data, savedAt} = JSON.parse(draft);
+        const saveTime = new Date(savedAt);
+        const now = new Date();
+        const hoursDiff = (now - saveTime) / (1000 * 60 * 60);
+        
+        if(hoursDiff < 24 && confirm(
+          "📝 發現草稿\\n\\n" +
+          "保存時間：" + saveTime.toLocaleString('zh-TW') + "\\n" +
+          "是否載入草稿資料？"
+        )){
+          Object.assign(state, data);
+          fillInputsFromState();
+        }
+      }catch(e){}
+    }
+  }
+
+  function autoFillDate(){
+    if(!state.dateYear && !state.dateMonth && !state.dateDay){
+      const today = new Date();
+      state.dateYear = today.getFullYear().toString();
+      state.dateMonth = (today.getMonth() + 1).toString();
+      state.dateDay = today.getDate().toString();
+      
+      $("dateYear").value = state.dateYear;
+      $("dateMonth").value = state.dateMonth;
+      $("dateDay").value = state.dateDay;
+      renderOverlay();
+    }
+  }
+
+  // Bind
+  document.querySelectorAll("input, textarea, select").forEach(el=>{
+    if(el.id==="jsonFile" || el.id==="layoutFile") return;
+    el.addEventListener("input", syncFromInputs);
+    el.addEventListener("change", syncFromInputs);
+  });
+
+  $("btnPrint").onclick = ()=>{ 
+    if(!validateForm()) return;
+    syncFromInputs(); 
+    window.print(); 
+  };
+  $("btnSaveJson").onclick = exportData;
+  $("btnImportJson").onclick = ()=>$("jsonFile").click();
+  $("jsonFile").addEventListener("change", (e)=>{
+    const f = e.target.files?.[0];
+    if(f) importData(f);
+    e.target.value="";
+  });
+
+  $("btnLayout").onclick = toggleEdit;
+  $("btnSaveLayout").onclick = saveLayoutConfig;
+  $("btnLoadLayout").onclick = ()=>$("layoutFile").click();
+  $("layoutFile").addEventListener("change", (e)=>{
+    const f = e.target.files?.[0];
+    if(f) loadLayoutConfig(f);
+    e.target.value="";
+  });
+
+  $("btnLoadDemo").onclick = ()=>{
+    Object.assign(state, {
+      no:"2025-DEC-001",
+      dateYear:"2025",
+      dateMonth:"12",
+      dateDay:"24",
+      partNo:"A32HC040298B",
+      itemName:"點陣板圓弧燈箱",
+      model:"SMART ROBOT",
+      applicant:"Jim",
+      appLeader:"研發部主管",
+      exec:{mech:true, elec:false, art:true, wire:false},
+      reasons:{spec:false, process:true, vendor:false, customer:false, data:false, other:false},
+      reasonDesc:"製程改善：降低組裝工時，提升維修門拆裝一致性。",
+      benefit:"5000",
+      priority:"高",
+      requireDate:"2025-12-31",
+      before:"現行固定方式在大量組裝時容易造成孔位累積誤差。",
+      proposal:"調整孔位公差吸收設計，並將螺孔設計改為橢圓孔。",
+      schedule:{
+        mech_start:"2025-12-25", mech_end:"2025-12-29", mech_days:"3", mech_hours:"6", mech_leader:"",
+        elec_start:"", elec_end:"", elec_days:"", elec_hours:"", elec_leader:"",
+        art_start:"2025-12-26", art_end:"2025-12-27", art_days:"1", art_hours:"4", art_leader:"",
+        wire_start:"", wire_end:"", wire_days:"", wire_hours:"", wire_leader:"",
+        eng_start:"2025-12-30", eng_end:"2025-12-30", eng_days:"0", eng_hours:"6", eng_leader:""
+      },
+      laborCost:"12000",
+      laborDays:"4",
+      laborHours:"16",
+      analysis:""
+    });
+    fillInputsFromState();
+  };
+
+  // 返回主選單
+  $("btnBackToMenu").onclick = () => {
+    window.location.href = './index.html';
+  };
+
+  // init
+  fillInputsFromState();
+  loadDraft();
+  autoFillDate();
+</script>
+</body>
+</html>
