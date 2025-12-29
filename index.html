@@ -4635,14 +4635,16 @@ const Modal = ({ isOpen, onClose, title, children, size = 'default' }) => {
 };
 
 const TaskForm = ({ onSubmit, initialData, onCancel }) => {
-  const [formData, setFormData] = useState(initialData || {
+  const [formData, setFormData] = useState({
     title: '',
     status: 'To Do',
     owner: '',
     priority: 'P2',
     risk: false,
     startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    notes: '',
+    ...initialData
   });
 
   const handleSubmit = (e) => {
@@ -4732,6 +4734,16 @@ const TaskForm = ({ onSubmit, initialData, onCancel }) => {
             onChange={e => setFormData({...formData, endDate: e.target.value})}
           />
         </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-2">📝 紀錄說明</label>
+        <textarea 
+          rows="4"
+          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-white placeholder-slate-500 resize-none"
+          placeholder="輸入任務的詳細說明、注意事項或相關資訊..."
+          value={formData.notes || ''}
+          onChange={e => setFormData({...formData, notes: e.target.value})}
+        />
       </div>
       <div className="flex justify-end gap-3 pt-6">
         <button type="button" onClick={onCancel} className="px-5 py-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl text-sm font-medium transition-all">取消</button>
@@ -8714,6 +8726,131 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
     setIsGanttModalOpen(false);
   };
 
+  // 生成專案報告
+  const generateProjectReport = () => {
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === 'Done' || t.status === '完成').length;
+    const inProgressTasks = tasks.filter(t => t.status === 'Doing' || t.status === '進行中').length;
+    const testingTasks = tasks.filter(t => t.status === 'Testing' || t.status === '測試中').length;
+    const todoTasks = tasks.filter(t => t.status === 'To Do' || t.status === '待辦').length;
+    const riskTasks = tasks.filter(t => t.risk).length;
+    
+    const taskProgress = totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) : 0;
+    
+    // 計算逾期任務
+    const today = new Date();
+    const overdueTasks = tasks.filter(t => {
+      if (t.status === 'Done' || t.status === '完成') return false;
+      if (!t.endDate) return false;
+      return new Date(t.endDate) < today;
+    });
+
+    // 生成報告內容
+    let report = `
+╔═══════════════════════════════════════════════════════════╗
+║              📊 R&D Nexus 專案報告                        ║
+╚═══════════════════════════════════════════════════════════╝
+
+📁 專案名稱：${project.name}
+🏢 負責單位：${project.department}
+👤 專案負責人：${project.owner}
+📂 專案類別：${project.category}
+📅 開始日期：${project.startDate || '未設定'}
+⏰ 截止日期：${project.deadline || '未設定'}
+📊 專案狀態：${project.status}
+🎯 專案進度：${project.progress}%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 任務統計總覽
+
+  總任務數：${totalTasks} 項
+  ✅ 已完成：${completedTasks} 項 (${taskProgress}%)
+  🔄 進行中：${inProgressTasks} 項
+  🧪 測試中：${testingTasks} 項
+  📝 待處理：${todoTasks} 項
+  ⚠️  高風險：${riskTasks} 項
+  🚨 逾期任務：${overdueTasks.length} 項
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 任務清單明細
+`;
+
+    // 按狀態分組顯示任務
+    const statusGroups = [
+      { status: 'To Do', label: '待辦', icon: '📝' },
+      { status: 'Doing', label: '進行中', icon: '🔄' },
+      { status: 'Testing', label: '測試中', icon: '🧪' },
+      { status: 'Done', label: '已完成', icon: '✅' }
+    ];
+
+    statusGroups.forEach(group => {
+      const groupTasks = tasks.filter(t => t.status === group.status || t.status === group.label);
+      if (groupTasks.length > 0) {
+        report += `\n${group.icon} ${group.label} (${groupTasks.length}項)\n`;
+        groupTasks.forEach((task, idx) => {
+          report += `  ${idx + 1}. ${task.title}\n`;
+          report += `     負責人：${task.owner} | 優先級：${task.priority}${task.risk ? ' ⚠️高風險' : ''}\n`;
+          if (task.startDate && task.endDate) {
+            report += `     時程：${task.startDate} ~ ${task.endDate}\n`;
+          }
+          if (task.notes) {
+            report += `     說明：${task.notes}\n`;
+          }
+        });
+      }
+    });
+
+    if (overdueTasks.length > 0) {
+      report += `\n🚨 逾期任務 (${overdueTasks.length}項)\n`;
+      overdueTasks.forEach((task, idx) => {
+        const daysOverdue = Math.ceil((today - new Date(task.endDate)) / (1000 * 60 * 60 * 24));
+        report += `  ${idx + 1}. ${task.title} (逾期 ${daysOverdue} 天)\n`;
+        report += `     負責人：${task.owner} | 截止：${task.endDate}\n`;
+      });
+    }
+
+    // 會議紀錄
+    if (meetings && meetings.length > 0) {
+      report += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      report += `\n📅 會議紀錄 (${meetings.length}場)\n\n`;
+      meetings.slice(0, 5).forEach((meeting, idx) => {
+        report += `  ${idx + 1}. ${meeting.title}\n`;
+        report += `     日期：${meeting.date} | 主持人：${meeting.host}\n`;
+        report += `     決議：${meeting.decisions || '無'}\n\n`;
+      });
+    }
+
+    // 變更紀錄
+    if (changes && changes.length > 0) {
+      report += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      report += `\n🔄 設變紀錄 (${changes.length}筆)\n\n`;
+      changes.slice(0, 5).forEach((change, idx) => {
+        report += `  ${idx + 1}. ECO${change.ecoNumber || ''} - ${change.reason}\n`;
+        report += `     日期：${change.date} | 影響：${change.impact || '未評估'}\n\n`;
+      });
+    }
+
+    report += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    report += `\n報告生成時間：${new Date().toLocaleString('zh-TW')}\n`;
+    report += `生成者：${user?.displayName || '系統管理員'}\n`;
+    report += `\n═══════════════════════════════════════════════════════════\n`;
+
+    // 下載報告
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${project.name}_專案報告_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '')}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    alert('✅ 專案報告已生成並下載！');
+  };
+
   if (!project) return null;
 
   return (
@@ -8741,7 +8878,16 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
 
       <Modal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} title={editingTask ? "編輯任務" : "新增任務"}>
         <TaskForm 
-          initialData={editingTask || { title: '', status: newTaskStatus, owner: '', priority: 'P2', risk: false }} 
+          initialData={editingTask || { 
+            title: '', 
+            status: newTaskStatus, 
+            owner: '', 
+            priority: 'P2', 
+            risk: false,
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            notes: ''
+          }} 
           onSubmit={handleTaskSubmit} 
           onCancel={() => setIsTaskModalOpen(false)} 
         />
@@ -8839,8 +8985,11 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
           >
             <Send size={16} /> 發送通知
           </button>
-          <button className="px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-xl text-sm font-medium hover:bg-white/10 transition-all">
-            產生報告
+          <button 
+            onClick={generateProjectReport}
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl text-sm font-medium hover:from-emerald-600 hover:to-teal-600 shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2"
+          >
+            <FileText size={16} /> 產生報告
           </button>
           {user?.role === 'admin' && (
             <button
@@ -9015,6 +9164,11 @@ const ProjectDetailView = ({ project, machine, onBack, tasks: allTasks, onAddTas
                         </div>
                       </div>
                       <h4 className="text-sm font-medium text-white mb-3">{task.title}</h4>
+                      {task.notes && (
+                        <div className="mb-3 p-2 bg-white/5 rounded-lg border border-white/10">
+                          <p className="text-xs text-slate-400 line-clamp-2">{task.notes}</p>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center text-xs text-slate-500">
                         <div className="flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-lg">
                           <UserCircle size={12} /> {task.owner}
@@ -10498,9 +10652,14 @@ const EngineerDashboardView = ({ tasks = [], projects = [], machine = {}, onUpda
                                 }`}
                                 onClick={() => setEditingTask(task)}
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-3 flex-1">
                                     <div className={`w-2 h-2 rounded-full ${task.priority === 'P1' ? 'bg-rose-500' : 'bg-blue-500'}`}></div>
-                                    <span className="text-white font-medium">{task.title}</span>
+                                    <div className="flex-1">
+                                        <span className="text-white font-medium block">{task.title}</span>
+                                        {task.notes && (
+                                            <span className="text-xs text-slate-500 block mt-1 line-clamp-1">📝 {task.notes}</span>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <span className="text-xs text-slate-500">{task.status}</span>
