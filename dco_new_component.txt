@@ -1,0 +1,816 @@
+// === 設計變更系統 (DCO Manager) - PDF 同版填寫系統 ===
+const DCOManagerApp = ({ onBackToMenu, user }) => {
+  const [state, setState] = useState({
+    no:"", dateYear:"", dateMonth:"", dateDay:"", 
+    partNo:"", itemName:"", model:"", applicant:"", appLeader:"",
+    exec:{mech:false, elec:false, art:false, wire:false},
+    reasons:{spec:false, process:false, vendor:false, customer:false, data:false, other:false},
+    reasonDesc:"", benefit:"", priority:"中", requireDate:"",
+    before:"", proposal:"",
+    schedule:{
+      mech_start:"", mech_end:"", mech_days:"", mech_hours:"", mech_leader:"",
+      elec_start:"", elec_end:"", elec_days:"", elec_hours:"", elec_leader:"",
+      art_start:"", art_end:"", art_days:"", art_hours:"", art_leader:"",
+      wire_start:"", wire_end:"", wire_days:"", wire_hours:"", wire_leader:"",
+      eng_start:"", eng_end:"", eng_days:"", eng_hours:"", eng_leader:""
+    },
+    laborCost:"", laborDays:"", laborHours:"",
+    analysis:""
+  });
+
+  const [layout, setLayout] = useState([
+    {id:"no", key:"no", left:80.97, top:3.93, width:15, align:"left"},
+    {id:"dateYear", key:"dateYear", left:77.82, top:6.13, width:5, align:"left"},
+    {id:"dateMonth", key:"dateMonth", left:84.33, top:6.22, width:3, align:"left"},
+    {id:"dateDay", key:"dateDay", left:90.09, top:6.13, width:3, align:"left"},
+    {id:"partNo", key:"partNo", left:11.93, top:8.26, width:40, align:"left"},
+    {id:"applicant", key:"applicant", left:64.99, top:8.26, width:25, align:"left"},
+    {id:"itemName", key:"itemName", left:11.80, top:10.48, width:40, align:"left"},
+    {id:"appLeader", key:"appLeader", left:64.87, top:10.39, width:25, align:"left"},
+    {id:"model", key:"model", left:11.80, top:12.61, width:70, align:"left"},
+    {id:"exec_mech", key:"exec_mech_box", left:66.36, top:12.33, width:2, cls:"box"},
+    {id:"exec_elec", key:"exec_elec_box", left:73.50, top:12.33, width:2, cls:"box"},
+    {id:"exec_art", key:"exec_art_box", left:80.52, top:12.42, width:2, cls:"box"},
+    {id:"exec_wire", key:"exec_wire_box", left:87.66, top:12.33, width:2, cls:"box"},
+    {id:"r_spec", key:"reason_spec_box", left:12.43, top:14.44, width:2, cls:"box"},
+    {id:"r_proc", key:"reason_process_box", left:27.51, top:14.44, width:2, cls:"box"},
+    {id:"r_vendor", key:"reason_vendor_box", left:42.59, top:14.44, width:2, cls:"box"},
+    {id:"r_cust", key:"reason_customer_box", left:55.78, top:14.44, width:2, cls:"box"},
+    {id:"r_data", key:"reason_data_box", left:66.83, top:14.44, width:2, cls:"box"},
+    {id:"r_other", key:"reason_other_box", left:81.91, top:14.44, width:2, cls:"box"},
+    {id:"reasonDesc", key:"reasonDesc", left:17.35, top:16.75, width:70, height:6, font:11.5},
+    {id:"benefit", key:"benefit", left:82.23, top:18.04, width:20, align:"left"},
+    {id:"requireDate", key:"requireDate", left:42.04, top:18.62, width:25, align:"left", font:14, bold:true},
+    {id:"before", key:"before", left:11.80, top:20.89, width:70, height:7, font:11.5},
+    {id:"proposal", key:"proposal", left:54.01, top:20.96, width:70, height:7, font:11.5},
+    {id:"sch_mech_box", key:"sch_mech_box", left:12.31, top:27.98, width:2, cls:"box"},
+    {id:"mech_start", key:"mech_start", left:33.18, top:28.07, width:12, align:"left"},
+    {id:"mech_end", key:"mech_end", left:48.83, top:28.16, width:12, align:"left"},
+    {id:"mech_days", key:"mech_days", left:62.21, top:28.07, width:5, align:"center"},
+    {id:"mech_hours", key:"mech_hours", left:69.47, top:28.07, width:5, align:"center"},
+    {id:"mech_leader", key:"mech_leader", left:84.66, top:28.16, width:15, align:"left"},
+    {id:"sch_elec_box", key:"sch_elec_box", left:12.18, top:30.18, width:2, cls:"box"},
+    {id:"elec_start", key:"elec_start", left:33.18, top:30.27, width:12, align:"left"},
+    {id:"elec_end", key:"elec_end", left:48.70, top:30.09, width:12, align:"left"},
+    {id:"elec_days", key:"elec_days", left:62.21, top:30.18, width:5, align:"center"},
+    {id:"elec_hours", key:"elec_hours", left:69.47, top:30.27, width:5, align:"center"},
+    {id:"elec_leader", key:"elec_leader", left:84.79, top:30.35, width:15, align:"left"},
+    {id:"sch_art_box", key:"sch_art_box", left:12.31, top:32.29, width:2, cls:"box"},
+    {id:"art_start", key:"art_start", left:32.93, top:32.37, width:12, align:"left"},
+    {id:"art_end", key:"art_end", left:48.83, top:32.20, width:12, align:"left"},
+    {id:"art_days", key:"art_days", left:62.21, top:32.29, width:5, align:"center"},
+    {id:"art_hours", key:"art_hours", left:69.47, top:32.29, width:5, align:"center"},
+    {id:"art_leader", key:"art_leader", left:84.79, top:32.37, width:15, align:"left"},
+    {id:"sch_wire_box", key:"sch_wire_box", left:12.31, top:34.31, width:2, cls:"box"},
+    {id:"wire_start", key:"wire_start", left:32.93, top:34.39, width:12, align:"left"},
+    {id:"wire_end", key:"wire_end", left:48.70, top:34.31, width:12, align:"left"},
+    {id:"wire_days", key:"wire_days", left:62.21, top:34.39, width:5, align:"center"},
+    {id:"wire_hours", key:"wire_hours", left:69.47, top:34.39, width:5, align:"center"},
+    {id:"wire_leader", key:"wire_leader", left:84.79, top:34.31, width:15, align:"left"},
+    {id:"sch_eng_box", key:"sch_eng_box", left:12.31, top:36.06, width:2, cls:"box"},
+    {id:"eng_start", key:"eng_start", left:32.93, top:36.24, width:12, align:"left"},
+    {id:"eng_end", key:"eng_end", left:48.83, top:36.24, width:12, align:"left"},
+    {id:"eng_days", key:"eng_days", left:62.33, top:36.15, width:5, align:"center"},
+    {id:"eng_hours", key:"eng_hours", left:69.34, top:36.24, width:5, align:"center"},
+    {id:"eng_leader", key:"eng_leader", left:84.79, top:36.15, width:15, align:"left"},
+    {id:"laborCost", key:"laborCost", left:66.86, top:38.10, width:15, align:"left"},
+    {id:"laborDays", key:"laborDays", left:79.58, top:38.10, width:6, align:"center"},
+    {id:"laborHours", key:"laborHours", left:86.45, top:38.10, width:6, align:"center"},
+    {id:"p_high", key:"pri_high_box", left:22.39, top:39.96, width:2, cls:"box"},
+    {id:"p_mid", key:"pri_mid_box", left:29.53, top:40.05, width:2, cls:"box"},
+    {id:"p_low", key:"pri_low_box", left:36.54, top:40.05, width:2, cls:"box"}
+  ]);
+
+  const [isEdit, setIsEdit] = useState(false);
+  const [autoSaveTimer, setAutoSaveTimer] = useState(null);
+  const overlayRef = useRef(null);
+  const dragRef = useRef(null);
+
+  // 輔助函數
+  const box = (v) => v ? "■" : "□";
+
+  const makeDict = () => {
+    return {
+      no: state.no,
+      dateYear: state.dateYear,
+      dateMonth: state.dateMonth,
+      dateDay: state.dateDay,
+      partNo: state.partNo,
+      itemName: state.itemName,
+      model: state.model,
+      applicant: state.applicant,
+      appLeader: state.appLeader,
+      exec_mech_box: box(state.exec.mech),
+      exec_elec_box: box(state.exec.elec),
+      exec_art_box: box(state.exec.art),
+      exec_wire_box: box(state.exec.wire),
+      reason_spec_box: box(state.reasons.spec),
+      reason_process_box: box(state.reasons.process),
+      reason_vendor_box: box(state.reasons.vendor),
+      reason_customer_box: box(state.reasons.customer),
+      reason_data_box: box(state.reasons.data),
+      reason_other_box: box(state.reasons.other),
+      reasonDesc: state.reasonDesc,
+      benefit: state.benefit,
+      requireDate: state.requireDate ? `需求日期：${state.requireDate}` : "",
+      before: state.before,
+      proposal: state.proposal,
+      sch_mech_box: box(!!(state.schedule.mech_start || state.schedule.mech_end)),
+      sch_elec_box: box(!!(state.schedule.elec_start || state.schedule.elec_end)),
+      sch_art_box: box(!!(state.schedule.art_start || state.schedule.art_end)),
+      sch_wire_box: box(!!(state.schedule.wire_start || state.schedule.wire_end)),
+      sch_eng_box: box(!!(state.schedule.eng_start || state.schedule.eng_end)),
+      mech_start: state.schedule.mech_start,
+      mech_end: state.schedule.mech_end,
+      mech_days: state.schedule.mech_days,
+      mech_hours: state.schedule.mech_hours,
+      mech_leader: state.schedule.mech_leader,
+      elec_start: state.schedule.elec_start,
+      elec_end: state.schedule.elec_end,
+      elec_days: state.schedule.elec_days,
+      elec_hours: state.schedule.elec_hours,
+      elec_leader: state.schedule.elec_leader,
+      art_start: state.schedule.art_start,
+      art_end: state.schedule.art_end,
+      art_days: state.schedule.art_days,
+      art_hours: state.schedule.art_hours,
+      art_leader: state.schedule.art_leader,
+      wire_start: state.schedule.wire_start,
+      wire_end: state.schedule.wire_end,
+      wire_days: state.schedule.wire_days,
+      wire_hours: state.schedule.wire_hours,
+      wire_leader: state.schedule.wire_leader,
+      eng_start: state.schedule.eng_start,
+      eng_end: state.schedule.eng_end,
+      eng_days: state.schedule.eng_days,
+      eng_hours: state.schedule.eng_hours,
+      eng_leader: state.schedule.eng_leader,
+      laborCost: state.laborCost,
+      laborDays: state.laborDays,
+      laborHours: state.laborHours,
+      pri_high_box: box(state.priority==="高"),
+      pri_mid_box: box(state.priority==="中"),
+      pri_low_box: box(state.priority==="低"),
+    }
+  };
+
+  const updateState = (updates) => {
+    setState(prev => ({...prev, ...updates}));
+  };
+
+  const updateSchedule = (field, value) => {
+    setState(prev => ({
+      ...prev,
+      schedule: {...prev.schedule, [field]: value}
+    }));
+  };
+
+  const calculateTotalTime = () => {
+    const units = ['mech', 'elec', 'art', 'wire', 'eng'];
+    let totalDays = 0;
+    let totalHours = 0;
+    
+    units.forEach(unit => {
+      const days = parseInt(state.schedule[unit + '_days']) || 0;
+      const hours = parseInt(state.schedule[unit + '_hours']) || 0;
+      totalDays += days;
+      totalHours += hours;
+    });
+    
+    const extraDays = Math.floor(totalHours / 8);
+    totalDays += extraDays;
+    totalHours = totalHours % 8;
+    
+    updateState({
+      laborDays: totalDays.toString(),
+      laborHours: totalHours.toString()
+    });
+    
+    alert("✅ 計算完成！\\n\\n總工時：" + totalDays + "天 " + totalHours + "Hr");
+  };
+
+  const validateForm = () => {
+    const required = ['no', 'dateYear', 'dateMonth', 'dateDay', 'partNo', 'itemName', 'model', 'applicant'];
+    const missing = required.filter(field => !state[field]?.trim());
+    
+    if(missing.length > 0){
+      alert("⚠️ 請填寫必填欄位\\n\\n缺少：" + missing.join('、'));
+      return false;
+    }
+    return true;
+  };
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (state.no || "QP-012-F01") + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 500);
+  };
+
+  const importData = (file) => {
+    const r = new FileReader();
+    r.onload = () => {
+      try{
+        const obj = JSON.parse(r.result);
+        setState(prev => ({...prev, ...obj}));
+      }catch(e){
+        alert("JSON 匯入失敗：格式不正確");
+      }
+    };
+    r.readAsText(file);
+  };
+
+  const loadDemo = () => {
+    setState({
+      no:"2025-DEC-001",
+      dateYear:"2025",
+      dateMonth:"12",
+      dateDay:"24",
+      partNo:"A32HC040298B",
+      itemName:"點陣板圓弧燈箱",
+      model:"SMART ROBOT",
+      applicant:"Jim",
+      appLeader:"研發部主管",
+      exec:{mech:true, elec:false, art:true, wire:false},
+      reasons:{spec:false, process:true, vendor:false, customer:false, data:false, other:false},
+      reasonDesc:"製程改善：降低組裝工時，提升維修門拆裝一致性。",
+      benefit:"5000",
+      priority:"高",
+      requireDate:"2025-12-31",
+      before:"現行固定方式在大量組裝時容易造成孔位累積誤差。",
+      proposal:"調整孔位公差吸收設計，並將螺孔設計改為橢圓孔。",
+      schedule:{
+        mech_start:"2025-12-25", mech_end:"2025-12-29", mech_days:"3", mech_hours:"6", mech_leader:"",
+        elec_start:"", elec_end:"", elec_days:"", elec_hours:"", elec_leader:"",
+        art_start:"2025-12-26", art_end:"2025-12-27", art_days:"1", art_hours:"4", art_leader:"",
+        wire_start:"", wire_end:"", wire_days:"", wire_hours:"", wire_leader:"",
+        eng_start:"2025-12-30", eng_end:"2025-12-30", eng_days:"0", eng_hours:"6", eng_leader:""
+      },
+      laborCost:"12000",
+      laborDays:"4",
+      laborHours:"16",
+      analysis:""
+    });
+  };
+
+  const saveLayoutConfig = () => {
+    const config = {
+      version: "1.0",
+      savedAt: new Date().toISOString(),
+      layout: layout
+    };
+    const blob = new Blob([JSON.stringify(config, null, 2)], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "位置配置_" + (state.no || "未命名") + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    alert("✅ 位置配置已保存！");
+  };
+
+  const loadLayoutConfig = (file) => {
+    const r = new FileReader();
+    r.onload = () => {
+      try{
+        const config = JSON.parse(r.result);
+        if(config.layout && Array.isArray(config.layout)){
+          setLayout(config.layout);
+          localStorage.setItem("qp012_layout", JSON.stringify(config.layout));
+          alert("✅ 位置配置載入成功！");
+        }else{
+          alert("❌ 配置文件格式不正確！");
+        }
+      }catch(e){
+        alert("❌ 配置文件讀取失敗！\\n" + e.message);
+      }
+    };
+    r.readAsText(file);
+  };
+
+  const handlePrint = () => {
+    if(!validateForm()) return;
+    window.print();
+  };
+
+  // 自動保存
+  useEffect(() => {
+    if(autoSaveTimer) clearTimeout(autoSaveTimer);
+    const timer = setTimeout(() => {
+      localStorage.setItem("qp012_draft", JSON.stringify({
+        data: state,
+        savedAt: new Date().toISOString()
+      }));
+    }, 2000);
+    setAutoSaveTimer(timer);
+    return () => clearTimeout(timer);
+  }, [state]);
+
+  // 載入草稿
+  useEffect(() => {
+    const draft = localStorage.getItem("qp012_draft");
+    if(draft){
+      try{
+        const {data, savedAt} = JSON.parse(draft);
+        const saveTime = new Date(savedAt);
+        const hoursDiff = (new Date() - saveTime) / (1000 * 60 * 60);
+        
+        if(hoursDiff < 24){
+          if(window.confirm("📝 發現草稿\\n\\n保存時間：" + saveTime.toLocaleString('zh-TW') + "\\n是否載入草稿資料？")){
+            setState(data);
+          }
+        }
+      }catch(e){}
+    }
+    
+    // 自動填入當前日期
+    if(!state.dateYear && !state.dateMonth && !state.dateDay){
+      const today = new Date();
+      updateState({
+        dateYear: today.getFullYear().toString(),
+        dateMonth: (today.getMonth() + 1).toString(),
+        dateDay: today.getDate().toString()
+      });
+    }
+  }, []);
+
+  // 拖曳功能
+  useEffect(() => {
+    if(!isEdit || !overlayRef.current) return;
+
+    const handleMouseMove = (e) => {
+      if(!dragRef.current) return;
+      const rect = dragRef.current.rect;
+      const dx = (e.clientX - dragRef.current.startX) / rect.width * 100;
+      const dy = (e.clientY - dragRef.current.startY) / rect.height * 100;
+      dragRef.current.item.left = Math.max(0, Math.min(98, dragRef.current.startL + dx));
+      dragRef.current.item.top  = Math.max(0, Math.min(98, dragRef.current.startT + dy));
+      dragRef.current.el.style.left = dragRef.current.item.left + "%";
+      dragRef.current.el.style.top  = dragRef.current.item.top + "%";
+    };
+
+    const handleMouseUp = () => {
+      if(dragRef.current){
+        localStorage.setItem("qp012_layout", JSON.stringify(layout));
+        dragRef.current = null;
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isEdit, layout]);
+
+  const renderOverlay = () => {
+    const dict = makeDict();
+    return layout.map(f => {
+      const handleMouseDown = (e) => {
+        if(!isEdit) return;
+        const canvas = e.target.closest('.dco-form-canvas');
+        const rect = canvas.getBoundingClientRect();
+        dragRef.current = {
+          el: e.target,
+          item: f,
+          rect: rect,
+          startX: e.clientX,
+          startY: e.clientY,
+          startL: f.left,
+          startT: f.top
+        };
+        e.preventDefault();
+      };
+
+      return (
+        <div
+          key={f.id}
+          className={`dco-field ${f.cls || ''} ${f.bold ? 'dco-bold' : ''} ${isEdit ? 'dco-edit' : ''}`}
+          data-id={f.id}
+          style={{
+            left: f.left + "%",
+            top: f.top + "%",
+            width: (f.width || 10) + "%",
+            height: f.height ? f.height + "%" : "auto",
+            fontSize: f.font ? f.font + "px" : "11.5px",
+            textAlign: f.align || "left"
+          }}
+          onMouseDown={handleMouseDown}
+        >
+          {dict[f.key] || ""}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="dco-manager-container" style={{minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}}>
+      <style>{`
+        .dco-manager-container * { box-sizing: border-box; }
+        .dco-topbar {
+          max-width: 1400px;
+          margin: 0 auto 24px;
+          padding: 20px 24px;
+          background: rgba(255,255,255,0.95);
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+          display: flex;
+          gap: 16px;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+        }
+        .dco-title {
+          font-size: 22px;
+          font-weight: 800;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        .dco-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .dco-btn {
+          border: none;
+          background: #fff;
+          border-radius: 12px;
+          padding: 12px 20px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 13px;
+          transition: all 0.3s;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .dco-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+        .dco-btn-primary {
+          background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+          color: #fff;
+        }
+        .dco-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 20px;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 0 16px;
+        }
+        .dco-panel {
+          background: rgba(255,255,255,0.95);
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+          overflow: hidden;
+        }
+        .dco-panel-header {
+          padding: 18px 20px;
+          background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+          border-bottom: 2px solid #e9ecef;
+          font-size: 15px;
+          font-weight: 700;
+        }
+        .dco-panel-body { padding: 20px; }
+        .dco-field-row {
+          display: grid;
+          grid-template-columns: 140px 1fr;
+          gap: 12px;
+          align-items: center;
+          margin-bottom: 14px;
+        }
+        .dco-label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #1e293b;
+        }
+        .dco-label.required::after {
+          content: ' *';
+          color: #ef4444;
+          font-weight: 700;
+        }
+        .dco-input, .dco-textarea, .dco-select {
+          width: 100%;
+          border: 2px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-size: 14px;
+          background: #fff;
+          transition: all 0.3s;
+          font-family: inherit;
+        }
+        .dco-input:focus, .dco-textarea:focus, .dco-select:focus {
+          outline: none;
+          border-color: #6366f1;
+          box-shadow: 0 0 0 4px rgba(99,102,241,0.1);
+          transform: translateY(-1px);
+        }
+        .dco-textarea {
+          min-height: 75px;
+          resize: vertical;
+          line-height: 1.6;
+        }
+        .dco-checks {
+          display: flex;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+        .dco-check-label {
+          display: flex;
+          gap: 7px;
+          align-items: center;
+          font-size: 13px;
+          cursor: pointer;
+          padding: 6px 12px;
+          border-radius: 8px;
+          transition: all 0.2s;
+        }
+        .dco-check-label:hover { background: #f1f5f9; }
+        .dco-checkbox {
+          width: 18px;
+          height: 18px;
+          cursor: pointer;
+          accent-color: #6366f1;
+        }
+        .dco-hint {
+          font-size: 12px;
+          color: #64748b;
+          line-height: 1.6;
+          margin-top: 10px;
+          padding: 12px 16px;
+          background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+          border-radius: 12px;
+          border-left: 4px solid #6366f1;
+        }
+        .dco-form-canvas {
+          position: relative;
+          width: 210mm;
+          height: 297mm;
+          background: #fff;
+          margin: 0 auto;
+          box-shadow: 0 12px 32px rgba(16,24,40,.12);
+          border-radius: 4px;
+          overflow: hidden;
+        }
+        .dco-form-bg {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          user-select: none;
+          pointer-events: none;
+        }
+        .dco-overlay {
+          position: absolute;
+          inset: 0;
+        }
+        .dco-field {
+          position: absolute;
+          font-size: 11.5px;
+          line-height: 1.3;
+          white-space: pre-wrap;
+          color: #000;
+          font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+        }
+        .dco-field.box { font-size: 15px; font-weight: 900; line-height: 1; }
+        .dco-field.dco-bold { font-weight: 700; }
+        .dco-field.dco-edit {
+          outline: 1px dashed rgba(180,35,24,.6);
+          background: rgba(255,255,255,.5);
+          cursor: move;
+          transition: all 0.15s;
+        }
+        .dco-field.dco-edit:hover {
+          outline: 2px solid rgba(180,35,24,.8);
+          background: rgba(255,255,255,.75);
+        }
+        .dco-calc-btn {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: #fff;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-size: 12px;
+          cursor: pointer;
+          font-weight: 600;
+          transition: all 0.3s;
+        }
+        .dco-calc-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        }
+        @media print {
+          .dco-topbar, .dco-grid .dco-panel:first-child { display: none !important; }
+          .dco-grid { grid-template-columns: 1fr; padding: 0; }
+          .dco-panel { border: none; box-shadow: none; }
+          .dco-panel-header { display: none; }
+          .dco-panel-body { padding: 0; }
+          .dco-form-canvas { box-shadow: none; }
+          @page { size: A4; margin: 0; }
+        }
+      `}</style>
+
+      <div className="dco-topbar">
+        <div className="dco-title">飛絡力電子股份有限公司 - 設計變更申請單（PDF 同版填寫 + 匯出）</div>
+        <div className="dco-actions">
+          <button className="dco-btn" onClick={onBackToMenu}>🏠 返回主選單</button>
+          <button className="dco-btn" onClick={loadDemo}>📝 載入示範資料</button>
+          <button className="dco-btn" onClick={exportData}>💾 匯出資料</button>
+          <button className="dco-btn" onClick={() => document.getElementById('dco-import-json').click()}>📂 匯入資料</button>
+          <button className="dco-btn" onClick={() => setIsEdit(!isEdit)}>🎯 {isEdit ? '完成' : '校正位置'}</button>
+          <button className="dco-btn" onClick={saveLayoutConfig}>💾 保存位置配置</button>
+          <button className="dco-btn" onClick={() => document.getElementById('dco-import-layout').click()}>📂 載入位置配置</button>
+          <button className="dco-btn dco-btn-primary" onClick={handlePrint}>🖨️ 列印 / 匯出 PDF</button>
+        </div>
+      </div>
+
+      <div className="dco-grid">
+        <div className="dco-panel">
+          <div className="dco-panel-header">📋 填寫資料</div>
+          <div className="dco-panel-body">
+            <div className="dco-field-row">
+              <label className="dco-label required">NO.</label>
+              <input className="dco-input" type="text" placeholder="表單編號" value={state.no} onChange={(e) => updateState({no: e.target.value})} />
+            </div>
+            
+            <div className="dco-field-row">
+              <label className="dco-label required">日期</label>
+              <div style={{display:'grid',gridTemplateColumns:'1.5fr 1fr 1fr',gap:'8px'}}>
+                <input className="dco-input" type="number" placeholder="年" min="2000" max="2100" value={state.dateYear} onChange={(e) => updateState({dateYear: e.target.value})} />
+                <input className="dco-input" type="number" placeholder="月" min="1" max="12" value={state.dateMonth} onChange={(e) => updateState({dateMonth: e.target.value})} />
+                <input className="dco-input" type="number" placeholder="日" min="1" max="31" value={state.dateDay} onChange={(e) => updateState({dateDay: e.target.value})} />
+              </div>
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label required">料號</label>
+              <input className="dco-input" type="text" placeholder="產品料號" value={state.partNo} onChange={(e) => updateState({partNo: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label required">品名</label>
+              <input className="dco-input" type="text" placeholder="產品名稱" value={state.itemName} onChange={(e) => updateState({itemName: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label required">機種</label>
+              <input className="dco-input" type="text" placeholder="機種型號" value={state.model} onChange={(e) => updateState({model: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label required">申請人</label>
+              <input className="dco-input" type="text" placeholder="申請人姓名" value={state.applicant} onChange={(e) => updateState({applicant: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label">申請單位主管</label>
+              <input className="dco-input" type="text" placeholder="主管姓名" value={state.appLeader} onChange={(e) => updateState({appLeader: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row" style={{alignItems:'start'}}>
+              <label className="dco-label">設變執行單位</label>
+              <div className="dco-checks">
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.exec.mech} onChange={(e) => setState(prev => ({...prev, exec: {...prev.exec, mech: e.target.checked}}))} />機構</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.exec.elec} onChange={(e) => setState(prev => ({...prev, exec: {...prev.exec, elec: e.target.checked}}))} />電子</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.exec.art} onChange={(e) => setState(prev => ({...prev, exec: {...prev.exec, art: e.target.checked}}))} />美術</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.exec.wire} onChange={(e) => setState(prev => ({...prev, exec: {...prev.exec, wire: e.target.checked}}))} />配線</label>
+              </div>
+            </div>
+
+            <div className="dco-field-row" style={{alignItems:'start'}}>
+              <label className="dco-label">設變原因</label>
+              <div className="dco-checks">
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.reasons.spec} onChange={(e) => setState(prev => ({...prev, reasons: {...prev.reasons, spec: e.target.checked}}))} />產品規格變更</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.reasons.process} onChange={(e) => setState(prev => ({...prev, reasons: {...prev.reasons, process: e.target.checked}}))} />製程工序變更</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.reasons.vendor} onChange={(e) => setState(prev => ({...prev, reasons: {...prev.reasons, vendor: e.target.checked}}))} />供應商變更</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.reasons.customer} onChange={(e) => setState(prev => ({...prev, reasons: {...prev.reasons, customer: e.target.checked}}))} />客戶需求</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.reasons.data} onChange={(e) => setState(prev => ({...prev, reasons: {...prev.reasons, data: e.target.checked}}))} />資料建立錯誤</label>
+                <label className="dco-check-label"><input type="checkbox" className="dco-checkbox" checked={state.reasons.other} onChange={(e) => setState(prev => ({...prev, reasons: {...prev.reasons, other: e.target.checked}}))} />其他</label>
+              </div>
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label">說明</label>
+              <textarea className="dco-textarea" placeholder="請說明設變原因的詳細內容..." value={state.reasonDesc} onChange={(e) => updateState({reasonDesc: e.target.value})} />
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'14px'}}>
+              <div className="dco-field-row" style={{margin:0,gridTemplateColumns:'140px 1fr'}}>
+                <label className="dco-label">預估效益</label>
+                <input className="dco-input" type="number" placeholder="NT$" min="0" value={state.benefit} onChange={(e) => updateState({benefit: e.target.value})} />
+              </div>
+              <div className="dco-field-row" style={{margin:0,gridTemplateColumns:'140px 1fr'}}>
+                <label className="dco-label">優先順序</label>
+                <select className="dco-select" value={state.priority} onChange={(e) => updateState({priority: e.target.value})}>
+                  <option>高</option>
+                  <option>中</option>
+                  <option>低</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label">需求日期</label>
+              <input className="dco-input" type="date" value={state.requireDate} onChange={(e) => updateState({requireDate: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label">變更前</label>
+              <textarea className="dco-textarea" placeholder="描述變更前的現況..." value={state.before} onChange={(e) => updateState({before: e.target.value})} />
+            </div>
+
+            <div className="dco-field-row">
+              <label className="dco-label">變更建議</label>
+              <textarea className="dco-textarea" placeholder="提出具體的變更建議..." value={state.proposal} onChange={(e) => updateState({proposal: e.target.value})} />
+            </div>
+
+            <div style={{marginTop:'12px',borderTop:'1px dashed #e5e7eb',paddingTop:'12px'}}>
+              <div className="dco-hint" style={{marginBottom:'10px'}}>⏱️ 變更時程（填寫涉及的單位即可）</div>
+              
+              {['mech', 'elec', 'art', 'wire', 'eng'].map((unit, idx) => {
+                const labels = {mech: '機構設計', elec: '電子設計', art: '美術設計', wire: '配線設計', eng: '工程中心'};
+                return (
+                  <div key={unit} className="dco-field-row" style={{gridTemplateColumns:'140px 1fr'}}>
+                    <label className="dco-label">{labels[unit]}</label>
+                    <div style={{display:'grid',gridTemplateColumns:'1.2fr 1.2fr 0.6fr 0.6fr 1fr',gap:'8px'}}>
+                      <input className="dco-input" type="date" value={state.schedule[unit + '_start']} onChange={(e) => updateSchedule(unit + '_start', e.target.value)} />
+                      <input className="dco-input" type="date" value={state.schedule[unit + '_end']} onChange={(e) => updateSchedule(unit + '_end', e.target.value)} />
+                      <input className="dco-input" type="number" placeholder="天" min="0" value={state.schedule[unit + '_days']} onChange={(e) => updateSchedule(unit + '_days', e.target.value)} />
+                      <input className="dco-input" type="number" placeholder="Hr" min="0" value={state.schedule[unit + '_hours']} onChange={(e) => updateSchedule(unit + '_hours', e.target.value)} />
+                      <input className="dco-input" type="text" placeholder="主辦" value={state.schedule[unit + '_leader']} onChange={(e) => updateSchedule(unit + '_leader', e.target.value)} />
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginTop:'14px'}}>
+                <div className="dco-field-row" style={{margin:0,gridTemplateColumns:'140px 1fr'}}>
+                  <label className="dco-label">人事成本</label>
+                  <input className="dco-input" type="number" placeholder="NT$" min="0" value={state.laborCost} onChange={(e) => updateState({laborCost: e.target.value})} />
+                </div>
+                <div className="dco-field-row" style={{margin:0,gridTemplateColumns:'140px 1fr'}}>
+                  <label className="dco-label">總工時</label>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'8px'}}>
+                    <input className="dco-input" type="number" placeholder="天" min="0" value={state.laborDays} readOnly style={{background:'#f8fafc'}} />
+                    <input className="dco-input" type="number" placeholder="Hr" min="0" value={state.laborHours} readOnly style={{background:'#f8fafc'}} />
+                    <button type="button" className="dco-calc-btn" onClick={calculateTotalTime}>⚙️ 自動計算</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{marginTop:'12px',borderTop:'1px dashed #e5e7eb',paddingTop:'12px'}}>
+              <div className="dco-hint" style={{marginBottom:'10px'}}>📊 研發評估部分</div>
+              <div className="dco-field-row">
+                <label className="dco-label">評估分析</label>
+                <textarea className="dco-textarea" placeholder="研發評估分析內容..." value={state.analysis} onChange={(e) => updateState({analysis: e.target.value})} />
+              </div>
+            </div>
+
+            <div className="dco-hint" style={{marginTop:'12px'}}>
+              💡 右側為 PDF 底圖，格線與原檔 100% 一致。如需更精準對齊文字位置，請按「🎯 校正位置」拖曳調整（自動儲存）。
+            </div>
+          </div>
+        </div>
+
+        <div className="dco-panel">
+          <div className="dco-panel-header">📄 預覽（PDF 底圖 + 文字疊加）</div>
+          <div className="dco-panel-body" style={{padding:0}}>
+            <div className="dco-form-canvas">
+              <img className="dco-form-bg" src="./設變單_page1.png" alt="飛絡力電子設計變更申請單" />
+              <div className="dco-overlay" ref={overlayRef}>
+                {renderOverlay()}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <input
+        id="dco-import-json"
+        type="file"
+        accept="application/json"
+        style={{display:'none'}}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if(f) importData(f);
+          e.target.value = "";
+        }}
+      />
+
+      <input
+        id="dco-import-layout"
+        type="file"
+        accept="application/json"
+        style={{display:'none'}}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if(f) loadLayoutConfig(f);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+};

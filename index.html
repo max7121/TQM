@@ -418,6 +418,7 @@ import {
   FileText, 
   TrendingUp, 
   Menu, 
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   ChevronUp,
@@ -457,7 +458,6 @@ import {
   Link as LinkIcon,
   Calculator,
   GanttChart,
-  BarChart3 as GanttChartIcon,
   Sun,
   Moon,
   Package,
@@ -2392,6 +2392,7 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
   // 自動取得的資料
   const [tqmRecords, setTqmRecords] = useState([]);
   const [rdTasks, setRdTasks] = useState([]);
+  const [dcoOrders, setDcoOrders] = useState([]);
   const [autoFetchedData, setAutoFetchedData] = useState(null);
   
   // 🔥 折疊狀態管理
@@ -2820,13 +2821,32 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
     });
   }, [userDepartment]);
 
-  // 🔥 自動訂閱 TQM 紀錄和 R&D Nexus 任務
+  // 🔥 自動訂閱 TQM 紀錄、R&D Nexus 任務和 DCO 設變單
   useEffect(() => {
     const unsubTqm = db.subscribe('tqm_records', setTqmRecords);
     const unsubTasks = db.subscribe('rd_tasks', setRdTasks);
+    
+    // 從 localStorage 載入 DCO 設變單
+    const loadDcoOrders = () => {
+      const localData = localStorage.getItem('dco_orders');
+      if (localData) {
+        setDcoOrders(JSON.parse(localData));
+      }
+    };
+    loadDcoOrders();
+    
+    // 監聽 localStorage 變化
+    const handleStorageChange = (e) => {
+      if (e.key === 'dco_orders') {
+        loadDcoOrders();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    
     return () => {
       unsubTqm();
       unsubTasks();
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
@@ -2880,6 +2900,36 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
       return endDate < new Date();
     }).length;
     
+    // 過濾當月的 DCO 設變單 (用戶為主辦或副辦)
+    const monthDcoOrders = dcoOrders.filter(order => {
+      // 檢查建立時間是否在當月
+      // DCO 時間格式: "2025/12/29 下午11:42:16" 或 "2025-12-29 23:42:16"
+      const timeStr = order.createdTime || '';
+      const dateMatch = timeStr.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (!dateMatch) return false;
+      
+      const orderYear = parseInt(dateMatch[1]);
+      const orderMonth = parseInt(dateMatch[2]);
+      
+      if (orderMonth !== monthNum || orderYear !== currentYear) return false;
+      
+      // 檢查用戶是否為主辦或副辦
+      const userUnits = order.executionUnits?.filter(u => 
+        u.selected && (u.owner === userName || u.coOwner === userName)
+      ) || [];
+      return userUnits.length > 0;
+    });
+    
+    // 計算 DCO 統計
+    const dcoTotal = monthDcoOrders.length;
+    const dcoCompleted = monthDcoOrders.filter(order => {
+      const userUnits = order.executionUnits?.filter(u => 
+        u.selected && (u.owner === userName || u.coOwner === userName)
+      ) || [];
+      return userUnits.every(u => u.approved);
+    }).length;
+    const dcoPending = dcoTotal - dcoCompleted;
+    
     setAutoFetchedData({
       tqm: {
         total: tqmTotal,
@@ -2892,9 +2942,15 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
         completed: tasksCompleted,
         overdue: tasksOverdue,
         list: monthTasks
+      },
+      dco: {
+        total: dcoTotal,
+        completed: dcoCompleted,
+        pending: dcoPending,
+        list: monthDcoOrders
       }
     });
-  }, [tqmRecords, rdTasks, currentMonth, user]);
+  }, [tqmRecords, rdTasks, dcoOrders, currentMonth, user]);
 
   const handleWorkChange = (name, value) => {
     setFormData(prev => ({
@@ -3218,7 +3274,7 @@ ${indicatorsText}
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* TQM 紀錄摘要 */}
               <div className="bg-white p-4 rounded-lg border border-rose-200">
                 <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
@@ -3304,6 +3360,51 @@ ${indicatorsText}
                   </div>
                 )}
               </div>
+              
+              {/* DCO 設變單摘要 */}
+              <div className="bg-white p-4 rounded-lg border border-amber-200">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                  <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">DCO</span>
+                  設計變更單
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">本月負責總數:</span>
+                    <span className="font-bold text-amber-600">{autoFetchedData.dco.total} 件</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">已完成簽核:</span>
+                    <span className="font-bold text-green-600">{autoFetchedData.dco.completed} 件</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">待處理:</span>
+                    <span className={`font-bold ${autoFetchedData.dco.pending > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                      {autoFetchedData.dco.pending} 件
+                    </span>
+                  </div>
+                </div>
+                {autoFetchedData.dco.total > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <p className="text-xs text-slate-500 mb-2">設變單列表:</p>
+                    <div className="max-h-24 overflow-y-auto space-y-1">
+                      {autoFetchedData.dco.list.slice(0, 3).map((order, i) => (
+                        <div key={i} className="text-xs p-2 bg-slate-50 rounded">
+                          <span className="text-slate-400">{order.orderNumber}</span>
+                          <span className="mx-2">|</span>
+                          <span className="font-medium truncate">{order.title}</span>
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${
+                            order.status === '已核准' ? 'bg-green-100 text-green-700' : 
+                            order.status === '待主管核准' ? 'bg-indigo-100 text-indigo-700' : 
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             
             {/* 一鍵帶入按鈕 */}
@@ -3311,18 +3412,26 @@ ${indicatorsText}
               <button
                 type="button"
                 onClick={() => {
-                  // 將 R&D Nexus 任務完成數自動帶入工作產出量
+                  // 將 R&D Nexus 任務完成數和 DCO 設變單數自動帶入工作產出量
                   const newWorkCompletion = { ...formData.workCompletion };
                   const firstWorkKey = Object.keys(newWorkCompletion)[0];
+                  const dcoWorkKey = Object.keys(newWorkCompletion).find(key => key.includes('設變') || key.includes('改版'));
+                  
+                  // 帶入 R&D 任務完成數到第一個工作項目
                   if (firstWorkKey && autoFetchedData.tasks.completed > 0) {
                     newWorkCompletion[firstWorkKey] = autoFetchedData.tasks.completed;
+                  }
+                  
+                  // 帶入 DCO 設變單數到「設變/改版」項目
+                  if (dcoWorkKey && autoFetchedData.dco.completed > 0) {
+                    newWorkCompletion[dcoWorkKey] = autoFetchedData.dco.completed;
                   }
                   
                   // 將 TQM 異常和逾期自動帶入品質狀況
                   const newQuality = { ...formData.quality };
                   // 嘗試對應品質欄位
                   if (newQuality['逾期完成件數'] !== undefined) {
-                    newQuality['逾期完成件數'] = autoFetchedData.tasks.overdue;
+                    newQuality['逾期完成件數'] = autoFetchedData.tasks.overdue + autoFetchedData.dco.pending;
                   }
                   
                   setFormData(prev => ({
@@ -3331,12 +3440,12 @@ ${indicatorsText}
                     quality: newQuality
                   }));
                   
-                  alert(`✅ 已自動帶入資料:\n• 任務完成數: ${autoFetchedData.tasks.completed} 件\n• 逾期任務: ${autoFetchedData.tasks.overdue} 件\n• TQM異常: ${autoFetchedData.tqm.total} 件\n\n請檢查並補充其他資料`);
+                  alert(`✅ 已自動帶入資料:\n• R&D 任務完成: ${autoFetchedData.tasks.completed} 件\n• DCO 設變單完成: ${autoFetchedData.dco.completed} 件\n• DCO 待處理: ${autoFetchedData.dco.pending} 件\n• 逾期任務: ${autoFetchedData.tasks.overdue} 件\n• TQM異常: ${autoFetchedData.tqm.total} 件\n\n請檢查並補充其他資料`);
                 }}
                 className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
               >
                 <Download className="w-5 h-5"/>
-                一鍵帶入 R&D Nexus 資料
+                一鍵帶入所有系統資料
               </button>
               <button
                 type="button"
@@ -3344,7 +3453,8 @@ ${indicatorsText}
                   // 詳細檢視
                   const taskDetails = autoFetchedData.tasks.list.map(t => `• ${t.title} [${t.status}]`).join('\n');
                   const tqmDetails = autoFetchedData.tqm.records.map(r => `• ${r.date} ${r.issueType} [${r.status}]`).join('\n');
-                  alert(`📊 ${currentMonth} 詳細資料\n\n━━ R&D Nexus 任務 (${autoFetchedData.tasks.total}件) ━━\n${taskDetails || '無任務'}\n\n━━ TQM 異常紀錄 (${autoFetchedData.tqm.total}件) ━━\n${tqmDetails || '無紀錄'}`);
+                  const dcoDetails = autoFetchedData.dco.list.map(o => `• ${o.orderNumber} ${o.title} [${o.status}]`).join('\n');
+                  alert(`📊 ${currentMonth} 詳細資料\n\n━━ R&D Nexus 任務 (${autoFetchedData.tasks.total}件) ━━\n${taskDetails || '無任務'}\n\n━━ DCO 設變單 (${autoFetchedData.dco.total}件) ━━\n${dcoDetails || '無設變單'}\n\n━━ TQM 異常紀錄 (${autoFetchedData.tqm.total}件) ━━\n${tqmDetails || '無紀錄'}`);
                 }}
                 className="px-4 py-3 border-2 border-emerald-300 text-emerald-700 rounded-lg font-medium hover:bg-emerald-50 transition-colors"
               >
@@ -16000,8 +16110,8 @@ const SystemSelector = ({ onSelect, onLogout, user, onExportDB }) => {
               <div className="bg-gradient-to-br from-orange-500 to-red-600 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform">
                 <Edit3 className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">設計變更管理系統</h2>
-              <p className="text-slate-400 text-sm">DCO 流程管理、單位簽核、變更追蹤紀錄。</p>
+              <h2 className="text-xl font-bold text-white mb-2">DCO 設計變更系統</h2>
+              <p className="text-slate-400 text-sm">進度管理、審批追蹤、PDF 匯出、批次操作。</p>
             </button>
           )}
           
@@ -21256,8 +21366,9 @@ const bomBuildBOMTree = (flatData) => {
   return tree;
 };
 
-// === 設計變更系統 (DCO Manager) ===
+// === 設計變更系統 (DCO Manager) - PDF 同版填寫系統 ===
 const DCOManagerApp = ({ onBackToMenu, user }) => {
+  // 基本狀態
   const [activeTab, setActiveTab] = useState('dashboard');
   const [orders, setOrders] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -21267,15 +21378,60 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   const [editingOrderId, setEditingOrderId] = useState(null);
   const imageInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  
+  // 進階篩選狀態
+  const [filters, setFilters] = useState({
+    status: 'all',
+    priority: 'all',
+    category: 'all',
+    month: 'all',
+    dateRange: { start: '', end: '' },
+    executionUnit: 'all'
+  });
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // 通知狀態
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  
+  // 使用者角色（簡化版權限管理）
+  const userRole = user?.role || 'user'; // 'admin', 'manager', 'user'
+  const canEdit = ['admin', 'manager'].includes(userRole) || user?.displayName === selectedOrder?.createdBy;
+  const canApprove = ['admin', 'manager'].includes(userRole);
+  
+  // 批次操作狀態
+  const [selectedOrders, setSelectedOrders] = useState([]);
+  const [showBatchActions, setShowBatchActions] = useState(false);
+  
+  // 評論系統狀態
+  const [comments, setComments] = useState({});
+  const [newComment, setNewComment] = useState('');
+  
+  // 圖片放大查看
+  const [viewingImage, setViewingImage] = useState(null);
+  const [viewingImageIndex, setViewingImageIndex] = useState(0);
+  
+  // 執行單位管理狀態
+  const [showUnitManager, setShowUnitManager] = useState(false);
+  const [newUnitName, setNewUnitName] = useState('');
+  const [editingUnitId, setEditingUnitId] = useState(null);
 
-  // 執行單位主數據
-  const EXECUTION_UNITS_MASTER = [
-    { id: 'mech', label: '機構設計' },
-    { id: 'elec', label: '電子設計' },
-    { id: 'art', label: '美術設計' },
-    { id: 'wire', label: '配線設計' },
-    { id: 'func', label: '功能中心' }
-  ];
+  // 執行單位主數據（初始值，可動態修改）
+  const getDefaultUnits = () => {
+    const saved = localStorage.getItem('dco_execution_units');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return [
+      { id: 'mech', label: '機構設計', custom: false },
+      { id: 'elec', label: '電子設計', custom: false },
+      { id: 'art', label: '美術設計', custom: false },
+      { id: 'wire', label: '配線設計', custom: false },
+      { id: 'func', label: '工程中心', custom: false }
+    ];
+  };
+  
+  const [executionUnitsMaster, setExecutionUnitsMaster] = useState(getDefaultUnits());
 
   // 格式化時間工具
   const getCurrentTimestamp = () => {
@@ -21291,6 +21447,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   const [newOrder, setNewOrder] = useState({
     orderNumber: '',
     title: '',
+    partNumber: '',
     productName: '',
     machineModel: '',
     requester: user?.displayName || '管理員 A001',
@@ -21305,13 +21462,14 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     impact: '',
     images: [],
     files: [],
-    executionUnits: EXECUTION_UNITS_MASTER.map(u => ({
+    executionUnits: getDefaultUnits().map(u => ({
       ...u,
       selected: false,
       startDate: '',
       endDate: '',
       hours: '',
       owner: '',
+      coOwner: '',
       approved: false
     }))
   });
@@ -21326,6 +21484,12 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
           setOrders(JSON.parse(localData));
         }
         
+        // 載入通知
+        const localNotifications = localStorage.getItem('dco_notifications');
+        if (localNotifications) {
+          setNotifications(JSON.parse(localNotifications));
+        }
+        
         // 從 Firebase 同步
         const firebaseData = await db.getDocs('dco_orders');
         if (firebaseData && firebaseData.length > 0) {
@@ -21338,12 +21502,80 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     };
     loadData();
   }, []);
+  
+  // 通知管理函數
+  const addNotification = (notification) => {
+    const newNotification = {
+      id: Date.now(),
+      read: false,
+      ...notification
+    };
+    const updatedNotifications = [newNotification, ...notifications].slice(0, 50); // 保留最新50條
+    setNotifications(updatedNotifications);
+    localStorage.setItem('dco_notifications', JSON.stringify(updatedNotifications));
+  };
+  
+  const markNotificationAsRead = (id) => {
+    const updatedNotifications = notifications.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    );
+    setNotifications(updatedNotifications);
+    localStorage.setItem('dco_notifications', JSON.stringify(updatedNotifications));
+  };
+  
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
-  // 分流資料
-  const activeOrders = useMemo(() => orders.filter(o => o.status !== '已核准'), [orders]);
-  const completedOrders = useMemo(() => orders.filter(o => o.status === '已核准'), [orders]);
+  // 分流資料（加入進階篩選）
+  const applyFilters = (ordersList) => {
+    return ordersList.filter(order => {
+      // 狀態篩選
+      if (filters.status !== 'all' && order.status !== filters.status) return false;
+      
+      // 優先級篩選
+      if (filters.priority !== 'all' && order.priority !== filters.priority) return false;
+      
+      // 分類篩選
+      if (filters.category !== 'all' && order.category !== filters.category) return false;
+      
+      // 日期範圍篩選
+      if (filters.dateRange.start || filters.dateRange.end) {
+        const orderDate = new Date(order.createdTime);
+        if (filters.dateRange.start && orderDate < new Date(filters.dateRange.start)) return false;
+        if (filters.dateRange.end && orderDate > new Date(filters.dateRange.end)) return false;
+      }
+      
+      // 執行單位篩選
+      if (filters.executionUnit !== 'all') {
+        const hasUnit = order.executionUnits?.some(u => u.id === filters.executionUnit && u.selected);
+        if (!hasUnit) return false;
+      }
+      
+      // 月份篩選
+      if (filters.month !== 'all') {
+        const orderMonth = order.createdTime.substring(0, 7); // 取得 YYYY/MM
+        if (orderMonth !== filters.month) return false;
+      }
+      
+      // 搜尋關鍵字
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          order.orderNumber?.toLowerCase().includes(query) ||
+          order.title?.toLowerCase().includes(query) ||
+          order.productName?.toLowerCase().includes(query) ||
+          order.machineModel?.toLowerCase().includes(query) ||
+          order.requester?.toLowerCase().includes(query)
+        );
+      }
+      
+      return true;
+    });
+  };
+  
+  const activeOrders = useMemo(() => applyFilters(orders.filter(o => o.status !== '已核准')), [orders, filters, searchQuery]);
+  const completedOrders = useMemo(() => applyFilters(orders.filter(o => o.status === '已核准')), [orders, filters, searchQuery]);
 
-  // 統計數據
+  // 統計數據（增強版）
   const statsValues = useMemo(() => {
     return {
       total: orders.length,
@@ -21351,6 +21583,41 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       approved: orders.filter(o => o.status === '已核准').length,
       waiting: orders.filter(o => o.status === '待主管核准').length
     };
+  }, [orders]);
+  
+  // 依分類統計
+  const categoryStats = useMemo(() => {
+    const statsMap = {};
+    orders.forEach(order => {
+      const cat = order.category || '未分類';
+      statsMap[cat] = (statsMap[cat] || 0) + 1;
+    });
+    return Object.entries(statsMap).map(([name, value]) => ({ name, value }));
+  }, [orders]);
+  
+  // 依優先級統計
+  const priorityStats = useMemo(() => {
+    const statsMap = {};
+    orders.forEach(order => {
+      const pri = order.priority || '中';
+      statsMap[pri] = (statsMap[pri] || 0) + 1;
+    });
+    return Object.entries(statsMap).map(([name, value]) => ({ name, value }));
+  }, [orders]);
+  
+  // 平均處理時間統計
+  const avgProcessingTime = useMemo(() => {
+    const completedWithTime = orders.filter(o => o.status === '已核准' && o.createdTime && o.completedTime);
+    if (completedWithTime.length === 0) return 0;
+    
+    const totalDays = completedWithTime.reduce((sum, order) => {
+      const created = new Date(order.createdTime);
+      const completed = new Date(order.completedTime);
+      const days = (completed - created) / (1000 * 60 * 60 * 24);
+      return sum + days;
+    }, 0);
+    
+    return (totalDays / completedWithTime.length).toFixed(1);
   }, [orders]);
 
   // 每月數據統計
@@ -21367,9 +21634,56 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       .map(([month, count]) => ({ month, count }));
   }, [orders]);
 
+  // 產生唯一單號（使用 Timestamp 防止衝突）
+  const generateOrderNumber = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const timestamp = now.getTime().toString().slice(-6); // 取最後6位時間戳
+    return `DCO-${year}-${timestamp}`;
+  };
+
+  // 表單驗證
+  const validateForm = () => {
+    const errors = [];
+    
+    if (!newOrder.title.trim()) {
+      errors.push('變更主題為必填欄位');
+    }
+    
+    if (!newOrder.requester.trim()) {
+      errors.push('申請人為必填欄位');
+    }
+    
+    // 驗證執行單位的日期邏輯
+    const selectedUnits = newOrder.executionUnits.filter(u => u.selected);
+    selectedUnits.forEach(unit => {
+      if (unit.startDate && unit.endDate) {
+        if (new Date(unit.startDate) > new Date(unit.endDate)) {
+          errors.push(`${unit.label}: 起始日期不能晚於結束日期`);
+        }
+      }
+      
+      if (unit.hours && (isNaN(unit.hours) || parseFloat(unit.hours) < 0)) {
+        errors.push(`${unit.label}: 工時必須為正數`);
+      }
+    });
+    
+    if (errors.length > 0) {
+      alert('表單驗證失敗:\n\n' + errors.join('\n'));
+      return false;
+    }
+    
+    return true;
+  };
+
   // 建立/更新變更單
   const handleCreateOrder = async (e) => {
     e.preventDefault();
+    
+    // 表單驗證
+    if (!validateForm()) {
+      return;
+    }
     
     const selectedUnits = newOrder.executionUnits.filter(u => u.selected);
     
@@ -21381,8 +21695,26 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         category: isCustomCategory ? newOrder.customCategory : newOrder.category,
         status: selectedUnits.length > 0 ? (selectedUnits.every(u => u.approved) ? '待主管核准' : '單位執行中') : '待主管核准',
         executionUnits: selectedUnits,
-        thumbnail: newOrder.images.length > 0 ? newOrder.images[0].preview : null
+        thumbnail: newOrder.images.length > 0 ? newOrder.images[0].preview : null,
+        lastModified: getCurrentTimestamp(),
+        modifiedBy: user?.displayName || '管理員 A001',
+        version: (newOrder.version || 1) + 1
       };
+      
+      // 保存版本歷史
+      const currentOrder = orders.find(o => o.id === editingOrderId);
+      if (currentOrder) {
+        const historyKey = `dco_history_${editingOrderId}`;
+        const existingHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
+        const historyEntry = {
+          version: currentOrder.version || 1,
+          data: currentOrder,
+          modifiedBy: user?.displayName || '管理員 A001',
+          modifiedAt: getCurrentTimestamp()
+        };
+        existingHistory.push(historyEntry);
+        localStorage.setItem(historyKey, JSON.stringify(existingHistory));
+      }
       
       const updatedOrders = orders.map(o => o.id === editingOrderId ? { ...o, ...updatedOrder } : o);
       setOrders(updatedOrders);
@@ -21393,22 +21725,26 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         await db.updateDoc('dco_orders', editingOrderId, updatedOrder);
       } catch (err) {
         console.error('更新 DCO 資料失敗:', err);
+        alert('更新失敗，請稍後再試');
+        return;
       }
     } else {
       // 新增模式 - 建立新單據
-      const autoGeneratedId = `DCO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(3, '0')}`;
-      const id = newOrder.orderNumber || autoGeneratedId;
+      const id = newOrder.orderNumber || generateOrderNumber();
       const timestamp = getCurrentTimestamp();
       
       const createdOrder = {
         ...newOrder,
         id,
+        orderNumber: id,
         createdTime: timestamp,
         completedTime: null,
         category: isCustomCategory ? newOrder.customCategory : newOrder.category,
         status: selectedUnits.length > 0 ? '單位執行中' : '待主管核准',
         executionUnits: selectedUnits,
-        thumbnail: newOrder.images.length > 0 ? newOrder.images[0].preview : null
+        thumbnail: newOrder.images.length > 0 ? newOrder.images[0].preview : null,
+        createdBy: user?.displayName || '管理員 A001',
+        version: 1
       };
       
       const updatedOrders = [createdOrder, ...orders];
@@ -21420,6 +21756,8 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         await db.addDoc('dco_orders', createdOrder);
       } catch (err) {
         console.error('儲存 DCO 資料失敗:', err);
+        alert('儲存失敗，請稍後再試');
+        return;
       }
     }
     
@@ -21434,6 +21772,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     setNewOrder({
       orderNumber: autoOrderNumber,
       title: '', 
+      partNumber: '',
       productName: '',
       machineModel: '',
       requester: user?.displayName || '管理員 A001', 
@@ -21448,13 +21787,13 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       impact: '', 
       images: [], 
       files: [],
-      executionUnits: EXECUTION_UNITS_MASTER.map(u => ({
-        ...u, 
-        selected: false, 
-        startDate: '', 
-        endDate: '', 
-        hours: '', 
-        owner: '', 
+      executionUnits: executionUnitsMaster.map(u => ({
+        ...u,
+        selected: false,
+        startDate: '',
+        endDate: '',
+        hours: '',
+        owner: '',
         approved: false
       }))
     });
@@ -21469,6 +21808,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     setNewOrder({
       orderNumber: order.id || '',
       title: order.title || '',
+      partNumber: order.partNumber || '',
       productName: order.productName || '',
       machineModel: order.machineModel || '',
       requester: order.requester || '',
@@ -21485,7 +21825,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       files: order.files || [],
       executionUnits: (order.executionUnits && order.executionUnits.length > 0) 
         ? order.executionUnits 
-        : EXECUTION_UNITS_MASTER.map(u => ({
+        : executionUnitsMaster.map(u => ({
             ...u,
             selected: false,
             startDate: '',
@@ -21498,26 +21838,68 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     setActiveTab('create');
   };
 
-  const handleFileUpload = (e, targetType) => {
+  // 上傳檔案到 Firebase Storage（改善版）
+  const handleFileUpload = async (e, targetType) => {
     const uploadedFiles = Array.from(e.target.files);
-    uploadedFiles.forEach(file => {
+    const maxFileSize = 10 * 1024 * 1024; // 10MB 限制
+    
+    for (const file of uploadedFiles) {
+      // 檔案大小檢查
+      if (file.size > maxFileSize) {
+        alert(`檔案 ${file.name} 超過 10MB 限制`);
+        continue;
+      }
+      
       const isImage = file.type.startsWith('image/');
       const fileData = { 
         name: file.name, 
         size: (file.size / 1024 / 1024).toFixed(2) + ' MB', 
-        type: file.type 
+        type: file.type,
+        uploadDate: new Date().toISOString()
       };
+      
       if (isImage) {
+        // 圖片壓縮並產生預覽
         const reader = new FileReader();
         reader.onload = (event) => {
-          fileData.preview = event.target.result;
-          setNewOrder(prev => ({ ...prev, images: [...prev.images, fileData] }));
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxWidth = 1200;
+            const maxHeight = 1200;
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > height && width > maxWidth) {
+              height *= maxWidth / width;
+              width = maxWidth;
+            } else if (height > maxHeight) {
+              width *= maxHeight / height;
+              height = maxHeight;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            fileData.preview = canvas.toDataURL('image/jpeg', 0.8);
+            fileData.compressed = true;
+            setNewOrder(prev => ({ ...prev, images: [...prev.images, fileData] }));
+          };
+          img.src = event.target.result;
         };
         reader.readAsDataURL(file);
       } else {
-        setNewOrder(prev => ({ ...prev, files: [...prev.files, fileData] }));
+        // 一般檔案僅儲存 Base64（未來可改用 Firebase Storage URL）
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          fileData.data = event.target.result;
+          setNewOrder(prev => ({ ...prev, files: [...prev.files, fileData] }));
+        };
+        reader.readAsDataURL(file);
       }
-    });
+    }
   };
 
   const removeMedia = (index, type) => {
@@ -21532,6 +21914,82 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       ) 
     }));
   };
+  
+  // 新增執行單位
+  const addNewUnit = () => {
+    if (!newUnitName.trim()) {
+      alert('請輸入單位名稱');
+      return;
+    }
+    
+    const newId = 'custom_' + Date.now();
+    const newUnit = { id: newId, label: newUnitName.trim(), custom: true };
+    
+    const updatedMaster = [...executionUnitsMaster, newUnit];
+    setExecutionUnitsMaster(updatedMaster);
+    localStorage.setItem('dco_execution_units', JSON.stringify(updatedMaster));
+    
+    // 同時添加到當前表單
+    setNewOrder(prev => ({
+      ...prev,
+      executionUnits: [...prev.executionUnits, {
+        ...newUnit,
+        selected: false,
+        startDate: '',
+        endDate: '',
+        hours: '',
+        owner: '',
+        approved: false
+      }]
+    }));
+    
+    setNewUnitName('');
+    alert('新增單位成功！');
+  };
+  
+  // 刪除自定義單位
+  const deleteUnit = (unitId) => {
+    const unit = executionUnitsMaster.find(u => u.id === unitId);
+    if (!unit.custom) {
+      alert('系統預設單位無法刪除');
+      return;
+    }
+    
+    if (!confirm(`確定要刪除「${unit.label}」嗎？`)) return;
+    
+    const updatedMaster = executionUnitsMaster.filter(u => u.id !== unitId);
+    setExecutionUnitsMaster(updatedMaster);
+    localStorage.setItem('dco_execution_units', JSON.stringify(updatedMaster));
+    
+    // 從當前表單移除
+    setNewOrder(prev => ({
+      ...prev,
+      executionUnits: prev.executionUnits.filter(u => u.id !== unitId)
+    }));
+    
+    alert('刪除成功！');
+  };
+  
+  // 編輯單位名稱
+  const updateUnitLabel = (unitId, newLabel) => {
+    if (!newLabel.trim()) return;
+    
+    const updatedMaster = executionUnitsMaster.map(u => 
+      u.id === unitId ? { ...u, label: newLabel.trim() } : u
+    );
+    setExecutionUnitsMaster(updatedMaster);
+    localStorage.setItem('dco_execution_units', JSON.stringify(updatedMaster));
+    
+    // 同步更新表單中的單位名稱
+    setNewOrder(prev => ({
+      ...prev,
+      executionUnits: prev.executionUnits.map(u => 
+        u.id === unitId ? { ...u, label: newLabel.trim() } : u
+      )
+    }));
+    
+    setEditingUnitId(null);
+  };
 
   const updateUnitField = (id, field, value) => {
     setNewOrder(prev => ({ 
@@ -21542,11 +22000,38 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     }));
   };
 
+  // 權限檢查函數
+  const hasPermission = (action, order = null) => {
+    // admin 有所有權限
+    if (userRole === 'admin') return true;
+    
+    switch (action) {
+      case 'create':
+        return true; // 所有人都可建立
+      case 'edit':
+        return userRole === 'manager' || (order && user?.displayName === order.createdBy);
+      case 'approve':
+        return userRole === 'manager' || userRole === 'admin';
+      case 'delete':
+        return userRole === 'admin';
+      case 'unitApprove':
+        return true; // 所有人都可簽核自己負責的單位
+      default:
+        return false;
+    }
+  };
+  
+  // 單位簽核（加入權限檢查）
   const handleUnitApprove = async (orderId, unitId) => {
+    if (!hasPermission('unitApprove')) {
+      alert('您沒有簽核權限');
+      return;
+    }
+    
     const updatedOrders = orders.map(order => {
       if (order.id !== orderId) return order;
       const updatedUnits = order.executionUnits.map(u => 
-        u.id === unitId ? { ...u, approved: true } : u
+        u.id === unitId ? { ...u, approved: true, approvedBy: user?.displayName, approvedTime: getCurrentTimestamp() } : u
       );
       const allApproved = updatedUnits.every(u => u.approved);
       const newOrderState = { 
@@ -21555,6 +22040,15 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         status: allApproved ? '待主管核准' : '單位執行中' 
       };
       if (selectedOrder?.id === orderId) setSelectedOrder(newOrderState);
+      
+      // 發送通知
+      addNotification({
+        type: 'unitApproved',
+        message: `${user?.displayName} 已簽核 ${order.orderNumber} 的 ${updatedUnits.find(u => u.id === unitId)?.label}`,
+        orderId: orderId,
+        timestamp: getCurrentTimestamp()
+      });
+      
       return newOrderState;
     });
     
@@ -21569,6 +22063,169 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     } catch (err) {
       console.error('更新 DCO 資料失敗:', err);
     }
+  };
+  
+  // 批次操作功能
+  const toggleOrderSelection = (orderId) => {
+    setSelectedOrders(prev => 
+      prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+  
+  const toggleAllOrders = (ordersList) => {
+    if (selectedOrders.length === ordersList.length) {
+      setSelectedOrders([]);
+    } else {
+      setSelectedOrders(ordersList.map(o => o.id));
+    }
+  };
+  
+  const handleBatchExport = () => {
+    const selectedData = orders.filter(o => selectedOrders.includes(o.id));
+    exportToExcel(selectedData);
+  };
+  
+  const handleBatchDelete = async () => {
+    if (!hasPermission('delete')) {
+      alert('您沒有刪除權限');
+      return;
+    }
+    
+    if (!confirm(`確定要刪除 ${selectedOrders.length} 筆設變單嗎？`)) return;
+    
+    const remainingOrders = orders.filter(o => !selectedOrders.includes(o.id));
+    setOrders(remainingOrders);
+    
+    try {
+      localStorage.setItem('dco_orders', JSON.stringify(remainingOrders));
+      for (const orderId of selectedOrders) {
+        await db.deleteDoc('dco_orders', orderId);
+      }
+      setSelectedOrders([]);
+      alert('批次刪除成功');
+    } catch (err) {
+      console.error('批次刪除失敗:', err);
+      alert('批次刪除失敗');
+    }
+  };
+  
+  // 評論系統功能
+  const loadComments = (orderId) => {
+    const savedComments = localStorage.getItem(`dco_comments_${orderId}`);
+    if (savedComments) {
+      setComments(prev => ({ ...prev, [orderId]: JSON.parse(savedComments) }));
+    }
+  };
+  
+  const addComment = (orderId) => {
+    if (!newComment.trim()) return;
+    
+    const comment = {
+      id: Date.now(),
+      author: user?.displayName || '管理員',
+      content: newComment,
+      timestamp: getCurrentTimestamp()
+    };
+    
+    const orderComments = comments[orderId] || [];
+    const updatedComments = [...orderComments, comment];
+    
+    setComments(prev => ({ ...prev, [orderId]: updatedComments }));
+    localStorage.setItem(`dco_comments_${orderId}`, JSON.stringify(updatedComments));
+    setNewComment('');
+    
+    // 發送通知
+    addNotification({
+      type: 'comment',
+      message: `${user?.displayName} 在 ${orderId} 新增了評論`,
+      orderId: orderId,
+      timestamp: getCurrentTimestamp()
+    });
+  };
+  
+  // Excel 匯出功能
+  const exportToExcel = (data) => {
+    const headers = ['單號', '變更主題', '料號', '品名', '機種', '申請人', '需求日', '分類', '優先級', '狀態', '建立時間'];
+    const csvContent = [
+      headers.join(','),
+      ...data.map(order => [
+        order.orderNumber,
+        `"${order.title}"`,
+        order.partNumber || '',
+        order.productName || '',
+        order.machineModel || '',
+        order.requester,
+        order.requireDate || '',
+        order.category,
+        order.priority,
+        order.status,
+        order.createdTime
+      ].join(','))
+    ].join('\\n');
+    
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `DCO設變單_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+  
+  // PDF 匯出功能（簡化版）
+  const exportToPDF = (order) => {
+    // 建立列印版本
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>設變單 - ${order.orderNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; border-bottom: 2px solid #6366f1; padding-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f8f9fa; }
+          </style>
+        </head>
+        <body>
+          <h1>設計變更單 (DCO)</h1>
+          <table>
+            <tr><th>單號</th><td>${order.orderNumber}</td></tr>
+            <tr><th>變更主題</th><td>${order.title}</td></tr>
+            <tr><th>料號</th><td>${order.partNumber || '-'}</td></tr>
+            <tr><th>品名</th><td>${order.productName || '-'}</td></tr>
+            <tr><th>機種</th><td>${order.machineModel || '-'}</td></tr>
+            <tr><th>申請人</th><td>${order.requester}</td></tr>
+            <tr><th>需求日</th><td>${order.requireDate || '-'}</td></tr>
+            <tr><th>分類</th><td>${order.category}</td></tr>
+            <tr><th>優先級</th><td>${order.priority}</td></tr>
+            <tr><th>狀態</th><td>${order.status}</td></tr>
+            <tr><th>建立時間</th><td>${order.createdTime}</td></tr>
+            <tr><th>設變原因</th><td>${order.changeReason || '-'}</td></tr>
+            <tr><th>變更前</th><td>${order.beforeChange || '-'}</td></tr>
+            <tr><th>變更後</th><td>${order.afterChange || '-'}</td></tr>
+          </table>
+          <h2>執行單位</h2>
+          <table>
+            <tr><th>單位</th><th>主辦人</th><th>起始日期</th><th>結束日期</th><th>工時</th><th>簽核狀態</th></tr>
+            ${(order.executionUnits || []).map(unit => `
+              <tr>
+                <td>${unit.label}</td>
+                <td>${unit.owner || '-'}</td>
+                <td>${unit.startDate || '-'}</td>
+                <td>${unit.endDate || '-'}</td>
+                <td>${unit.hours || '-'}</td>
+                <td>${unit.approved ? '✓ 已簽核' : '未簽核'}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </body>
+      </html>
+    `);
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
   };
 
   const handleDownloadFile = (file) => {
@@ -21597,79 +22254,161 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   };
 
   const renderTable = (dataList) => {
-    const displayData = dataList.filter(o => 
-      o.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      o.id.includes(searchQuery)
-    );
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-in fade-in duration-500">
+        {/* 批次操作工具列 */}
+        {selectedOrders.length > 0 && (
+          <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-3 flex items-center justify-between">
+            <span className="text-sm text-indigo-700 font-medium">已選擇 {selectedOrders.length} 筆</span>
+            <div className="flex gap-2">
+              <button onClick={handleBatchExport} className="px-3 py-1.5 text-xs bg-white hover:bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1">
+                <Download className="w-3.5 h-3.5" /> 匯出
+              </button>
+              {hasPermission('delete') && (
+                <button onClick={handleBatchDelete} className="px-3 py-1.5 text-xs bg-white hover:bg-rose-50 text-rose-600 rounded-lg border border-rose-200 transition-colors flex items-center gap-1">
+                  <Trash2 className="w-3.5 h-3.5" /> 刪除
+                </button>
+              )}
+              <button onClick={() => setSelectedOrders([])} className="px-3 py-1.5 text-xs bg-white hover:bg-slate-50 text-slate-600 rounded-lg border border-slate-200 transition-colors">
+                取消選擇
+              </button>
+            </div>
+          </div>
+        )}
+        
         <table className="w-full text-left">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider font-semibold">
+          <thead className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wide font-bold border-y border-slate-200">
             <tr>
-              <th className="px-6 py-4">單號</th>
-              <th className="px-6 py-4">變更主題 / 分類</th>
-              <th className="px-6 py-4">品名 / 機種</th>
-              <th className="px-6 py-4 text-center">狀態</th>
-              <th className="px-6 py-4">建立時間</th>
-              <th className="px-6 py-4 text-right">操作</th>
+              <th className="px-4 py-4 w-10">
+                <input 
+                  type="checkbox" 
+                  checked={selectedOrders.length === dataList.length && dataList.length > 0}
+                  onChange={() => toggleAllOrders(dataList)}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+              </th>
+              <th className="px-4 py-4 w-48">單號</th>
+              <th className="px-4 py-4">變更主題 / 分類</th>
+              <th className="px-4 py-4">品名 / 機種</th>
+              <th className="px-4 py-4 text-center w-32">狀態</th>
+              <th className="px-4 py-4 w-32">建立時間</th>
+              <th className="px-4 py-4 text-right w-28">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {displayData.length > 0 ? displayData.map(order => (
-              <tr key={order.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
+            {dataList.length > 0 ? dataList.map(order => {
+              // 檢查當前使用者是否為該設變單的主辦人
+              const userUnits = order.executionUnits?.filter(u => 
+                u.selected && (u.owner === user?.displayName || u.coOwner === user?.displayName)
+              ) || [];
+              const isUserOwner = userUnits.length > 0;
+              const hasApprovedUnit = userUnits.some(u => u.approved);
+              const hasUnapprovedUnit = userUnits.some(u => !u.approved);
+              
+              // 決定行背景顏色
+              let rowBgClass = 'hover:bg-slate-50';
+              if (isUserOwner) {
+                if (hasUnapprovedUnit) {
+                  // 有待簽核的單位 - 使用黃色系
+                  rowBgClass = 'bg-amber-50/50 hover:bg-amber-100/50 border-l-4 border-amber-400';
+                } else if (hasApprovedUnit) {
+                  // 全部已簽核 - 使用綠色系
+                  rowBgClass = 'bg-emerald-50/50 hover:bg-emerald-100/50 border-l-4 border-emerald-400';
+                }
+              }
+              
+              return (
+              <tr key={order.id} className={`${rowBgClass} transition-all duration-200 group`}>
+                <td className="px-4 py-5">
+                  <input 
+                    type="checkbox"
+                    checked={selectedOrders.includes(order.id)}
+                    onChange={() => toggleOrderSelection(order.id)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                </td>
+                <td className="px-4 py-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-slate-200 flex-shrink-0 overflow-hidden flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
                       {order.thumbnail ? (
                         <img src={order.thumbnail} alt="DCO preview" className="w-full h-full object-cover" />
                       ) : (
-                        <ImageIcon size={20} className="text-slate-300" />
+                        <ImageIcon size={22} className="text-slate-300" />
                       )}
                     </div>
-                    <span className="font-mono text-xs font-bold text-slate-600">{order.id}</span>
+                    <div>
+                      <span className="font-mono text-xs font-bold text-slate-700 block">{order.id}</span>
+                      {order.partNumber && (
+                        <span className="text-[10px] text-slate-400 font-mono mt-0.5 block"># {order.partNumber}</span>
+                      )}
+                    </div>
                   </div>
                 </td>
-                <td className="px-6 py-4">
-                  <div className="font-medium text-slate-800">{order.title}</div>
-                  <div className="text-xs text-indigo-500 font-medium">{order.category}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-sm text-slate-700">{order.productName || '-'}</div>
-                  <div className="text-xs text-slate-500">{order.machineModel || '-'}</div>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${getStatusColor(order.status)}`}>
-                    {order.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-xs text-slate-500 flex items-center gap-1">
-                    <Calendar size={12} className="text-slate-400" />
-                    {order.createdTime.split(' ')[0]}
+                <td className="px-4 py-5">
+                  <div className="font-semibold text-slate-800 mb-1 leading-tight">{order.title}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                      {order.category}
+                    </span>
+                    {order.priority === '高' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700">
+                        高優先
+                      </span>
+                    )}
                   </div>
                 </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
+                <td className="px-4 py-5">
+                  <div className="text-sm font-medium text-slate-800">{order.productName || '-'}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{order.machineModel || '-'}</div>
+                </td>
+                <td className="px-4 py-5">
+                  <div className="flex justify-center">
+                    <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-[11px] font-bold border shadow-sm ${getStatusColor(order.status)}`}>
+                      {order.status}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-4 py-5">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Calendar size={14} className="text-slate-400" />
+                    <span className="font-medium">{order.createdTime.split(' ')[0]}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-5 text-right">
+                  <div className="flex items-center justify-end gap-1.5">
                     <button 
                       onClick={() => handleEditOrder(order)} 
-                      className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg"
+                      className="p-2.5 hover:bg-amber-50 text-amber-600 rounded-lg transition-all hover:scale-105 group/btn"
                       title="編輯"
                     >
-                      <Edit size={18} />
+                      <Edit size={16} className="group-hover/btn:scale-110 transition-transform" />
                     </button>
                     <button 
-                      onClick={() => { setSelectedOrder(order); setShowDetail(true); }} 
-                      className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-lg"
+                      onClick={() => { 
+                        setSelectedOrder(order); 
+                        setShowDetail(true); 
+                        loadComments(order.id);
+                      }} 
+                      className="p-2.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-all hover:scale-105 group/btn"
                       title="查看詳情"
                     >
-                      <Eye size={18} />
+                      <Eye size={16} className="group-hover/btn:scale-110 transition-transform" />
                     </button>
                   </div>
                 </td>
               </tr>
-            )) : (
+              );
+            }) : (
               <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-slate-400 italic">查無資料</td>
+                <td colSpan="7" className="px-6 py-16 text-center">
+                  <div className="flex flex-col items-center justify-center">
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                      <ClipboardList size={32} className="text-slate-300" />
+                    </div>
+                    <p className="text-slate-400 font-medium mb-1">查無資料</p>
+                    <p className="text-xs text-slate-400">尚無符合條件的設變單</p>
+                  </div>
+                </td>
               </tr>
             )}
           </tbody>
@@ -21679,94 +22418,339 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-50 font-sans text-slate-900 overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col hidden lg:flex shrink-0">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-indigo-600 p-2 rounded-lg"><Layers size={24} /></div>
-          <span className="font-bold text-xl tracking-tight">DCO Manager</span>
+      <aside className="w-72 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col hidden lg:flex shrink-0 shadow-2xl">
+        <div className="p-6 border-b border-slate-700/50">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2.5 rounded-xl shadow-lg">
+              <Layers size={26} className="drop-shadow" />
+            </div>
+            <div>
+              <h1 className="font-bold text-xl tracking-tight">DCO Manager</h1>
+              <p className="text-xs text-slate-400">設計變更管理系統</p>
+            </div>
+          </div>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button 
             onClick={() => setActiveTab('dashboard')} 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${
+              activeTab === 'dashboard' 
+                ? 'bg-gradient-to-r from-rose-600 to-pink-600 shadow-lg shadow-rose-500/30 scale-[1.02]' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+            }`}
           >
-            <LayoutDashboard size={20} />
-            <span className="font-medium">系統總覽</span>
+            <Activity size={20} className={activeTab === 'dashboard' ? 'animate-pulse' : ''} />
+            <span className="font-medium">設變戰情室</span>
+            {activeTab === 'dashboard' && <span className="ml-auto text-xs bg-white/20 px-2 py-0.5 rounded-full">現在</span>}
           </button>
           <button 
             onClick={() => setActiveTab('list')} 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'list' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all ${
+              activeTab === 'list' 
+                ? 'bg-gradient-to-r from-indigo-600 to-blue-600 shadow-lg shadow-indigo-500/30 scale-[1.02]' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+            }`}
           >
             <ClipboardList size={20} />
             <span className="font-medium">變更單管理</span>
           </button>
           <button 
             onClick={() => setActiveTab('archive')} 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'archive' ? 'bg-emerald-600 shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all ${
+              activeTab === 'archive' 
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg shadow-emerald-500/30 scale-[1.02]' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+            }`}
           >
             <Archive size={20} />
             <span className="font-medium">完成區 (History)</span>
           </button>
           <button 
             onClick={() => { resetForm(); setActiveTab('create'); }} 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'create' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all ${
+              activeTab === 'create' 
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/30 scale-[1.02]' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+            }`}
           >
             <PlusCircle size={20} />
             <span className="font-medium">建立新設變單</span>
           </button>
         </nav>
-        <div className="p-4 border-t border-slate-800">
-          <button 
-            onClick={onBackToMenu} 
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors text-sm font-medium"
-          >
-            <ArrowLeft size={18} />
-            返回主選單
-          </button>
+        
+        {/* 用戶資訊 */}
+        <div className="p-4 border-t border-slate-700/50 bg-slate-800/50">
+          <div className="flex items-center gap-3 text-sm">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
+              {user?.displayName?.charAt(0) || 'U'}
+            </div>
+            <div className="flex-1">
+              <div className="font-medium text-white">{user?.displayName || '使用者'}</div>
+              <div className="text-xs text-slate-400">{user?.role || '一般使用者'}</div>
+            </div>
+          </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto flex flex-col relative">
-        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-20">
-          <h2 className="text-xl font-bold text-slate-800">
-            {activeTab === 'dashboard' && '系統總覽'}
-            {activeTab === 'list' && '進行中設變單'}
-            {activeTab === 'archive' && '完成區存檔'}
-            {activeTab === 'create' && '建立新設計變更單'}
+        <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+            {activeTab === 'dashboard' && (
+              <>
+                <div className="p-2 bg-gradient-to-br from-rose-500 to-pink-600 rounded-lg shadow-lg">
+                  <Activity className="text-white" size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    設變戰情室
+                    <span className="text-xs bg-rose-100 text-rose-600 px-2.5 py-1 rounded-full font-bold animate-pulse">即時監控</span>
+                  </div>
+                  <p className="text-xs font-normal text-slate-500 mt-0.5">Design Change Order War Room</p>
+                </div>
+              </>
+            )}
+            {activeTab === 'list' && (
+              <>
+                <ClipboardList className="text-indigo-600" size={24} />
+                <div>
+                  進行中設變單
+                  <p className="text-xs font-normal text-slate-500 mt-0.5">Active Orders</p>
+                </div>
+              </>
+            )}
+            {activeTab === 'archive' && (
+              <>
+                <Archive className="text-emerald-600" size={24} />
+                <div>
+                  完成區存檔
+                  <p className="text-xs font-normal text-slate-500 mt-0.5">Completed Archives</p>
+                </div>
+              </>
+            )}
+            {activeTab === 'create' && (
+              <>
+                <PlusCircle className="text-indigo-600" size={24} />
+                <div>
+                  建立新設計變更單
+                  <p className="text-xs font-normal text-slate-500 mt-0.5">Create New DCO</p>
+                </div>
+              </>
+            )}
           </h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="搜尋標題或編號..."
-              className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-indigo-500 w-64"
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="flex items-center gap-3">
+            {/* 篩選按鈕 */}
+            {(activeTab === 'list' || activeTab === 'archive') && (
+              <button 
+                onClick={() => setShowFilters(!showFilters)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  showFilters ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <Filter size={16} /> 篩選
+              </button>
+            )}
+            
+            {/* 通知按鈕 */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+              
+              {/* 通知面板 */}
+              {showNotifications && (
+                <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-xl border border-slate-200 z-50 max-h-96 overflow-y-auto">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">通知</h3>
+                    <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600">
+                      <X size={18} />
+                    </button>
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400">暫無通知</div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {notifications.map(notif => (
+                        <div 
+                          key={notif.id} 
+                          className={`p-4 hover:bg-slate-50 cursor-pointer ${!notif.read ? 'bg-indigo-50' : ''}`}
+                          onClick={() => markNotificationAsRead(notif.id)}
+                        >
+                          <p className="text-sm text-slate-700">{notif.message}</p>
+                          <p className="text-xs text-slate-400 mt-1">{notif.timestamp}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* 搜尋欄 */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="搜尋標題或編號..."
+                className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-indigo-500 w-64"
+                value={searchQuery} 
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            {/* 返回主選單按鈕 */}
+            <button 
+              onClick={onBackToMenu}
+              className="px-4 py-2 bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white rounded-lg flex items-center gap-2 text-sm font-medium transition-all shadow-lg hover:shadow-xl"
+            >
+              <ArrowLeft className="w-4 h-4"/>
+              返回
+            </button>
           </div>
         </header>
+        
+        {/* 篩選面板 */}
+        {showFilters && (activeTab === 'list' || activeTab === 'archive') && (
+          <div className="bg-slate-50 border-b border-slate-200 px-8 py-4">
+            <div className="grid grid-cols-6 gap-4">
+              <select 
+                value={filters.status}
+                onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+              >
+                <option value="all">所有狀態</option>
+                <option value="單位執行中">單位執行中</option>
+                <option value="待主管核准">待主管核准</option>
+                <option value="已核准">已核准</option>
+              </select>
+              
+              <select 
+                value={filters.priority}
+                onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value }))}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+              >
+                <option value="all">所有優先級</option>
+                <option value="低">低</option>
+                <option value="中">中</option>
+                <option value="高">高</option>
+                <option value="緊急">緊急</option>
+              </select>
+              
+              <select 
+                value={filters.category}
+                onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+              >
+                <option value="all">所有分類</option>
+                <option value="結構變更">結構變更</option>
+                <option value="電子變更">電子變更</option>
+                <option value="包材變更">包材變更</option>
+                <option value="韌體變更">韌體變更</option>
+              </select>
+              
+              <select 
+                value={filters.executionUnit}
+                onChange={(e) => setFilters(prev => ({ ...prev, executionUnit: e.target.value }))}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+              >
+                <option value="all">所有執行單位</option>
+                {executionUnitsMaster.map(unit => (
+                  <option key={unit.id} value={unit.id}>{unit.label}</option>
+                ))}
+              </select>
+              
+              <select 
+                value={filters.month}
+                onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+              >
+                <option value="all">所有月份</option>
+                <option value="2025/01">2025年1月</option>
+                <option value="2025/02">2025年2月</option>
+                <option value="2025/03">2025年3月</option>
+                <option value="2025/04">2025年4月</option>
+                <option value="2025/05">2025年5月</option>
+                <option value="2025/06">2025年6月</option>
+                <option value="2025/07">2025年7月</option>
+                <option value="2025/08">2025年8月</option>
+                <option value="2025/09">2025年9月</option>
+                <option value="2025/10">2025年10月</option>
+                <option value="2025/11">2025年11月</option>
+                <option value="2025/12">2025年12月</option>
+                <option value="2026/01">2026年1月</option>
+                <option value="2026/02">2026年2月</option>
+                <option value="2026/03">2026年3月</option>
+                <option value="2026/04">2026年4月</option>
+                <option value="2026/05">2026年5月</option>
+                <option value="2026/06">2026年6月</option>
+                <option value="2026/07">2026年7月</option>
+                <option value="2026/08">2026年8月</option>
+                <option value="2026/09">2026年9月</option>
+                <option value="2026/10">2026年10月</option>
+                <option value="2026/11">2026年11月</option>
+                <option value="2026/12">2026年12月</option>
+              </select>
+              
+              <button 
+                onClick={() => setFilters({ status: 'all', priority: 'all', category: 'all', month: 'all', dateRange: { start: '', end: '' }, executionUnit: 'all' })}
+                className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+              >
+                重置篩選
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="p-8">
           {activeTab === 'dashboard' && (
-            <div className="space-y-8 animate-in fade-in duration-500">
-              {/* Stats Grid */}
+            <div className="space-y-6 animate-in fade-in duration-500">
+              {/* 戰情室標題橫幅 */}
+              <div className="bg-gradient-to-r from-rose-600 via-pink-600 to-purple-600 p-8 rounded-3xl shadow-2xl text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
+                      <Zap size={28} className="animate-pulse" />
+                      設計變更戰情中心
+                    </h3>
+                    <p className="text-white/90 text-sm">即時監控所有設計變更案件進度與狀態</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-white/80 mb-1">最後更新</div>
+                    <div className="text-sm font-bold">{new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Grid - 增強版 */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                  { label: '總變更單', value: statsValues.total, bg: 'bg-blue-100', text: 'text-blue-600', icon: FileText },
-                  { label: '單位執行中', value: statsValues.pending, bg: 'bg-amber-100', text: 'text-amber-600', icon: Clock },
-                  { label: '待主管核准', value: statsValues.waiting, bg: 'bg-indigo-100', text: 'text-indigo-600', icon: ClipboardList },
-                  { label: '已完成 (存檔)', value: statsValues.approved, bg: 'bg-emerald-100', text: 'text-emerald-600', icon: Archive },
+                  { label: '總變更單', value: statsValues.total, bg: 'bg-blue-100', text: 'text-blue-600', icon: FileText, desc: '系統累計', trend: '+0' },
+                  { label: '單位執行中', value: statsValues.pending, bg: 'bg-amber-100', text: 'text-amber-600', icon: Clock, desc: '待處理', trend: statsValues.pending > 0 ? '需關注' : '正常' },
+                  { label: '待主管核准', value: statsValues.waiting, bg: 'bg-indigo-100', text: 'text-indigo-600', icon: ClipboardList, desc: '待簽核', trend: statsValues.waiting > 0 ? '待辦' : '已清空' },
+                  { label: '已完成 (存檔)', value: statsValues.approved, bg: 'bg-emerald-100', text: 'text-emerald-600', icon: Archive, desc: '歸檔', trend: '✓' },
                 ].map((s, idx) => {
                   const Icon = s.icon;
                   return (
-                    <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                      <div className={`${s.bg} w-10 h-10 rounded-lg flex items-center justify-center ${s.text} mb-4`}>
-                        <Icon size={20} />
+                    <div key={idx} className="bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl border border-slate-100 transition-all hover:-translate-y-1">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className={`${s.bg} w-12 h-12 rounded-xl flex items-center justify-center ${s.text}`}>
+                          <Icon size={22} />
+                        </div>
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-bold">{s.trend}</span>
                       </div>
-                      <div className="text-slate-500 text-sm font-medium">{s.label}</div>
-                      <div className="text-3xl font-bold mt-1">{s.value}</div>
+                      <div className="text-slate-500 text-xs font-medium mb-1">{s.label}</div>
+                      <div className="text-4xl font-bold mb-1">{s.value}</div>
+                      <div className="text-xs text-slate-400">{s.desc}</div>
                     </div>
                   );
                 })}
@@ -21817,28 +22801,161 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                   )}
                 </div>
               </div>
-
-              {/* Quick Summary */}
+              
+              {/* 新增：分類和優先級統計圖表 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-2xl border border-slate-100">
-                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <History size={16} className="text-slate-400" /> 近期動態
-                  </h4>
+                {/* 分類統計 */}
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
+                    <PieChartIcon className="text-emerald-600" size={20} />
+                    依分類統計
+                  </h3>
                   <div className="space-y-3">
-                    {orders.slice(0, 3).map(order => (
-                      <div key={order.id} className="flex items-center justify-between text-xs p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all">
-                        <span className="font-bold text-slate-700 truncate max-w-[150px]">{order.title}</span>
-                        <span className="text-slate-400 font-mono">{order.id}</span>
-                      </div>
-                    ))}
+                    {categoryStats.map((stat, idx) => {
+                      const total = categoryStats.reduce((sum, s) => sum + s.value, 0);
+                      const percent = ((stat.value / total) * 100).toFixed(1);
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium text-slate-700">{stat.name}</span>
+                            <span className="text-slate-500">{stat.value} ({percent}%)</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700"
+                              style={{ width: `${percent}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-xl shadow-indigo-200 flex flex-col justify-center">
-                  <h4 className="font-bold mb-2">管理提醒</h4>
-                  <p className="text-sm opacity-90 leading-relaxed">
-                    目前共有 <span className="font-bold underline">{statsValues.pending + statsValues.waiting}</span> 筆案件正在處理中。
-                    請主辦人員留意各單位的簽核進度，以確保設計變更如期導入。
-                  </p>
+                
+                {/* 優先級統計 */}
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
+                    <TrendingUp className="text-rose-600" size={20} />
+                    依優先級統計
+                  </h3>
+                  <div className="space-y-3">
+                    {priorityStats.map((stat, idx) => {
+                      const total = priorityStats.reduce((sum, s) => sum + s.value, 0);
+                      const percent = ((stat.value / total) * 100).toFixed(1);
+                      const colorMap = {
+                        '低': 'from-blue-500 to-blue-400',
+                        '中': 'from-amber-500 to-amber-400',
+                        '高': 'from-orange-500 to-orange-400',
+                        '緊急': 'from-rose-500 to-rose-400'
+                      };
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium text-slate-700">{stat.name}</span>
+                            <span className="text-slate-500">{stat.value} ({percent}%)</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full bg-gradient-to-r ${colorMap[stat.name] || 'from-slate-500 to-slate-400'} rounded-full transition-all duration-700`}
+                              style={{ width: `${percent}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              
+              {/* 平均處理時間 */}
+              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-8 rounded-3xl shadow-sm text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2 mb-2">
+                      <Clock size={20} />
+                      平均處理時間
+                    </h3>
+                    <p className="text-white/80 text-sm">從建立到核准完成的平均天數</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-5xl font-bold">{avgProcessingTime}</div>
+                    <div className="text-white/80 text-sm mt-1">天</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 戰情資訊區 - 增強版 */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* 最新動態 */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-lg">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Sparkles size={18} className="text-yellow-500" /> 最新動態
+                  </h4>
+                  <div className="space-y-3">
+                    {orders.slice(0, 5).map((order, idx) => (
+                      <div key={order.id} className="flex items-start gap-3 text-xs p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                        onClick={() => { setSelectedOrder(order); setShowDetail(true); }}>
+                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold flex-shrink-0">
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-slate-700 truncate">{order.title}</div>
+                          <div className="text-slate-400 font-mono text-[10px] mt-1">{order.orderNumber}</div>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold ${order.status === '已核准' ? 'bg-emerald-100 text-emerald-600' : order.status === '單位執行中' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                          {order.status}
+                        </span>
+                      </div>
+                    ))}
+                    {orders.length === 0 && <div className="text-center text-slate-400 py-4">尚無設變單</div>}
+                  </div>
+                </div>
+                
+                {/* 緊急提醒 */}
+                <div className="bg-gradient-to-br from-rose-500 to-pink-600 p-6 rounded-2xl text-white shadow-xl">
+                  <h4 className="font-bold mb-3 flex items-center gap-2">
+                    <AlertTriangle size={18} /> 緊急關注
+                  </h4>
+                  <div className="space-y-4">
+                    <div className="bg-white/20 backdrop-blur-sm p-4 rounded-xl">
+                      <div className="text-xs opacity-90 mb-1">待處理案件</div>
+                      <div className="text-3xl font-bold">{statsValues.pending + statsValues.waiting}</div>
+                      <div className="text-xs opacity-75 mt-1">需要立即關注</div>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl">
+                      <div className="text-xs mb-2 flex items-center gap-1">
+                        <Clock size={12} /> 高優先級案件
+                      </div>
+                      <div className="text-2xl font-bold">{priorityStats.find(p => p.name === '高')?.value || 0}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* 執行單位狀態 */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-lg">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Building2 size={18} className="text-purple-500" /> 執行單位概況
+                  </h4>
+                  <div className="space-y-3">
+                    {executionUnitsMaster.slice(0, 6).map(unit => {
+                      const unitOrders = orders.filter(o => o.executionUnits?.some(u => u.id === unit.id && u.selected));
+                      const pendingCount = unitOrders.filter(o => o.status !== '已核准').length;
+                      return (
+                        <div key={unit.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-all">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                            <span className="text-sm font-medium text-slate-700">{unit.label}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">{unitOrders.length} 筆</span>
+                            {pendingCount > 0 && (
+                              <span className="bg-amber-100 text-amber-600 text-[10px] px-2 py-0.5 rounded-full font-bold">{pendingCount}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
@@ -21880,6 +22997,16 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                       value={newOrder.title} 
                       onChange={(e) => setNewOrder({...newOrder, title: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">料號</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      value={newOrder.partNumber} 
+                      onChange={(e) => setNewOrder({...newOrder, partNumber: e.target.value})} 
+                      placeholder="例：A32HC040298B"
                     />
                   </div>
                   <div>
@@ -21993,9 +23120,99 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                 </div>
 
                 <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                  <div className="bg-slate-50 px-6 py-3 border-b border-slate-100">
+                  <div className="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
                     <h4 className="text-sm font-bold text-slate-600">設變執行單位配置</h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowUnitManager(!showUnitManager)}
+                      className="px-3 py-1.5 text-xs bg-white hover:bg-slate-100 text-slate-700 rounded-lg transition-colors flex items-center gap-1 border border-slate-200"
+                    >
+                      <Settings2 size={14} /> 管理單位
+                    </button>
                   </div>
+                  
+                  {/* 單位管理面板 */}
+                  {showUnitManager && (
+                    <div className="p-4 bg-amber-50/50 border-b border-amber-100">
+                      <h5 className="text-xs font-bold text-amber-800 mb-3 flex items-center gap-2">
+                        <Settings2 size={14} /> 執行單位管理
+                      </h5>
+                      
+                      {/* 新增單位 */}
+                      <div className="flex gap-2 mb-4">
+                        <input
+                          type="text"
+                          placeholder="輸入新單位名稱（例：軟體設計）"
+                          value={newUnitName}
+                          onChange={(e) => setNewUnitName(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addNewUnit()}
+                          className="flex-1 px-3 py-2 border border-amber-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                        <button
+                          type="button"
+                          onClick={addNewUnit}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                        >
+                          <Plus size={14} /> 新增
+                        </button>
+                      </div>
+                      
+                      {/* 單位列表 */}
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {executionUnitsMaster.map(unit => (
+                          <div key={unit.id} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 transition-colors">
+                            {editingUnitId === unit.id ? (
+                              <>
+                                <input
+                                  type="text"
+                                  defaultValue={unit.label}
+                                  onBlur={(e) => updateUnitLabel(unit.id, e.target.value)}
+                                  onKeyPress={(e) => e.key === 'Enter' && updateUnitLabel(unit.id, e.target.value)}
+                                  autoFocus
+                                  className="flex-1 px-2 py-1 border border-indigo-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingUnitId(null)}
+                                  className="px-2 py-1 text-xs text-slate-500 hover:text-slate-700"
+                                >
+                                  取消
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="flex-1 text-sm text-slate-700 font-medium">{unit.label}</span>
+                                {unit.custom ? (
+                                  <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-medium">自定義</span>
+                                ) : (
+                                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">系統</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingUnitId(unit.id)}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                  title="編輯名稱"
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                {unit.custom && (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteUnit(unit.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="刪除單位"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="p-2 overflow-x-auto text-xs">
                     <table className="w-full">
                       <thead>
@@ -22005,6 +23222,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                           <th className="px-4 py-2 text-left">期間 (起 ~ 迄)</th>
                           <th className="px-4 py-2 text-left">工時(H)</th>
                           <th className="px-4 py-2 text-left">主辦</th>
+                          <th className="px-4 py-2 text-left">副辦</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -22051,6 +23269,16 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                                 className="w-20 border rounded px-1" 
                                 value={u.owner} 
                                 onChange={(e) => updateUnitField(u.id, 'owner', e.target.value)} 
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input 
+                                disabled={!u.selected} 
+                                type="text" 
+                                className="w-20 border rounded px-1" 
+                                value={u.coOwner} 
+                                onChange={(e) => updateUnitField(u.id, 'coOwner', e.target.value)} 
+                                placeholder="選填"
                               />
                             </td>
                           </tr>
@@ -22199,6 +23427,11 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                       )}
                     </div>
                     <p className="mt-3">分類：<span className="font-bold text-indigo-600">{selectedOrder.category}</span></p>
+                    {selectedOrder.partNumber && (
+                      <p className="mt-2 flex items-center gap-2">
+                        <Hash size={12} className="text-slate-400"/> 料號：<span className="font-mono font-bold text-slate-700">{selectedOrder.partNumber}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <div className="text-slate-400 font-bold mb-3 uppercase text-xs tracking-wider">優先級與權重</div>
@@ -22213,11 +23446,16 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {selectedOrder.executionUnits.map((u) => (
                       <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="text-xs">
+                        <div className="text-xs flex-1">
                           <div className="font-bold text-slate-700 flex items-center gap-1 mb-1">
                             {u.label} {u.approved ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Clock size={12} className="text-amber-500" />}
                           </div>
-                          <div className="text-slate-500">主辦: {u.owner || '-'} | 期間: {u.startDate || '-'} ~ {u.endDate || '-'}</div>
+                          <div className="text-slate-500">
+                            主辦: {u.owner || '-'} {u.coOwner && `| 副辦: ${u.coOwner}`}
+                          </div>
+                          <div className="text-slate-400 mt-1">
+                            期間: {u.startDate || '-'} ~ {u.endDate || '-'}
+                          </div>
                         </div>
                         {!u.approved && (
                           <button 
@@ -22237,13 +23475,24 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                     <div className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">影像/相片展示</div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       {selectedOrder.images.map((img, i) => (
-                        <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-slate-200 group relative">
+                        <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-slate-200 group relative cursor-pointer"
+                          onClick={() => { setViewingImage(img.preview); setViewingImageIndex(i); }}
+                        >
                           <img src={img.preview} className="w-full h-full object-cover" alt="gallery" />
                           <div 
-                            onClick={() => handleDownloadFile(img)}
-                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                           >
-                            <Download size={20} className="text-white" />
+                            <div className="flex gap-2">
+                              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                                <Maximize2 size={20} className="text-white" />
+                              </div>
+                              <div 
+                                onClick={(e) => { e.stopPropagation(); handleDownloadFile(img); }}
+                                className="p-2 bg-white/20 rounded-lg backdrop-blur-sm hover:bg-white/30 transition-colors"
+                              >
+                                <Download size={20} className="text-white" />
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -22278,6 +23527,47 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                     )}
                   </div>
                 </div>
+                
+                {/* 評論區 */}
+                <div className="mb-8 pt-6 border-t">
+                  <div className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider flex items-center gap-2">
+                    <MessageSquare size={14} /> 討論與評論
+                  </div>
+                  
+                  {/* 評論列表 */}
+                  <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
+                    {(comments[selectedOrder.id] || []).map(comment => (
+                      <div key={comment.id} className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-sm font-bold text-slate-700">{comment.author}</span>
+                          <span className="text-xs text-slate-400">{comment.timestamp}</span>
+                        </div>
+                        <p className="text-sm text-slate-600">{comment.content}</p>
+                      </div>
+                    ))}
+                    {(!comments[selectedOrder.id] || comments[selectedOrder.id].length === 0) && (
+                      <div className="text-xs text-slate-400 italic py-4 text-center">尚無評論</div>
+                    )}
+                  </div>
+                  
+                  {/* 新增評論 */}
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      placeholder="輸入評論..."
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && addComment(selectedOrder.id)}
+                      className="flex-1 px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                    />
+                    <button 
+                      onClick={() => addComment(selectedOrder.id)}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      發送
+                    </button>
+                  </div>
+                </div>
 
                 <div className="pt-6 border-t flex justify-between items-center">
                   <button 
@@ -22287,7 +23577,29 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                     <ArrowLeft size={16}/> 返回
                   </button>
                   <div className="flex gap-3">
-                    {selectedOrder.status === '待主管核准' && (
+                    {/* PDF 匯出按鈕 */}
+                    <button 
+                      onClick={() => exportToPDF(selectedOrder)}
+                      className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-2 transition-colors"
+                    >
+                      <FileText size={16} /> 匯出 PDF
+                    </button>
+                    
+                    {/* 編輯按鈕（權限檢查）*/}
+                    {hasPermission('edit', selectedOrder) && selectedOrder.status !== '已核准' && (
+                      <button 
+                        onClick={() => {
+                          handleEditOrder(selectedOrder);
+                          setShowDetail(false);
+                        }}
+                        className="px-6 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl font-bold flex items-center gap-2 transition-colors"
+                      >
+                        <Edit size={16} /> 編輯
+                      </button>
+                    )}
+                    
+                    {/* 主管核准按鈕 */}
+                    {selectedOrder.status === '待主管核准' && hasPermission('approve') && (
                       <button 
                         onClick={async () => {
                           const finishTimestamp = getCurrentTimestamp();
@@ -22297,6 +23609,14 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                             completedTime: finishTimestamp
                           } : o);
                           setOrders(updatedOrders);
+                          
+                          // 發送通知
+                          addNotification({
+                            type: 'approved',
+                            message: `設變單 ${selectedOrder.orderNumber} 已由主管核准結案`,
+                            orderId: selectedOrder.id,
+                            timestamp: getCurrentTimestamp()
+                          });
                           
                           try {
                             localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
@@ -22311,14 +23631,15 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                           setShowDetail(false);
                           setActiveTab('archive'); 
                         }}
-                        className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200"
+                        className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-colors"
                       >
                         主管核准結案
                       </button>
                     )}
+                    
                     <button 
                       onClick={() => setShowDetail(false)} 
-                      className="px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold"
+                      className="px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
                     >
                       關閉
                     </button>
@@ -22326,6 +23647,75 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        
+        {/* 圖片放大查看器 */}
+        {viewingImage && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/95 animate-in fade-in duration-200"
+            onClick={() => setViewingImage(null)}
+          >
+            <button 
+              onClick={() => setViewingImage(null)}
+              className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-sm transition-colors z-10"
+            >
+              <X size={24} />
+            </button>
+            
+            {/* 上一張 */}
+            {selectedOrder.images.length > 1 && viewingImageIndex > 0 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newIndex = viewingImageIndex - 1;
+                  setViewingImageIndex(newIndex);
+                  setViewingImage(selectedOrder.images[newIndex].preview);
+                }}
+                className="absolute left-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-sm transition-colors"
+              >
+                <ChevronLeft size={32} />
+              </button>
+            )}
+            
+            {/* 下一張 */}
+            {selectedOrder.images.length > 1 && viewingImageIndex < selectedOrder.images.length - 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newIndex = viewingImageIndex + 1;
+                  setViewingImageIndex(newIndex);
+                  setViewingImage(selectedOrder.images[newIndex].preview);
+                }}
+                className="absolute right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-sm transition-colors"
+              >
+                <ChevronRight size={32} />
+              </button>
+            )}
+            
+            {/* 圖片計數 */}
+            {selectedOrder.images.length > 1 && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-white text-sm font-medium">
+                {viewingImageIndex + 1} / {selectedOrder.images.length}
+              </div>
+            )}
+            
+            {/* 下載按鈕 */}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownloadFile(selectedOrder.images[viewingImageIndex]);
+              }}
+              className="absolute bottom-4 right-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-sm transition-colors flex items-center gap-2"
+            >
+              <Download size={18} /> 下載圖片
+            </button>
+            
+            <img 
+              src={viewingImage} 
+              className="max-w-full max-h-full object-contain animate-in zoom-in-95 duration-300" 
+              alt="查看大圖"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         )}
       </main>

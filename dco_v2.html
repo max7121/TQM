@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設計變更申請單系統 v2.0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .user-info {
+            margin-top: 15px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 18px;
+            text-align: center;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 16px;
+            font-weight: 500;
+            color: #6c757d;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .tab:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .tab.active {
+            color: #667eea;
+            background: white;
+        }
+        
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 30px;
+            animation: fadeIn 0.3s;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes slideOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100px); }
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-radius: 12px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .stat-card.draft { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); }
+        .stat-card.progress { background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%); }
+        .stat-card.pending { background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); }
+        .stat-card.approved { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); }
+        
+        .stat-card h3 {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+        }
+        
+        .dco-list {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .dco-item {
+            display: grid;
+            grid-template-columns: 80px 150px 1fr 150px 120px 100px;
+            gap: 15px;
+            padding: 20px;
+            border-bottom: 1px solid #dee2e6;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        
+        .dco-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .dco-item:last-child {
+            border-bottom: none;
+        }
+        
+        .dco-number {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-draft { background: #6c757d; color: white; }
+        .status-progress { background: #0dcaf0; color: white; }
+        .status-pending { background: #ffc107; color: #000; }
+        .status-approved { background: #28a745; color: white; }
+        .status-rejected { background: #dc3545; color: white; }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .form-section {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        
+        .form-section h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .approval-section {
+            margin-top: 30px;
+        }
+        
+        .approval-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .approval-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .approval-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .approval-item label {
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .preview-container {
+            position: relative;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .preview-page {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .preview-bg {
+            width: 100%;
+            display: block;
+        }
+        
+        .preview-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .preview-field {
+            position: absolute;
+            font-size: 12px;
+            color: #000;
+            white-space: pre-wrap;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+        
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        .supervisor-panel {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .supervisor-panel h4 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .container {
+                box-shadow: none;
+                max-width: 100%;
+            }
+            
+            .header, .tabs, .action-buttons, .btn {
+                display: none !important;
+            }
+            
+            .tab-content {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 設計變更申請單系統 v2.0</h1>
+            <p>PDF 表單填寫 • 進度管理 • 審批追蹤</p>
+            <div class="user-info" id="userInfo"></div>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('list')">📊 設變單列表</button>
+            <button class="tab" onclick="switchTab('form')">✏️ 填寫表單</button>
+            <button class="tab" onclick="switchTab('preview')">👁️ 預覽列印</button>
+        </div>
+        
+        <!-- 列表標籤 -->
+        <div id="listTab" class="tab-content active">
+            <div class="stats-grid" id="statsGrid"></div>
+            <div class="dco-list" id="dcoList"></div>
+        </div>
+        
+        <!-- 表單標籤 -->
+        <div id="formTab" class="tab-content">
+            <div class="form-section">
+                <h3>基本資訊</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>設變單號碼 *</label>
+                        <input type="text" id="dcoNumber" placeholder="例：DCO-2025-001" required>
+                    </div>
+                    <div class="form-group">
+                        <label>申請日期 *</label>
+                        <input type="date" id="applyDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>申請人 *</label>
+                        <input type="text" id="applicant" required>
+                    </div>
+                    <div class="form-group">
+                        <label>申請單位/主管 *</label>
+                        <input type="text" id="applicantDept" placeholder="例：研發部/王主管">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>產品資訊</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>料號 *</label>
+                        <input type="text" id="partNumber" placeholder="請輸入料號" required>
+                    </div>
+                    <div class="form-group">
+                        <label>品名 *</label>
+                        <input type="text" id="productName" placeholder="請輸入品名" required>
+                    </div>
+                    <div class="form-group">
+                        <label>機種 *</label>
+                        <input type="text" id="modelType" placeholder="請輸入機種" required>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h3>設變內容</h3>
+                <div class="form-group">
+                    <label>設變原因 *</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="reason_spec" style="margin-right: 5px;"> 產品規格變更
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="reason_process" style="margin-right: 5px;"> 製程工序變更
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="reason_supplier" style="margin-right: 5px;"> 供應商變更
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="reason_customer" style="margin-right: 5px;"> 客戶需求
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="reason_data" style="margin-right: 5px;"> 資料建立錯誤
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="reason_other" style="margin-right: 5px;"> 其他
+                        </label>
+                    </div>
+                    <textarea id="changeReasonText" rows="2" placeholder="請說明設變原因..." required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>設變前說明 *</label>
+                    <textarea id="beforeChange" rows="3" placeholder="請詳細描述變更前的狀態..." required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>設變後說明 *</label>
+                    <textarea id="afterChange" rows="3" placeholder="請詳細描述變更後的狀態..." required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>可行性說明</label>
+                    <textarea id="feasibilityNote" rows="2" placeholder="請說明此變更的可行性..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>影響評估</label>
+                    <textarea id="impactAssessment" rows="2" placeholder="評估此變更對其他部門或產品的影響..."></textarea>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>變更時程</h3>
+                <div style="margin-bottom: 20px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">部門</th>
+                                <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">負責人</th>
+                                <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">執行日期起</th>
+                                <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">執行日期迄</th>
+                                <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">天數</th>
+                                <th style="padding: 12px; border: 1px solid #dee2e6; text-align: left;">主辦</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;">機構設計</td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="mech_person" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="mech_start" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="mech_end" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="number" id="mech_days" style="width: 60px; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="mech_host" style="width: 100%; border: none; padding: 4px;"></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;">電子設計</td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="elec_person" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="elec_start" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="elec_end" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="number" id="elec_days" style="width: 60px; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="elec_host" style="width: 100%; border: none; padding: 4px;"></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;">美術設計</td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="art_person" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="art_start" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="art_end" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="number" id="art_days" style="width: 60px; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="art_host" style="width: 100%; border: none; padding: 4px;"></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;">配線設計</td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="wire_person" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="wire_start" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="wire_end" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="number" id="wire_days" style="width: 60px; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="wire_host" style="width: 100%; border: none; padding: 4px;"></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;">工程中心</td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="eng_person" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="eng_start" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="date" id="eng_end" style="width: 100%; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="number" id="eng_days" style="width: 60px; border: none; padding: 4px;"></td>
+                                <td style="padding: 8px; border: 1px solid #dee2e6;"><input type="text" id="eng_host" style="width: 100%; border: none; padding: 4px;"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>研發順序</label>
+                        <select id="priority">
+                            <option value="high">高</option>
+                            <option value="medium">中</option>
+                            <option value="low">低</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>預估開始日期</label>
+                        <input type="date" id="estimateStart">
+                    </div>
+                    <div class="form-group">
+                        <label>預估結束日期</label>
+                        <input type="date" id="estimateEnd">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="approval-section" id="approvalSection"></div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-secondary" onclick="saveDraft()">💾 儲存草稿</button>
+                <button class="btn btn-primary" onclick="submitDCO()">📤 提交送審</button>
+                <button class="btn btn-secondary" onclick="clearForm()">🔄 清空表單</button>
+            </div>
+        </div>
+        
+        <!-- 預覽標籤 -->
+        <div id="previewTab" class="tab-content">
+            <div class="preview-container">
+                <div class="preview-page" id="previewPage">
+                    <img src="設變單_page1.png" alt="設變單背景" class="preview-bg" onerror="this.style.display='none'">
+                    <div class="preview-overlay" id="previewOverlay"></div>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" id="adjustModeBtn" onclick="toggleAdjustMode()">⚙️ 校正位置</button>
+                    <button class="btn btn-secondary" onclick="resetLayout()">🔄 重置版面</button>
+                    <button class="btn btn-primary" onclick="window.print()">🖨️ 列印</button>
+                    <button class="btn btn-secondary" onclick="exportJSON()">💾 匯出 JSON</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全域變數
+        let currentDCO = null;
+        let allDCOs = [];
+        let currentUser = null;
+
+        // 表單欄位配置（與PDF對應的位置）
+        const fieldLayout = [
+            // 基本資訊
+            { id: 'dcoNumber', label: '設變單號碼', top: 5, left: 70, width: 25, height: 3 },
+            { id: 'applyDate', label: '申請日期', top: 5.5, left: 15, width: 20, height: 3 },
+            { id: 'applicant', label: '申請人', top: 9, left: 15, width: 20, height: 3 },
+            { id: 'applicantDept', label: '申請單位/主管', top: 9, left: 40, width: 30, height: 3 },
+            
+            // 產品資訊
+            { id: 'partNumber', label: '料號', top: 13, left: 5, width: 15, height: 3 },
+            { id: 'productName', label: '品名', top: 14, left: 25, width: 25, height: 3 },
+            { id: 'modelType', label: '機種', top: 15, left: 70, width: 20, height: 3 },
+            
+            // 設變原因勾選
+            { id: 'changeReasonsText', label: '設變原因', top: 20, left: 5, width: 85, height: 3 },
+            
+            // 設變內容
+            { id: 'changeReasonText', label: '說明', top: 24, left: 5, width: 42, height: 12 },
+            { id: 'beforeChange', label: '設變前', top: 38, left: 5, width: 42, height: 12 },
+            { id: 'afterChange', label: '設變後', top: 38, left: 52, width: 42, height: 12 },
+            { id: 'feasibilityNote', label: '評估分析', top: 52, left: 15, width: 70, height: 6 },
+            { id: 'impactAssessment', label: '影響評估', top: 24, left: 52, width: 42, height: 12 },
+            
+            // 時程資訊
+            { id: 'priorityText', label: '優先順序', top: 60, left: 15, width: 8, height: 3 },
+            { id: 'estimateStart', label: '預估開始', top: 60, left: 30, width: 15, height: 3 },
+            { id: 'estimateEnd', label: '預估結束', top: 60, left: 55, width: 15, height: 3 }
+        ];
+
+        // 初始化
+        function init() {
+            currentUser = getCurrentUser();
+            document.getElementById('userInfo').textContent = 
+                `👤 ${currentUser.name} | ${getRoleName(currentUser.role)} | ${getDepartmentName(currentUser.department)}`;
+            
+            loadDCOs();
+            updateStats();
+            renderDCOList();
+            renderApprovalSection();
+            
+            // 設定今天的日期
+            document.getElementById('applyDate').valueAsDate = new Date();
+            document.getElementById('applicant').value = currentUser.name;
+        }
+
+        // 獲取當前用戶（從 TQM 系統的 sessionStorage 讀取）
+        function getCurrentUser() {
+            try {
+                const userStr = sessionStorage.getItem('tqm_user');
+                if (userStr) {
+                    const tqmUser = JSON.parse(userStr);
+                    
+                    // 從 TQM 系統用戶資料轉換為 DCO 系統格式
+                    return {
+                        name: tqmUser.displayName || tqmUser.username || '未知用戶',
+                        role: tqmUser.role === 'admin' ? 'supervisor' : 'engineer',
+                        department: tqmUser.department || 'mech' // 預設為機械部
+                    };
+                }
+            } catch (e) {
+                console.error('讀取用戶資訊失敗:', e);
+            }
+            
+            // 預設返回（未登入或讀取失敗時）
+            return {
+                name: '訪客',
+                role: 'engineer',
+                department: 'mech'
+            };
+        }
+
+        function getRoleName(role) {
+            const roles = { engineer: '工程師', supervisor: '主管' };
+            return roles[role] || role;
+        }
+
+        function getDepartmentName(dept) {
+            const depts = { 
+                mech: '機械部', 
+                elec: '電子部', 
+                art: '美術部', 
+                wire: '線材部' 
+            };
+            return depts[dept] || dept;
+        }
+
+        // 切換標籤
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            if (tabName === 'preview') {
+                updatePreview();
+            }
+        }
+
+        // 載入所有設變單
+        function loadDCOs() {
+            const stored = localStorage.getItem('dco_orders');
+            allDCOs = stored ? JSON.parse(stored) : [];
+        }
+
+        // 儲存設變單
+        function saveDCOs() {
+            localStorage.setItem('dco_orders', JSON.stringify(allDCOs));
+        }
+
+        // 更新統計卡片
+        function updateStats() {
+            const stats = {
+                total: allDCOs.length,
+                draft: allDCOs.filter(d => d.status === 'draft').length,
+                progress: allDCOs.filter(d => d.status === 'progress').length,
+                pending: allDCOs.filter(d => d.status === 'pending').length,
+                approved: allDCOs.filter(d => d.status === 'approved').length
+            };
+            
+            document.getElementById('statsGrid').innerHTML = `
+                <div class="stat-card">
+                    <h3>全部設變單</h3>
+                    <div class="number">${stats.total}</div>
+                </div>
+                <div class="stat-card draft">
+                    <h3>草稿</h3>
+                    <div class="number">${stats.draft}</div>
+                </div>
+                <div class="stat-card progress">
+                    <h3>審批中</h3>
+                    <div class="number">${stats.progress}</div>
+                </div>
+                <div class="stat-card pending">
+                    <h3>待主管核准</h3>
+                    <div class="number">${stats.pending}</div>
+                </div>
+                <div class="stat-card approved">
+                    <h3>已核准</h3>
+                    <div class="number">${stats.approved}</div>
+                </div>
+            `;
+        }
+
+        // 渲染設變單列表
+        function renderDCOList() {
+            const listEl = document.getElementById('dcoList');
+            
+            if (allDCOs.length === 0) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <h3>尚無設變單</h3>
+                        <p>請點擊「填寫表單」開始建立新的設計變更申請單</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            listEl.innerHTML = allDCOs.map(dco => `
+                <div class="dco-item">
+                    <div class="dco-number">${dco.dcoNumber}</div>
+                    <div>${dco.applyDate}</div>
+                    <div>
+                        <strong>${dco.productName || '未填寫'}</strong><br>
+                        <small style="color: #6c757d;">${dco.partNumber || ''} ${dco.modelType ? '/ ' + dco.modelType : ''}</small>
+                    </div>
+                    <div>${dco.applicant}</div>
+                    <div><span class="status-badge status-${dco.status}">${getStatusName(dco.status)}</span></div>
+                    <div>
+                        <button class="btn btn-primary" onclick="editDCO('${dco.id}')" style="padding: 6px 12px; font-size: 12px;">
+                            ${dco.status === 'draft' ? '編輯' : '查看'}
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getStatusName(status) {
+            const names = {
+                draft: '草稿',
+                progress: '審批中',
+                pending: '待核准',
+                approved: '已核准',
+                rejected: '已拒絕'
+            };
+            return names[status] || status;
+        }
+
+        // 編輯設變單
+        function editDCO(id) {
+            currentDCO = allDCOs.find(d => d.id === id);
+            if (!currentDCO) return;
+            
+            // 填充基本資訊
+            document.getElementById('dcoNumber').value = currentDCO.dcoNumber || '';
+            document.getElementById('applyDate').value = currentDCO.applyDate || '';
+            document.getElementById('applicant').value = currentDCO.applicant || '';
+            document.getElementById('applicantDept').value = currentDCO.applicantDept || '';
+            
+            // 填充產品資訊
+            document.getElementById('partNumber').value = currentDCO.partNumber || '';
+            document.getElementById('productName').value = currentDCO.productName || '';
+            document.getElementById('modelType').value = currentDCO.modelType || '';
+            
+            // 填充設變原因勾選
+            const reasons = currentDCO.changeReasons || [];
+            document.getElementById('reason_spec').checked = reasons.includes('產品規格變更');
+            document.getElementById('reason_process').checked = reasons.includes('製程工序變更');
+            document.getElementById('reason_supplier').checked = reasons.includes('供應商變更');
+            document.getElementById('reason_customer').checked = reasons.includes('客戶需求');
+            document.getElementById('reason_data').checked = reasons.includes('資料建立錯誤');
+            document.getElementById('reason_other').checked = reasons.includes('其他');
+            
+            document.getElementById('changeReasonText').value = currentDCO.changeReasonText || '';
+            document.getElementById('beforeChange').value = currentDCO.beforeChange || '';
+            document.getElementById('afterChange').value = currentDCO.afterChange || '';
+            document.getElementById('feasibilityNote').value = currentDCO.feasibilityNote || '';
+            document.getElementById('impactAssessment').value = currentDCO.impactAssessment || '';
+            
+            // 填充時程資訊
+            const schedule = currentDCO.schedule || {};
+            ['mech', 'elec', 'art', 'wire', 'eng'].forEach(dept => {
+                const info = schedule[dept] || {};
+                document.getElementById(dept + '_person').value = info.person || '';
+                document.getElementById(dept + '_start').value = info.start || '';
+                document.getElementById(dept + '_end').value = info.end || '';
+                document.getElementById(dept + '_days').value = info.days || '';
+                document.getElementById(dept + '_host').value = info.host || '';
+            });
+            
+            document.getElementById('priority').value = currentDCO.priority || 'medium';
+            document.getElementById('estimateStart').value = currentDCO.estimateStart || '';
+            document.getElementById('estimateEnd').value = currentDCO.estimateEnd || '';
+            
+            // 填充審批狀態
+            if (currentDCO.approvals) {
+                Object.keys(currentDCO.approvals).forEach(dept => {
+                    const checkbox = document.getElementById('approval_' + dept);
+                    if (checkbox) checkbox.checked = currentDCO.approvals[dept];
+                });
+            }
+            
+            // 切換到表單標籤
+            document.querySelectorAll('.tab')[1].click();
+            renderApprovalSection();
+        }
+
+        // 渲染審批區域
+        function renderApprovalSection() {
+            const section = document.getElementById('approvalSection');
+            
+            if (!currentDCO || currentDCO.status === 'draft') {
+                section.innerHTML = '';
+                return;
+            }
+            
+            const departments = [
+                { id: 'mech', name: '機構部' },
+                { id: 'elec', name: '電子部' },
+                { id: 'art', name: '美術部' },
+                { id: 'wire', name: '線材部' }
+            ];
+            
+            const approvals = currentDCO.approvals || {};
+            // 修改邏輯：審批中或待核准狀態都可以更新審批
+            const canApprove = currentDCO.status === 'progress' || currentDCO.status === 'pending';
+            // 主管可以審批所有部門，工程師只能審批自己部門
+            const isSupervisor = currentUser.role === 'supervisor';
+            
+            // 獲取有負責人的部門
+            const schedule = currentDCO.schedule || {};
+            const departmentsWithPerson = new Set();
+            ['mech', 'elec', 'art', 'wire'].forEach(dept => {
+                if (schedule[dept] && schedule[dept].person && schedule[dept].person.trim() !== '') {
+                    departmentsWithPerson.add(dept);
+                }
+            });
+            
+            section.innerHTML = `
+                <div class="form-section">
+                    <h3>部門審批狀態 ${departmentsWithPerson.size > 0 ? `<small style="color: #6c757d; font-weight: normal;">(需審批: ${departmentsWithPerson.size} 個部門)</small>` : ''}</h3>
+                    <div class="approval-grid">
+                        ${departments.map(dept => {
+                            const isApproved = approvals[dept.id] === true;
+                            const hasResponsible = departmentsWithPerson.has(dept.id);
+                            const responsiblePerson = schedule[dept.id]?.person || '';
+                            // 主管可以勾選所有部門，工程師只能勾選自己的部門
+                            const canThisDeptApprove = canApprove && (isSupervisor || currentUser.department === dept.id);
+                            return `
+                                <div class="approval-item" style="background: ${isApproved ? '#d1f4e0' : (hasResponsible ? '#fff3cd' : '#f8f9fa')}; border-left: 3px solid ${hasResponsible ? '#ffc107' : 'transparent'};">
+                                    <input type="checkbox" 
+                                           id="approval_${dept.id}" 
+                                           ${isApproved ? 'checked' : ''}
+                                           ${canThisDeptApprove ? '' : 'disabled'}
+                                           onchange="handleApprovalChange('${dept.id}')">
+                                    <label for="approval_${dept.id}" style="flex: 1;">
+                                        ${dept.name}
+                                        ${hasResponsible ? ` <small style="color: #856404;">(${responsiblePerson})</small>` : ''}
+                                        ${isApproved ? ' ✓' : ''}
+                                    </label>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    ${canApprove ? `
+                        <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-radius: 6px; border-left: 4px solid #667eea;">
+                            <small style="color: #495057;">
+                                💡 提示：勾選審批框後會自動保存，${departmentsWithPerson.size > 0 ? `需完成 ${departmentsWithPerson.size} 個有負責人的部門審批` : '無需審批'}
+                            </small>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                ${currentUser.role === 'supervisor' && currentDCO.status === 'pending' ? `
+                    <div class="supervisor-panel">
+                        <h4>⚠️ 主管最終核准</h4>
+                        <div class="form-group">
+                            <label>評估分析</label>
+                            <div style="margin-bottom: 10px;">
+                                <label style="margin-right: 20px; cursor: pointer;">
+                                    <input type="radio" name="feasibility" value="可行" style="margin-right: 5px;"> 可行
+                                </label>
+                                <label style="cursor: pointer;">
+                                    <input type="radio" name="feasibility" value="不可行" style="margin-right: 5px;"> 不可行
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>審批意見</label>
+                            <textarea id="supervisorComment" rows="3" placeholder="請輸入審批意見..."></textarea>
+                        </div>
+                        <div class="action-buttons">
+                            <button class="btn btn-success" onclick="supervisorApprove(true)">✓ 核准</button>
+                            <button class="btn btn-danger" onclick="supervisorApprove(false)">✗ 拒絕</button>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        // 處理審批變更（自動保存）
+        function handleApprovalChange(deptId) {
+            // 即時更新視覺反饋
+            const checkbox = document.getElementById('approval_' + deptId);
+            const item = checkbox.closest('.approval-item');
+            
+            // 獲取是否有負責人
+            const schedule = currentDCO?.schedule || {};
+            const hasResponsible = schedule[deptId] && schedule[deptId].person && schedule[deptId].person.trim() !== '';
+            
+            if (checkbox.checked) {
+                item.style.background = '#d1f4e0';
+            } else {
+                item.style.background = hasResponsible ? '#fff3cd' : '#f8f9fa';
+            }
+            
+            // 自動保存審批狀態
+            autoSaveApprovals();
+        }
+        
+        // 自動保存審批狀態
+        function autoSaveApprovals() {
+            if (!currentDCO) return;
+            
+            const approvals = {
+                mech: document.getElementById('approval_mech')?.checked || false,
+                elec: document.getElementById('approval_elec')?.checked || false,
+                art: document.getElementById('approval_art')?.checked || false,
+                wire: document.getElementById('approval_wire')?.checked || false
+            };
+            
+            currentDCO.approvals = approvals;
+            
+            // 檢查有負責人的部門是否都已審批
+            const schedule = currentDCO.schedule || {};
+            const departmentsWithPerson = ['mech', 'elec', 'art', 'wire'].filter(dept => {
+                return schedule[dept] && schedule[dept].person && schedule[dept].person.trim() !== '';
+            });
+            
+            // 如果有負責的部門
+            if (departmentsWithPerson.length > 0) {
+                // 檢查所有有負責人的部門是否都已審批
+                const allRequiredApproved = departmentsWithPerson.every(dept => approvals[dept] === true);
+                const approvedCount = departmentsWithPerson.filter(dept => approvals[dept] === true).length;
+                
+                // 顯示進度提示
+                showToast(`審批進度：${approvedCount}/${departmentsWithPerson.length} 個部門已完成`);
+                
+                if (allRequiredApproved && currentDCO.status === 'progress') {
+                    currentDCO.status = 'pending'; // 進入待主管核准
+                    showToast(`🎉 所有負責部門審批完成！已進入「待主管核准」狀態`, 'success');
+                }
+            }
+            
+            const index = allDCOs.findIndex(d => d.id === currentDCO.id);
+            if (index !== -1) {
+                allDCOs[index] = currentDCO;
+                saveDCOs();
+                updateStats();
+                renderDCOList();
+            }
+        }
+        
+        // 顯示提示訊息（Toast）
+        function showToast(message, type = 'info') {
+            // 移除舊的 toast
+            const oldToast = document.querySelector('.toast-message');
+            if (oldToast) oldToast.remove();
+            
+            // 創建新的 toast
+            const toast = document.createElement('div');
+            toast.className = 'toast-message';
+            toast.textContent = message;
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 25px;
+                background: ${type === 'success' ? '#28a745' : '#667eea'};
+                color: white;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                font-weight: 500;
+                max-width: 350px;
+            `;
+            
+            document.body.appendChild(toast);
+            
+            // 3秒後自動移除
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // 更新審批狀態
+        function updateApprovals() {
+            if (!currentDCO) {
+                alert('❌ 錯誤：沒有選擇的設變單！');
+                return;
+            }
+            
+            if (currentDCO.status !== 'progress' && currentDCO.status !== 'pending') {
+                alert('❌ 錯誤：只有審批中或待核准的設變單可以更新審批狀態！');
+                return;
+            }
+            
+            const approvals = {
+                mech: document.getElementById('approval_mech')?.checked || false,
+                elec: document.getElementById('approval_elec')?.checked || false,
+                art: document.getElementById('approval_art')?.checked || false,
+                wire: document.getElementById('approval_wire')?.checked || false
+            };
+            
+            currentDCO.approvals = approvals;
+            
+            // 檢查有負責人的部門是否都已審批
+            const schedule = currentDCO.schedule || {};
+            const departmentsWithPerson = ['mech', 'elec', 'art', 'wire'].filter(dept => {
+                return schedule[dept] && schedule[dept].person && schedule[dept].person.trim() !== '';
+            });
+            
+            // 如果有負責的部門
+            if (departmentsWithPerson.length > 0) {
+                // 檢查所有有負責人的部門是否都已審批
+                const allRequiredApproved = departmentsWithPerson.every(dept => approvals[dept] === true);
+                
+                if (allRequiredApproved && currentDCO.status === 'progress') {
+                    currentDCO.status = 'pending'; // 進入待主管核准
+                    alert(`✅ 所有負責部門（${departmentsWithPerson.map(d => getDepartmentName(d)).join('、')}）審批完成！\n狀態已變更為「待主管核准」`);
+                }
+            }
+            
+            const index = allDCOs.findIndex(d => d.id === currentDCO.id);
+            if (index !== -1) {
+                allDCOs[index] = currentDCO;
+                saveDCOs();
+                updateStats();
+                renderDCOList();
+                
+                if (currentDCO.status !== 'pending') {
+                    alert('✅ 審批狀態已更新！');
+                }
+                
+                renderApprovalSection();
+            } else {
+                alert('❌ 錯誤：找不到對應的設變單！');
+            }
+        }
+        
+        // 獲取部門名稱（工具函數）
+        function getDepartmentName(deptId) {
+            const names = {
+                mech: '機構部',
+                elec: '電子部',
+                art: '美術部',
+                wire: '線材部'
+            };
+            return names[deptId] || deptId;
+        }
+
+        // 主管核准/拒絕
+        function supervisorApprove(approved) {
+            if (!currentDCO) return;
+            
+            const comment = document.getElementById('supervisorComment').value;
+            currentDCO.status = approved ? 'approved' : 'rejected';
+            currentDCO.supervisorComment = comment;
+            currentDCO.supervisorApproveDate = new Date().toISOString().split('T')[0];
+            currentDCO.supervisor = currentUser.name;
+            
+            const index = allDCOs.findIndex(d => d.id === currentDCO.id);
+            if (index !== -1) {
+                allDCOs[index] = currentDCO;
+                saveDCOs();
+                updateStats();
+                renderDCOList();
+                alert(approved ? '設變單已核准！' : '設變單已拒絕！');
+                renderApprovalSection();
+            }
+        }
+
+        // 儲存草稿
+        function saveDraft() {
+            const formData = getFormData();
+            
+            if (currentDCO) {
+                // 更新現有設變單
+                Object.assign(currentDCO, formData);
+                const index = allDCOs.findIndex(d => d.id === currentDCO.id);
+                if (index !== -1) {
+                    allDCOs[index] = currentDCO;
+                }
+            } else {
+                // 建立新設變單
+                const newDCO = {
+                    id: 'dco_' + Date.now(),
+                    ...formData,
+                    status: 'draft',
+                    createDate: new Date().toISOString().split('T')[0]
+                };
+                allDCOs.push(newDCO);
+                currentDCO = newDCO;
+            }
+            
+            saveDCOs();
+            updateStats();
+            renderDCOList();
+            alert('草稿已儲存！');
+        }
+
+        // 提交設變單
+        function submitDCO() {
+            const formData = getFormData();
+            
+            // 驗證必填欄位
+            if (!formData.dcoNumber || !formData.applyDate || !formData.applicant || 
+                !formData.partNumber || !formData.productName || !formData.modelType ||
+                !formData.changeReasonText || !formData.beforeChange || !formData.afterChange) {
+                alert('請填寫所有必填欄位（標示 * 的欄位）！');
+                return;
+            }
+            
+            if (currentDCO) {
+                Object.assign(currentDCO, formData);
+                currentDCO.status = 'progress'; // 進入審批流程
+                currentDCO.submitDate = new Date().toISOString().split('T')[0];
+                const index = allDCOs.findIndex(d => d.id === currentDCO.id);
+                if (index !== -1) {
+                    allDCOs[index] = currentDCO;
+                }
+            } else {
+                const newDCO = {
+                    id: 'dco_' + Date.now(),
+                    ...formData,
+                    status: 'progress',
+                    createDate: new Date().toISOString().split('T')[0],
+                    submitDate: new Date().toISOString().split('T')[0],
+                    approvals: { mech: false, elec: false, art: false, wire: false }
+                };
+                allDCOs.push(newDCO);
+                currentDCO = newDCO;
+            }
+            
+            saveDCOs();
+            updateStats();
+            renderDCOList();
+            clearForm();
+            alert('設變單已提交送審！');
+            
+            // 切換到列表標籤
+            document.querySelectorAll('.tab')[0].click();
+        }
+
+        // 獲取表單資料
+        function getFormData() {
+            // 收集設變原因勾選
+            const changeReasons = [];
+            if (document.getElementById('reason_spec').checked) changeReasons.push('產品規格變更');
+            if (document.getElementById('reason_process').checked) changeReasons.push('製程工序變更');
+            if (document.getElementById('reason_supplier').checked) changeReasons.push('供應商變更');
+            if (document.getElementById('reason_customer').checked) changeReasons.push('客戶需求');
+            if (document.getElementById('reason_data').checked) changeReasons.push('資料建立錯誤');
+            if (document.getElementById('reason_other').checked) changeReasons.push('其他');
+            
+            // 收集時程資訊
+            const schedule = {};
+            ['mech', 'elec', 'art', 'wire', 'eng'].forEach(dept => {
+                schedule[dept] = {
+                    person: document.getElementById(dept + '_person').value,
+                    start: document.getElementById(dept + '_start').value,
+                    end: document.getElementById(dept + '_end').value,
+                    days: document.getElementById(dept + '_days').value,
+                    host: document.getElementById(dept + '_host').value
+                };
+            });
+            
+            return {
+                dcoNumber: document.getElementById('dcoNumber').value,
+                applyDate: document.getElementById('applyDate').value,
+                applicant: document.getElementById('applicant').value,
+                applicantDept: document.getElementById('applicantDept').value,
+                partNumber: document.getElementById('partNumber').value,
+                productName: document.getElementById('productName').value,
+                modelType: document.getElementById('modelType').value,
+                changeReasons: changeReasons,
+                changeReasonText: document.getElementById('changeReasonText').value,
+                beforeChange: document.getElementById('beforeChange').value,
+                afterChange: document.getElementById('afterChange').value,
+                feasibilityNote: document.getElementById('feasibilityNote').value,
+                impactAssessment: document.getElementById('impactAssessment').value,
+                schedule: schedule,
+                priority: document.getElementById('priority').value,
+                estimateStart: document.getElementById('estimateStart').value,
+                estimateEnd: document.getElementById('estimateEnd').value
+            };
+        }
+
+        // 清空表單
+        function clearForm() {
+            document.getElementById('dcoNumber').value = '';
+            document.getElementById('applicantDept').value = '';
+            document.getElementById('partNumber').value = '';
+            document.getElementById('productName').value = '';
+            document.getElementById('modelType').value = '';
+            
+            // 清除設變原因勾選
+            document.getElementById('reason_spec').checked = false;
+            document.getElementById('reason_process').checked = false;
+            document.getElementById('reason_supplier').checked = false;
+            document.getElementById('reason_customer').checked = false;
+            document.getElementById('reason_data').checked = false;
+            document.getElementById('reason_other').checked = false;
+            
+            document.getElementById('changeReasonText').value = '';
+            document.getElementById('beforeChange').value = '';
+            document.getElementById('afterChange').value = '';
+            document.getElementById('feasibilityNote').value = '';
+            document.getElementById('impactAssessment').value = '';
+            
+            // 清除時程資訊
+            ['mech', 'elec', 'art', 'wire', 'eng'].forEach(dept => {
+                document.getElementById(dept + '_person').value = '';
+                document.getElementById(dept + '_start').value = '';
+                document.getElementById(dept + '_end').value = '';
+                document.getElementById(dept + '_days').value = '';
+                document.getElementById(dept + '_host').value = '';
+            });
+            
+            document.getElementById('priority').value = 'medium';
+            document.getElementById('estimateStart').value = '';
+            document.getElementById('estimateEnd').value = '';
+            
+            document.getElementById('applyDate').valueAsDate = new Date();
+            document.getElementById('applicant').value = currentUser.name;
+            
+            currentDCO = null;
+            renderApprovalSection();
+        }
+
+        // 更新預覽
+        let isAdjustMode = false;
+        
+        function updatePreview() {
+            const formData = getFormData();
+            const overlay = document.getElementById('previewOverlay');
+            
+            // 調試：在控制台顯示表單資料
+            console.log('表單資料:', formData);
+            
+            // 讀取儲存的版面配置
+            const savedLayout = localStorage.getItem('dco_field_layout');
+            const layout = savedLayout ? JSON.parse(savedLayout) : fieldLayout;
+            
+            overlay.innerHTML = layout.map((field, index) => {
+                let value = '';
+                
+                // 直接從 formData 取值
+                if (field.id === 'changeReasonsText') {
+                    // 設變原因勾選（轉換為文字）
+                    const reasons = formData.changeReasons || [];
+                    value = reasons.length > 0 ? '☑ ' + reasons.join('  ☑ ') : '';
+                } else if (field.id === 'priorityText') {
+                    // 優先等級（轉換為文字）
+                    const priorityMap = { high: '高', medium: '中', low: '低' };
+                    value = priorityMap[formData.priority] || '中';
+                } else {
+                    // 一般欄位 - 直接從 formData 取值
+                    value = formData[field.id];
+                    if (value === undefined || value === null) {
+                        value = '';
+                    }
+                }
+                
+                // 調試：記錄每個欄位的值
+                if (isAdjustMode) {
+                    console.log(`欄位 ${field.id} (${field.label}):`, value);
+                }
+                
+                // 在調整模式下顯示欄位名稱，否則顯示值
+                let displayText = '';
+                if (isAdjustMode) {
+                    displayText = `[${field.label}]`;
+                } else {
+                    displayText = value;
+                }
+                
+                // 如果非調整模式且沒有值，不顯示該欄位
+                if (!isAdjustMode && !value) {
+                    return '';
+                }
+                
+                return `
+                    <div class="preview-field ${isAdjustMode ? 'draggable' : ''}" 
+                         data-field-id="${field.id}"
+                         data-index="${index}"
+                         title="${field.label}${value ? ': ' + (value.length > 50 ? value.substring(0, 50) + '...' : value) : ''}"
+                         style="
+                        top: ${field.top}%;
+                        left: ${field.left}%;
+                        width: ${field.width}%;
+                        height: ${field.height}%;
+                        cursor: ${isAdjustMode ? 'move' : 'default'};
+                        border: ${isAdjustMode ? '2px solid #667eea' : 'none'};
+                        background: ${isAdjustMode ? 'rgba(102, 126, 234, 0.2)' : 'transparent'};
+                        padding: 2px;
+                        font-size: ${isAdjustMode ? '10px' : '11px'};
+                        line-height: 1.2;
+                        font-weight: ${isAdjustMode ? 'bold' : 'normal'};
+                        color: ${isAdjustMode ? '#667eea' : '#000'};
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: ${field.height > 6 ? 'pre-wrap' : 'nowrap'};
+                        display: block;
+                    ">${displayText}</div>
+                `;
+            }).join('');
+            
+            // 如果是調整模式，添加拖曳功能
+            if (isAdjustMode) {
+                enableDragging();
+            }
+        }
+        
+        // 切換調整模式
+        function toggleAdjustMode() {
+            isAdjustMode = !isAdjustMode;
+            const btn = document.getElementById('adjustModeBtn');
+            btn.textContent = isAdjustMode ? '✓ 完成調整' : '⚙️ 校正位置';
+            btn.className = isAdjustMode ? 'btn btn-success' : 'btn btn-secondary';
+            updatePreview();
+        }
+        
+        // 啟用拖曳
+        function enableDragging() {
+            const fields = document.querySelectorAll('.preview-field.draggable');
+            const container = document.getElementById('previewPage');
+            
+            fields.forEach(field => {
+                let isDragging = false;
+                let startX, startY, startLeft, startTop;
+                
+                field.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startLeft = field.offsetLeft;
+                    startTop = field.offsetTop;
+                    field.style.zIndex = '1000';
+                    field.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.5)';
+                    e.preventDefault();
+                });
+                
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+                    
+                    const containerRect = container.getBoundingClientRect();
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+                    
+                    const newLeft = ((startLeft + deltaX) / containerRect.width) * 100;
+                    const newTop = ((startTop + deltaY) / containerRect.height) * 100;
+                    
+                    field.style.left = Math.max(0, Math.min(95, newLeft)) + '%';
+                    field.style.top = Math.max(0, Math.min(95, newTop)) + '%';
+                });
+                
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        field.style.zIndex = 'auto';
+                        field.style.boxShadow = 'none';
+                        
+                        // 保存新位置
+                        const index = parseInt(field.dataset.index);
+                        const savedLayout = localStorage.getItem('dco_field_layout');
+                        const layout = savedLayout ? JSON.parse(savedLayout) : [...fieldLayout];
+                        
+                        layout[index].top = parseFloat(field.style.top);
+                        layout[index].left = parseFloat(field.style.left);
+                        
+                        localStorage.setItem('dco_field_layout', JSON.stringify(layout));
+                        showToast('位置已保存', 'info');
+                    }
+                });
+            });
+        }
+        
+        // 重置版面配置
+        function resetLayout() {
+            if (confirm('確定要重置為預設版面配置嗎？')) {
+                localStorage.removeItem('dco_field_layout');
+                updatePreview();
+                alert('版面配置已重置！');
+            }
+        }
+
+        // 匯出 JSON
+        function exportJSON() {
+            const formData = getFormData();
+            const dataStr = JSON.stringify(formData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `DCO_${formData.dcoNumber || 'export'}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // 頁面載入時初始化
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
