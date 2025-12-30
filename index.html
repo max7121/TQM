@@ -12023,54 +12023,67 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
 
   const handleAddHistory = async (newHistory) => {
     try {
-      // 如果有附件，先上傳到 Storage
+      // 如果有附件，先壓縮圖片
       if (newHistory.attachment && newHistory.attachment.startsWith('data:')) {
-        console.log('📎 偵測到附件，準備上傳到 Firebase Storage...');
-        // Base64 資料太大，需要上傳到 Storage
         const fileName = newHistory.fileName || 'attachment';
-        const timestamp = Date.now();
-        const storagePath = `history_attachments/${timestamp}_${fileName}`;
+        const base64Data = newHistory.attachment;
         
-        // 將 base64 轉換為 blob
-        const base64Data = newHistory.attachment.split(',')[1];
-        const mimeType = newHistory.attachment.split(';')[0].split(':')[1];
-        const byteCharacters = atob(base64Data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        console.log('📎 偵測到附件，開始處理...');
+        
+        // 計算原始大小
+        const originalSize = Math.round((base64Data.length * 3) / 4 / 1024); // KB
+        console.log(`📏 原始大小: ${originalSize} KB`);
+        
+        // 如果圖片小於 800KB，壓縮後直接存 Firestore
+        if (originalSize < 800) {
+          console.log('🖼️ 圖片較小，壓縮後直接存入 Firestore...');
+          
+          // 壓縮圖片
+          const compressedBase64 = await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              
+              // 限制最大寬度為 1200px
+              const maxWidth = 1200;
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+              
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // 壓縮為 0.7 品質的 JPEG
+              const compressed = canvas.toDataURL('image/jpeg', 0.7);
+              const compressedSize = Math.round((compressed.length * 3) / 4 / 1024);
+              console.log(`✅ 壓縮完成: ${compressedSize} KB (壓縮率: ${((1 - compressedSize/originalSize) * 100).toFixed(1)}%)`);
+              resolve(compressed);
+            };
+            img.src = base64Data;
+          });
+          
+          // 檢查壓縮後大小
+          const compressedSize = Math.round((compressedBase64.length * 3) / 4 / 1024);
+          if (compressedSize > 900) {
+            alert('⚠️ 圖片過大無法儲存！\n\n請使用本地服務器模式：\n1. 雙擊執行「啟動服務器.bat」\n2. 瀏覽器會自動開啟 http://localhost:8000\n3. 就可以上傳大圖片了');
+            throw new Error('圖片過大');
+          }
+          
+          newHistory.attachment = compressedBase64;
+          newHistory.fileName = fileName;
+          await db.addDoc('rd_history', newHistory);
+          console.log('✅ 設計履歷新增成功（含壓縮圖片）');
+          
+        } else {
+          // 圖片太大，提示使用服務器模式
+          alert('⚠️ 圖片過大（超過 800KB）！\n\n請使用本地服務器模式：\n1. 雙擊執行「啟動服務器.bat」\n2. 瀏覽器會自動開啟 http://localhost:8000\n3. 就可以上傳大圖片到 Firebase Storage');
+          throw new Error('圖片過大，請使用服務器模式');
         }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: mimeType });
-        
-        console.log(`📤 上傳檔案: ${fileName} (${(blob.size / 1024).toFixed(2)} KB)`);
-        
-        // 上傳到 Storage
-        const storageRef = window.firebase.ref(db.storage, storagePath);
-        const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
-        
-        await new Promise((resolve, reject) => {
-          uploadTask.on('state_changed',
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
-            },
-            (error) => {
-              console.error('❌ Storage 上傳失敗:', error);
-              reject(error);
-            },
-            async () => {
-              const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
-              console.log('✅ 檔案上傳成功，URL:', downloadURL);
-              // 替換 attachment 為 URL
-              newHistory.attachmentUrl = downloadURL;
-              newHistory.attachmentName = fileName;
-              delete newHistory.attachment; // 移除 base64 資料
-              await db.addDoc('rd_history', newHistory);
-              console.log('✅ 設計履歷新增成功');
-              resolve();
-            }
-          );
-        });
       } else {
         await db.addDoc('rd_history', newHistory);
         console.log('✅ 設計履歷新增成功（無附件）');
@@ -12079,8 +12092,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       console.error("❌ Error adding history: ", e);
       const errMsg = e.toString();
       if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
-        alert('新增失敗: 資料過大！\n\n請重新整理頁面後再試，系統會自動將附件上傳至雲端儲存。');
-      } else {
+        alert('新增失敗: 資料過大！\n\n請使用「啟動服務器.bat」來執行系統。');
+      } else if (!errMsg.includes('圖片過大')) {
         alert('新增失敗: ' + errMsg);
       }
       throw e;
