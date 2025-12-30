@@ -12045,7 +12045,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         console.log(`📤 上傳檔案: ${fileName} (${(blob.size / 1024).toFixed(2)} KB)`);
         
         // 上傳到 Storage
-        const storageRef = window.firebase.ref(storage, storagePath);
+        const storageRef = window.firebase.ref(db.storage, storagePath);
         const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
         
         await new Promise((resolve, reject) => {
