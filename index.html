@@ -25769,7 +25769,7 @@ function App() {
   }
   
   if (system === 'ADMIN') {
-    return renderWithThemeToggle(<UserManagement currentUser={user} onBackToMenu={() => setSystem(null)} />);
+    return <UserManagement currentUser={user} onBackToMenu={() => setSystem(null)} />;
   }
 
   return null;
