@@ -489,7 +489,8 @@ import {
   Zap,
   Maximize2,
   Info,
-  FolderKanban
+  FolderKanban,
+  Edit2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -2382,6 +2383,7 @@ const StatusBadge = ({ status }) => {
 // --- KPI Personal Entry System (簡化版個人填寫) ---
 const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
   const [currentMonth, setCurrentMonth] = useState('12月');
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [formData, setFormData] = useState({
     workCompletion: {},
     quality: {},
@@ -2851,11 +2853,11 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
     };
   }, []);
 
-  // 🔥 根據選擇的月份自動計算 TQM 異常和任務完成/延誤資料
+  // 🔥 根據選擇的月份和年份自動計算 TQM 異常和任務完成/延誤資料
   useEffect(() => {
     const userName = user?.displayName || '';
     const monthNum = parseInt(currentMonth.replace('月', ''));
-    const currentYear = new Date().getFullYear();
+    const selectedYear = currentYear; // 使用使用者選擇的年份
     
     // 過濾當月的 TQM 紀錄 (屬於此用戶或此用戶部門)
     const monthTqmRecords = tqmRecords.filter(r => {
@@ -2863,27 +2865,49 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
       const recordMonth = recordDate.getMonth() + 1;
       const recordYear = recordDate.getFullYear();
       const isUserRecord = r.personName === userName || r.createdByUser === userName;
-      return recordMonth === monthNum && recordYear === currentYear && isUserRecord;
+      return recordMonth === monthNum && recordYear === selectedYear && isUserRecord;
     });
     
     // 過濾當月的 R&D Nexus 任務 (屬於此用戶)
     const monthTasks = rdTasks.filter(t => {
-      // 檢查任務負責人
-      if (t.owner !== userName) return false;
+      // 檢查任務負責人 - 支援多種欄位格式
+      const userUsername = user?.username || user?.email?.split('@')[0] || '';
+      const isOwner = t.owner === userName || t.owner === userUsername;
+      const isAssignee = t.assignee === userName || t.assignee === userUsername;
+      const isResponsible = t.responsiblePerson === userName || t.responsiblePerson === userUsername;
       
-      // 檢查任務是否在當月完成或應該在當月完成
+      if (!isOwner && !isAssignee && !isResponsible) return false;
+      
+      // 建立選擇月份的起始和結束日期
+      const monthStart = new Date(selectedYear, monthNum - 1, 1);
+      const monthEnd = new Date(selectedYear, monthNum, 0, 23, 59, 59);
+      
       const endDate = t.endDate ? new Date(t.endDate) : null;
       const startDate = t.startDate ? new Date(t.startDate) : null;
+      const actualEndDate = t.actualEnd ? new Date(t.actualEnd) : null;
       
-      if (endDate) {
-        const taskMonth = endDate.getMonth() + 1;
-        const taskYear = endDate.getFullYear();
-        return taskMonth === monthNum && taskYear === currentYear;
-      } else if (startDate) {
-        const taskMonth = startDate.getMonth() + 1;
-        const taskYear = startDate.getFullYear();
-        return taskMonth === monthNum && taskYear === currentYear;
+      // 包含以下任務:
+      // 1. 實際完成日期在該月 (提前完成的情況)
+      // 2. 結束日期在該月
+      // 3. 開始日期在該月
+      // 4. 跨越該月(開始日期在該月之前，結束日期在該月之後或未設定)
+      
+      if (actualEndDate && actualEndDate >= monthStart && actualEndDate <= monthEnd) {
+        return true; // 實際在該月完成 (包含提前完成)
       }
+      
+      if (endDate && endDate >= monthStart && endDate <= monthEnd) {
+        return true; // 在該月結束
+      }
+      
+      if (startDate && startDate >= monthStart && startDate <= monthEnd) {
+        return true; // 在該月開始
+      }
+      
+      if (startDate && startDate < monthStart && (!endDate || endDate > monthEnd)) {
+        return true; // 跨越該月的長期任務
+      }
+      
       return false;
     });
     
@@ -2912,7 +2936,7 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
       const orderYear = parseInt(dateMatch[1]);
       const orderMonth = parseInt(dateMatch[2]);
       
-      if (orderMonth !== monthNum || orderYear !== currentYear) return false;
+      if (orderMonth !== monthNum || orderYear !== selectedYear) return false;
       
       // 檢查用戶是否為主辦或副辦
       const userUnits = order.executionUnits?.filter(u => 
@@ -2951,7 +2975,7 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
         list: monthDcoOrders
       }
     });
-  }, [tqmRecords, rdTasks, dcoOrders, currentMonth, user]);
+  }, [tqmRecords, rdTasks, dcoOrders, currentMonth, currentYear, user]);
 
   const handleWorkChange = (name, value) => {
     setFormData(prev => ({
@@ -3059,7 +3083,7 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
         userName: user.displayName,
         department: userDepartment,
         month: currentMonth,
-        year: new Date().getFullYear(),
+        year: currentYear,
         
         // 原始填寫資料
         workCompletion: formData.workCompletion,
@@ -3124,7 +3148,7 @@ const KPIPersonalEntryApp = ({ onBackToMenu, user }) => {
         name: user.displayName,
         department: userDepartment,
         month: currentMonth,
-        year: new Date().getFullYear(),
+        year: currentYear,
         date: new Date().toISOString().split('T')[0],
         metrics: kpiMetrics,
         scores: {
@@ -3242,20 +3266,31 @@ ${indicatorsText}
 
       {/* 主要內容 */}
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* 月份選擇 */}
+        {/* 月份與年份選擇 */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <Calendar className="w-5 h-5 text-blue-600"/>
-            <span className="font-medium text-slate-700">填寫月份:</span>
-            <select 
-              value={currentMonth}
-              onChange={(e) => setCurrentMonth(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-lg font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              {['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'].map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-slate-700">填寫時間:</span>
+              <select 
+                value={currentYear}
+                onChange={(e) => setCurrentYear(parseInt(e.target.value))}
+                className="px-3 py-2 border border-slate-300 rounded-lg font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                {[2024, 2025, 2026, 2027, 2028].map(y => (
+                  <option key={y} value={y}>{y}年</option>
+                ))}
+              </select>
+              <select 
+                value={currentMonth}
+                onChange={(e) => setCurrentMonth(e.target.value)}
+                className="px-4 py-2 border border-slate-300 rounded-lg font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                {['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="text-sm text-slate-500">
             {userDepartment} 專屬表單
@@ -6351,6 +6386,21 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState(null);
   const [showPersonalDashboard, setShowPersonalDashboard] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  
+  // 訂閱專案會報所需的數據
+  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+
+  useEffect(() => {
+    const unsubProjects = db.subscribe('rd_projects', setProjects);
+    const unsubTasks = db.subscribe('rd_tasks', setTasks);
+    
+    return () => {
+      unsubProjects();
+      unsubTasks();
+    };
+  }, []);
 
   // 過濾機台：管理員顯示全部，一般使用者只顯示 members 中包含自己的機台
   const filteredMachines = React.useMemo(() => {
@@ -6405,6 +6455,20 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
     />;
   }
 
+  // 如果顯示專案會報，返回該視圖
+  if (showAnalytics) {
+    return <AnalyticsView 
+      projects={projects}
+      tasks={tasks}
+      changes={[]}
+      machines={machines}
+      onNavigate={(machine) => {
+        setShowAnalytics(false);
+        onSelect(machine);
+      }}
+    />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 animate-fade-in">
       {/* 背景裝飾 */}
@@ -6438,6 +6502,12 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
                 className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-5 py-3 rounded-xl text-sm transition-all shadow-lg shadow-blue-500/25 font-medium"
              >
                 <GanttChartIcon size={18} /> 個人戰情室
+             </button>
+             <button 
+                onClick={() => setShowAnalytics(true)} 
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-5 py-3 rounded-xl text-sm transition-all shadow-lg shadow-purple-500/25 font-medium"
+             >
+                <Presentation size={18} /> 專案會報
              </button>
              <button onClick={onBack} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-xl text-sm transition-all backdrop-blur border border-white/10">
               <LogOut size={18} /> 返回主選單
@@ -12023,67 +12093,54 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
 
   const handleAddHistory = async (newHistory) => {
     try {
-      // 如果有附件，先壓縮圖片
+      // 如果有附件，先上傳到 Storage
       if (newHistory.attachment && newHistory.attachment.startsWith('data:')) {
+        console.log('📎 偵測到附件，準備上傳到 Firebase Storage...');
+        // Base64 資料太大，需要上傳到 Storage
         const fileName = newHistory.fileName || 'attachment';
-        const base64Data = newHistory.attachment;
+        const timestamp = Date.now();
+        const storagePath = `history_attachments/${timestamp}_${fileName}`;
         
-        console.log('📎 偵測到附件，開始處理...');
-        
-        // 計算原始大小
-        const originalSize = Math.round((base64Data.length * 3) / 4 / 1024); // KB
-        console.log(`📏 原始大小: ${originalSize} KB`);
-        
-        // 如果圖片小於 800KB，壓縮後直接存 Firestore
-        if (originalSize < 800) {
-          console.log('🖼️ 圖片較小，壓縮後直接存入 Firestore...');
-          
-          // 壓縮圖片
-          const compressedBase64 = await new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              let width = img.width;
-              let height = img.height;
-              
-              // 限制最大寬度為 1200px
-              const maxWidth = 1200;
-              if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-              }
-              
-              canvas.width = width;
-              canvas.height = height;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, width, height);
-              
-              // 壓縮為 0.7 品質的 JPEG
-              const compressed = canvas.toDataURL('image/jpeg', 0.7);
-              const compressedSize = Math.round((compressed.length * 3) / 4 / 1024);
-              console.log(`✅ 壓縮完成: ${compressedSize} KB (壓縮率: ${((1 - compressedSize/originalSize) * 100).toFixed(1)}%)`);
-              resolve(compressed);
-            };
-            img.src = base64Data;
-          });
-          
-          // 檢查壓縮後大小
-          const compressedSize = Math.round((compressedBase64.length * 3) / 4 / 1024);
-          if (compressedSize > 900) {
-            alert('⚠️ 圖片過大無法儲存！\n\n請使用本地服務器模式：\n1. 雙擊執行「啟動服務器.bat」\n2. 瀏覽器會自動開啟 http://localhost:8000\n3. 就可以上傳大圖片了');
-            throw new Error('圖片過大');
-          }
-          
-          newHistory.attachment = compressedBase64;
-          newHistory.fileName = fileName;
-          await db.addDoc('rd_history', newHistory);
-          console.log('✅ 設計履歷新增成功（含壓縮圖片）');
-          
-        } else {
-          // 圖片太大，提示使用服務器模式
-          alert('⚠️ 圖片過大（超過 800KB）！\n\n請使用本地服務器模式：\n1. 雙擊執行「啟動服務器.bat」\n2. 瀏覽器會自動開啟 http://localhost:8000\n3. 就可以上傳大圖片到 Firebase Storage');
-          throw new Error('圖片過大，請使用服務器模式');
+        // 將 base64 轉換為 blob
+        const base64Data = newHistory.attachment.split(',')[1];
+        const mimeType = newHistory.attachment.split(';')[0].split(':')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType });
+        
+        console.log(`📤 上傳檔案: ${fileName} (${(blob.size / 1024).toFixed(2)} KB)`);
+        
+        // 上傳到 Storage
+        const storageRef = window.firebase.ref(storage, storagePath);
+        const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
+        
+        await new Promise((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
+            },
+            (error) => {
+              console.error('❌ Storage 上傳失敗:', error);
+              reject(error);
+            },
+            async () => {
+              const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
+              console.log('✅ 檔案上傳成功，URL:', downloadURL);
+              // 替換 attachment 為 URL
+              newHistory.attachmentUrl = downloadURL;
+              newHistory.attachmentName = fileName;
+              delete newHistory.attachment; // 移除 base64 資料
+              await db.addDoc('rd_history', newHistory);
+              console.log('✅ 設計履歷新增成功');
+              resolve();
+            }
+          );
+        });
       } else {
         await db.addDoc('rd_history', newHistory);
         console.log('✅ 設計履歷新增成功（無附件）');
@@ -12092,8 +12149,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       console.error("❌ Error adding history: ", e);
       const errMsg = e.toString();
       if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
-        alert('新增失敗: 資料過大！\n\n請使用「啟動服務器.bat」來執行系統。');
-      } else if (!errMsg.includes('圖片過大')) {
+        alert('新增失敗: 資料過大！\n\n請重新整理頁面後再試，系統會自動將附件上傳至雲端儲存。');
+      } else {
         alert('新增失敗: ' + errMsg);
       }
       throw e;
@@ -14876,6 +14933,9 @@ const ProductWarRoom = ({ onBackToMenu }) => {
               <button onClick={() => setActiveTab('data')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'data' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
                 <TableIcon size={18} /> 資料管理
               </button>
+              <button onClick={() => setActiveTab('report')} className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'report' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                <Presentation size={18} /> 專案會報
+              </button>
               <button onClick={onBackToMenu} className="px-4 py-2 bg-red-500 text-white rounded-lg flex items-center gap-2 hover:bg-red-600 transition-all">
                 <LogOut size={18} /> 返回
               </button>
@@ -15530,6 +15590,491 @@ const ProductWarRoom = ({ onBackToMenu }) => {
                 <span>系統版本 v1.5 (列印修復+詳細單據分析)</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 專案會報頁面 */}
+        {activeTab === 'report' && (
+          <div className="space-y-8 animate-fade-in">
+            
+            {/* 專案會報標題 */}
+            <div className={`p-6 rounded-xl border-l-4 print-break-inside ${isPresentationMode ? 'bg-slate-50 border-slate-900 shadow-none' : 'bg-white border-purple-600 shadow-sm'}`}>
+              <h3 className="text-2xl font-bold mb-3 flex items-center gap-3 text-slate-800">
+                <Presentation className="text-purple-600" size={28} /> 
+                R&D 專案會報 - 設計內容與工作負擔分析
+              </h3>
+              <p className="text-slate-600 leading-relaxed">
+                整合專案設計規格、技術討論記錄、設變單追蹤,以及團隊工作負擔分析,提供完整的專案執行報告。
+              </p>
+            </div>
+
+            {/* 第一部分：專案設計內容 */}
+            <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-white shadow-sm border-slate-200'}`}>
+              <h3 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-3">
+                <span className="w-1 h-8 bg-blue-600 rounded"></span> 
+                <FileText size={24} className="text-blue-600"/>
+                重點專案設計內容說明
+              </h3>
+              
+              {(() => {
+                // 取得所有進行中的專案
+                const activeProjects = data.filter(p => p.machineId && p.progress < 100);
+                const topProjects = activeProjects.slice(0, 3); // 顯示前3個重點專案
+                
+                // 從 localStorage 取得 DCO 設變單
+                const dcoOrders = JSON.parse(localStorage.getItem('dco_orders') || '[]');
+                
+                // 從 rd_messages 取得討論記錄
+                const allMessages = rdMessages || [];
+                
+                return (
+                  <div className="space-y-6">
+                    {topProjects.length > 0 ? topProjects.map((project, idx) => {
+                      // 找出該專案的機台資訊
+                      const machine = rdMachines.find(m => m.id === project.machineId);
+                      
+                      // 找出該專案的討論記錄
+                      const projectMessages = allMessages.filter(msg => msg.projectId === project.id);
+                      const latestMessages = projectMessages.slice(-3).reverse();
+                      
+                      // 找出該專案相關的設變單(透過成員名稱或專案名稱關聯)
+                      const projectMembers = machine?.members?.split(',') || [];
+                      const relatedDCO = dcoOrders.filter(dco => 
+                        projectMembers.some(member => dco.applicant?.includes(member)) ||
+                        dco.productName?.includes(machine?.name || '')
+                      );
+                      
+                      return (
+                        <div key={project.id} className="bg-gradient-to-br from-blue-50 to-cyan-50 p-6 rounded-xl border-2 border-blue-200">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-full">
+                                  專案 #{idx + 1}
+                                </span>
+                                <h4 className="text-xl font-bold text-slate-800">
+                                  {machine?.name || project.name || '未命名專案'}
+                                </h4>
+                              </div>
+                              <div className="flex gap-3 text-sm text-slate-600">
+                                <span>📦 代號: <strong>{machine?.code || 'N/A'}</strong></span>
+                                <span>👥 負責人: <strong>{project.leader || machine?.members || '未指派'}</strong></span>
+                                <span>📅 截止: <strong>{project.deadline || '未設定'}</strong></span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-3xl font-black text-blue-600 mb-1">
+                                {project.progress || 0}%
+                              </div>
+                              <div className="text-xs text-slate-500">完成進度</div>
+                            </div>
+                          </div>
+                          
+                          {/* 進度條 */}
+                          <div className="mb-4">
+                            <div className="h-3 bg-white rounded-full overflow-hidden border border-blue-200">
+                              <div 
+                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-500"
+                                style={{ width: `${project.progress || 0}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          
+                          {/* 設計規格說明 */}
+                          <div className="bg-white/80 backdrop-blur p-4 rounded-lg mb-4 border border-blue-100">
+                            <h5 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                              <span className="w-1 h-4 bg-indigo-500 rounded"></span>
+                              📋 設計規格說明
+                            </h5>
+                            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                              {project.specs || machine?.description || '尚未填寫專案規格說明...'}
+                            </div>
+                          </div>
+                          
+                          {/* 最新技術討論 */}
+                          <div className="bg-white/80 backdrop-blur p-4 rounded-lg mb-4 border border-blue-100">
+                            <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                              <span className="w-1 h-4 bg-emerald-500 rounded"></span>
+                              💬 最新技術討論 ({projectMessages.length} 則)
+                            </h5>
+                            {latestMessages.length > 0 ? (
+                              <div className="space-y-2">
+                                {latestMessages.map((msg, msgIdx) => (
+                                  <div key={msgIdx} className="flex gap-3 text-sm p-2 bg-slate-50 rounded border border-slate-200">
+                                    <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-xs">
+                                      {msg.user?.charAt(0) || 'U'}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="flex justify-between items-start mb-1">
+                                        <span className="font-bold text-slate-800">{msg.user || '匿名'}</span>
+                                        <span className="text-xs text-slate-400">
+                                          {msg.timestamp ? new Date(msg.timestamp).toLocaleString('zh-TW') : ''}
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-600">{msg.content || msg.message}</p>
+                                      {msg.file && (
+                                        <div className="mt-1 text-xs text-blue-600 flex items-center gap-1">
+                                          <FileText size={12} />
+                                          附件: {msg.file}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-slate-400 italic">尚無討論記錄</p>
+                            )}
+                          </div>
+                          
+                          {/* 設計變更記錄 */}
+                          <div className="bg-white/80 backdrop-blur p-4 rounded-lg border border-blue-100">
+                            <h5 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                              <span className="w-1 h-4 bg-orange-500 rounded"></span>
+                              🔄 設計變更記錄 (DCO)
+                            </h5>
+                            {relatedDCO.length > 0 ? (
+                              <div className="space-y-2">
+                                {relatedDCO.map((dco, dcoIdx) => (
+                                  <div key={dcoIdx} className="flex items-center justify-between p-2 bg-orange-50 rounded border border-orange-200 text-sm">
+                                    <div className="flex-1">
+                                      <span className="font-bold text-slate-800">{dco.orderNo || `DCO-${dcoIdx + 1}`}</span>
+                                      <span className="mx-2 text-slate-400">•</span>
+                                      <span className="text-slate-600">{dco.changeReason || dco.productName || '設計變更'}</span>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                      dco.status === 'approved' ? 'bg-green-100 text-green-700' : 
+                                      dco.status === 'rejected' ? 'bg-red-100 text-red-700' : 
+                                      'bg-amber-100 text-amber-700'
+                                    }`}>
+                                      {dco.status === 'approved' ? '已核准' : dco.status === 'rejected' ? '已駁回' : '待審核'}
+                                    </span>
+                                  </div>
+                                ))}
+                                <div className="text-xs text-slate-500 mt-2">
+                                  本月設變: <strong className="text-orange-600">{relatedDCO.length}</strong> 項
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-slate-400 italic">本專案暫無設變記錄</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }) : (
+                      <div className="text-center py-12 text-slate-400">
+                        <Cpu size={48} className="mx-auto mb-3 opacity-50" />
+                        <p>目前沒有進行中的專案</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 第二部分：工作人員負擔分析 */}
+            <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-white shadow-sm border-slate-200'}`}>
+              <h3 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-3">
+                <span className="w-1 h-8 bg-amber-600 rounded"></span> 
+                <Users size={24} className="text-amber-600"/>
+                團隊工作負擔分析
+              </h3>
+              
+              {(() => {
+                // 計算每位人員的任務統計
+                const ownerStats = {};
+                rdTasks.forEach(task => {
+                  const owner = task.owner || '未指派';
+                  if (!ownerStats[owner]) {
+                    ownerStats[owner] = { total: 0, todo: 0, doing: 0, review: 0, done: 0, p1: 0, risk: 0 };
+                  }
+                  ownerStats[owner].total++;
+                  if (task.status === 'To Do') ownerStats[owner].todo++;
+                  if (task.status === 'Doing') ownerStats[owner].doing++;
+                  if (task.status === 'Review') ownerStats[owner].review++;
+                  if (task.status === 'Done') ownerStats[owner].done++;
+                  if (task.priority === 'P1') ownerStats[owner].p1++;
+                  if (task.risk) ownerStats[owner].risk++;
+                });
+                
+                const sortedOwners = Object.entries(ownerStats)
+                  .map(([name, stats]) => ({ name, ...stats, activeLoad: stats.todo + stats.doing + stats.review }))
+                  .filter(o => o.name !== '未指派')
+                  .sort((a, b) => b.activeLoad - a.activeLoad);
+                
+                const maxLoad = Math.max(...sortedOwners.map(o => o.activeLoad), 1);
+                
+                // 計算部門統計
+                const deptStats = {};
+                sortedOwners.forEach(owner => {
+                  const user = tqmUsers.find(u => u.displayName === owner.name);
+                  const dept = user?.department || '其他';
+                  if (!deptStats[dept]) {
+                    deptStats[dept] = { total: 0, activeLoad: 0, members: 0 };
+                  }
+                  deptStats[dept].total += owner.total;
+                  deptStats[dept].activeLoad += owner.activeLoad;
+                  deptStats[dept].members += 1;
+                });
+                
+                const deptData = Object.entries(deptStats)
+                  .map(([name, stats]) => ({ 
+                    name, 
+                    總任務數: stats.total, 
+                    進行中: stats.activeLoad,
+                    人數: stats.members,
+                    平均負載: (stats.activeLoad / stats.members).toFixed(1)
+                  }))
+                  .sort((a, b) => b.進行中 - a.進行中);
+                
+                return (
+                  <div className="space-y-6">
+                    {/* 負載總覽卡片 */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-200 shadow-sm">
+                        <p className="text-xs text-blue-700 font-bold mb-1 uppercase">Total Tasks</p>
+                        <p className="text-4xl font-black text-blue-700">{rdTasks.length}</p>
+                        <p className="text-xs text-blue-600 mt-1">總任務數</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-5 rounded-xl border-2 border-amber-200 shadow-sm">
+                        <p className="text-xs text-amber-700 font-bold mb-1 uppercase">In Progress</p>
+                        <p className="text-4xl font-black text-amber-700">{rdTasks.filter(t => t.status === 'Doing').length}</p>
+                        <p className="text-xs text-amber-600 mt-1">進行中</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-red-50 to-red-100 p-5 rounded-xl border-2 border-red-200 shadow-sm">
+                        <p className="text-xs text-red-700 font-bold mb-1 uppercase">High Risk</p>
+                        <p className="text-4xl font-black text-red-700">{rdTasks.filter(t => t.risk).length}</p>
+                        <p className="text-xs text-red-600 mt-1">高風險</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-5 rounded-xl border-2 border-emerald-200 shadow-sm">
+                        <p className="text-xs text-emerald-700 font-bold mb-1 uppercase">Completed</p>
+                        <p className="text-4xl font-black text-emerald-700">{rdTasks.filter(t => t.status === 'Done').length}</p>
+                        <p className="text-xs text-emerald-600 mt-1">已完成</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl border-2 border-purple-200 shadow-sm">
+                        <p className="text-xs text-purple-700 font-bold mb-1 uppercase">Team Size</p>
+                        <p className="text-4xl font-black text-purple-700">{sortedOwners.length}</p>
+                        <p className="text-xs text-purple-600 mt-1">團隊人數</p>
+                      </div>
+                    </div>
+                    
+                    {/* 人員負載與任務分佈圖表 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      
+                      {/* 人員工作量排行 */}
+                      <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-xl border border-slate-200">
+                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
+                          <BarChart3 size={20} className="text-amber-600" />
+                          ⚠️ 工作量前 10 名
+                        </h4>
+                        <div className="space-y-3">
+                          {sortedOwners.slice(0, 10).map((owner, idx) => (
+                            <div key={owner.name} className="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 hover:shadow-md transition-all">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-black shadow-md ${
+                                idx === 0 ? 'bg-gradient-to-br from-red-500 to-red-600' : 
+                                idx === 1 ? 'bg-gradient-to-br from-orange-500 to-orange-600' : 
+                                idx === 2 ? 'bg-gradient-to-br from-amber-500 to-amber-600' : 
+                                'bg-gradient-to-br from-slate-400 to-slate-500'
+                              }`}>
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="font-bold text-slate-800 text-base">{owner.name}</span>
+                                  <div className="flex gap-2 items-center">
+                                    <span className="text-xs text-slate-500">
+                                      <strong className="text-blue-600">{owner.activeLoad}</strong> 進行中 / 
+                                      <strong className="text-slate-700 ml-1">{owner.total}</strong> 總計
+                                    </span>
+                                    {owner.risk > 0 && (
+                                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
+                                        <AlertTriangle size={10} />
+                                        {owner.risk}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="h-3 bg-slate-200 rounded-full overflow-hidden border border-slate-300">
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      owner.activeLoad > 5 ? 'bg-gradient-to-r from-red-500 to-red-600' : 
+                                      owner.activeLoad > 3 ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 
+                                      'bg-gradient-to-r from-emerald-500 to-emerald-600'
+                                    }`}
+                                    style={{ width: `${Math.min((owner.activeLoad / maxLoad) * 100, 100)}%` }}
+                                  ></div>
+                                </div>
+                                <div className="flex gap-3 mt-1 text-xs">
+                                  <span className="text-slate-500">待處理: {owner.todo}</span>
+                                  <span className="text-blue-600 font-bold">進行: {owner.doing}</span>
+                                  <span className="text-amber-600">審核: {owner.review}</span>
+                                  <span className="text-emerald-600">完成: {owner.done}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          {sortedOwners.length === 0 && (
+                            <p className="text-slate-400 text-center py-8">尚無任務資料</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* 任務狀態分佈圓餅圖 */}
+                      <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-xl border border-slate-200">
+                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
+                          <Activity size={20} className="text-emerald-600" />
+                          任務狀態分佈
+                        </h4>
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: '待處理 (To Do)', value: rdTasks.filter(t => t.status === 'To Do').length, fill: '#94a3b8' },
+                                  { name: '進行中 (Doing)', value: rdTasks.filter(t => t.status === 'Doing').length, fill: '#3b82f6' },
+                                  { name: '審核中 (Review)', value: rdTasks.filter(t => t.status === 'Review').length, fill: '#f59e0b' },
+                                  { name: '已完成 (Done)', value: rdTasks.filter(t => t.status === 'Done').length, fill: '#10b981' },
+                                ].filter(d => d.value > 0)}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={60}
+                                outerRadius={100}
+                                paddingAngle={5}
+                                dataKey="value"
+                                label={({name, percent, value}) => `${(percent * 100).toFixed(0)}% (${value})`}
+                                labelLine={true}
+                              >
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* 部門負載分析 */}
+                    <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-xl border border-slate-200">
+                      <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
+                        <Building size={20} className="text-indigo-600" />
+                        部門負載分析
+                      </h4>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={deptData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis 
+                              dataKey="name" 
+                              angle={-45} 
+                              textAnchor="end" 
+                              height={80}
+                              tick={{fontSize: 12}}
+                            />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'white', 
+                                border: '1px solid #e2e8f0', 
+                                borderRadius: '8px',
+                                padding: '12px'
+                              }}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar dataKey="總任務數" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="進行中" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      
+                      {/* 部門統計表格 */}
+                      <div className="mt-6 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b-2 border-slate-300 bg-slate-100">
+                              <th className="text-left py-3 px-4 font-bold text-slate-700">部門</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-700">人數</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-700">總任務數</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-700">進行中</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-700">平均負載</th>
+                              <th className="text-center py-3 px-4 font-bold text-slate-700">狀態</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {deptData.map(dept => (
+                              <tr key={dept.name} className="border-b border-slate-200 hover:bg-white transition-colors">
+                                <td className="py-3 px-4 font-bold text-slate-800">{dept.name}</td>
+                                <td className="py-3 px-4 text-center text-slate-600">{dept.人數}</td>
+                                <td className="py-3 px-4 text-center text-slate-700 font-bold">{dept.總任務數}</td>
+                                <td className="py-3 px-4 text-center text-blue-600 font-bold">{dept.進行中}</td>
+                                <td className="py-3 px-4 text-center text-amber-600 font-bold">{dept.平均負載}</td>
+                                <td className="py-3 px-4 text-center">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                    dept.進行中 > 20 ? 'bg-red-100 text-red-700' : 
+                                    dept.進行中 > 10 ? 'bg-amber-100 text-amber-700' : 
+                                    'bg-emerald-100 text-emerald-700'
+                                  }`}>
+                                    {dept.進行中 > 20 ? '⚠️ 超載' : dept.進行中 > 10 ? '⚡ 繁忙' : '✓ 正常'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 會報摘要說明 */}
+            <div className={`p-6 rounded-xl border print-break-inside ${isPresentationMode ? 'border-slate-300' : 'bg-gradient-to-br from-purple-50 to-indigo-50 shadow-sm border-purple-200'}`}>
+              <h3 className="text-xl font-bold mb-4 text-slate-800 flex items-center gap-3">
+                <span className="w-1 h-8 bg-purple-600 rounded"></span> 
+                <FileText size={24} className="text-purple-600"/>
+                本期會報摘要
+              </h3>
+              <div className="space-y-4">
+                <div className="bg-white/80 backdrop-blur p-4 rounded-lg border border-purple-200">
+                  <h5 className="font-bold text-slate-700 mb-2">📌 本月執行成果</h5>
+                  <p className="text-slate-600 text-sm leading-relaxed">
+                    本月共執行 {rdTasks.filter(t => t.status === 'Done').length} 項任務,
+                    {data.filter(p => p.progress === 100).length} 個專案已完成。
+                    團隊整體工作負載 {sortedOwners.filter(o => o.activeLoad > 5).length > 0 ? '較高' : '正常'},
+                    {rdTasks.filter(t => t.risk).length > 0 ? `有 ${rdTasks.filter(t => t.risk).length} 項風險任務需重點關注` : '無高風險項目'}。
+                  </p>
+                </div>
+                <div className="bg-white/80 backdrop-blur p-4 rounded-lg border border-purple-200">
+                  <h5 className="font-bold text-slate-700 mb-2">⚠️ 問題與風險</h5>
+                  <p className="text-slate-600 text-sm leading-relaxed">
+                    {(() => {
+                      const ownerStats = {};
+                      rdTasks.forEach(task => {
+                        const owner = task.owner || '未指派';
+                        if (!ownerStats[owner]) ownerStats[owner] = { activeLoad: 0 };
+                        if (task.status !== 'Done') ownerStats[owner].activeLoad++;
+                      });
+                      const overloaded = Object.entries(ownerStats).filter(([name, stats]) => stats.activeLoad > 5);
+                      
+                      if (overloaded.length > 0) {
+                        return `目前有 ${overloaded.length} 位成員工作量超載 (${overloaded.map(([name]) => name).join('、')}),建議進行任務重新分配或資源調度。`;
+                      } else {
+                        return '目前團隊負載分佈均衡,無明顯瓶頸。';
+                      }
+                    })()}
+                  </p>
+                </div>
+                <div className="bg-white/80 backdrop-blur p-4 rounded-lg border border-purple-200">
+                  <h5 className="font-bold text-slate-700 mb-2">🎯 下月重點計畫</h5>
+                  <p className="text-slate-600 text-sm leading-relaxed">
+                    持續推進 {data.filter(p => p.progress > 0 && p.progress < 100).length} 個進行中專案,
+                    優先處理 {rdTasks.filter(t => t.priority === 'P1').length} 項高優先級任務。
+                    加強技術討論與設計審查,確保專案品質。
+                  </p>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
       </main>
@@ -21549,6 +22094,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   const [showDetail, setShowDetail] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editingUnitDates, setEditingUnitDates] = useState({}); // 用於內嵌編輯單位時間
   const imageInputRef = useRef(null);
   const fileInputRef = useRef(null);
   
@@ -21600,7 +22146,8 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       { id: 'elec', label: '電子設計', custom: false },
       { id: 'art', label: '美術設計', custom: false },
       { id: 'wire', label: '配線設計', custom: false },
-      { id: 'func', label: '工程中心', custom: false }
+      { id: 'func1', label: '工程中心', custom: false },
+      { id: 'func2', label: '工程中心', custom: false }
     ];
   };
   
@@ -21635,16 +22182,44 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     impact: '',
     images: [],
     files: [],
-    executionUnits: getDefaultUnits().map(u => ({
-      ...u,
-      selected: false,
-      startDate: '',
-      endDate: '',
-      hours: '',
-      owner: '',
-      coOwner: '',
-      approved: false
-    }))
+    executionUnits: getDefaultUnits().map(u => {
+      // 第一個工程中心預設選中並填入人員
+      if (u.id === 'func1') {
+        return {
+          ...u,
+          selected: true,
+          startDate: '',
+          endDate: '',
+          hours: '',
+          owner: '謝采桓',
+          coOwner: '',
+          approved: false
+        };
+      }
+      // 第二個工程中心預設選中並填入另一位人員
+      if (u.id === 'func2') {
+        return {
+          ...u,
+          selected: true,
+          startDate: '',
+          endDate: '',
+          hours: '',
+          owner: '陳禹安',
+          coOwner: '',
+          approved: false
+        };
+      }
+      return {
+        ...u,
+        selected: false,
+        startDate: '',
+        endDate: '',
+        hours: '',
+        owner: '',
+        coOwner: '',
+        approved: false
+      };
+    })
   });
 
   // 載入資料
@@ -21863,8 +22438,8 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     if (isEditing && editingOrderId) {
       // 編輯模式 - 更新現有單據
       const updatedOrder = {
-        ...newOrder,
-        id: newOrder.orderNumber || editingOrderId,
+        ...newOrder, // 包含所有表單資料（包括修改後的 orderNumber）
+        id: editingOrderId, // 保持原始 ID 不變
         category: isCustomCategory ? newOrder.customCategory : newOrder.category,
         status: selectedUnits.length > 0 ? (selectedUnits.every(u => u.approved) ? '待主管核准' : '單位執行中') : '待主管核准',
         executionUnits: selectedUnits,
@@ -21874,28 +22449,83 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         version: (newOrder.version || 1) + 1
       };
       
-      // 保存版本歷史
+      console.log('🔍 編輯資料:', {
+        editingOrderId,
+        originalOrderNumber: orders.find(o => o.id === editingOrderId)?.orderNumber,
+        newOrderNumber: updatedOrder.orderNumber,
+        updatedOrder
+      });
+      
+      // 保存版本歷史到 Firebase (移除 localStorage 避免配額問題)
       const currentOrder = orders.find(o => o.id === editingOrderId);
       if (currentOrder) {
-        const historyKey = `dco_history_${editingOrderId}`;
-        const existingHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
-        const historyEntry = {
-          version: currentOrder.version || 1,
-          data: currentOrder,
-          modifiedBy: user?.displayName || '管理員 A001',
-          modifiedAt: getCurrentTimestamp()
-        };
-        existingHistory.push(historyEntry);
-        localStorage.setItem(historyKey, JSON.stringify(existingHistory));
+        console.log('📋 當前訂單資料:', currentOrder);
+        console.log('📝 即將更新為:', updatedOrder);
+        
+        try {
+          // 儲存精簡版歷史記錄（不含圖片檔案）
+          const historyEntry = {
+            version: currentOrder.version || 1,
+            orderNumber: currentOrder.orderNumber,
+            title: currentOrder.title,
+            status: currentOrder.status,
+            modifiedBy: user?.displayName || '管理員 A001',
+            modifiedAt: getCurrentTimestamp(),
+            changes: {
+              from: currentOrder.status,
+              to: updatedOrder.status
+            }
+          };
+          
+          // 儲存到 Firebase 的歷史集合
+          await db.addDoc('dco_history', {
+            orderId: editingOrderId,
+            ...historyEntry
+          });
+        } catch (err) {
+          console.warn('歷史記錄儲存失敗（不影響主要功能）:', err);
+        }
       }
       
-      const updatedOrders = orders.map(o => o.id === editingOrderId ? { ...o, ...updatedOrder } : o);
+      // 更新 orders 陣列 - 完全替換該筆記錄
+      // 更新 orders 陣列 - 完全替換該筆記錄
+      const updatedOrders = orders.map(o => o.id === editingOrderId ? updatedOrder : o);
       setOrders(updatedOrders);
+      
+      console.log('💾 更新後的 orders 陣列:', updatedOrders.find(o => o.id === editingOrderId));
       
       // 儲存到 localStorage 和 Firebase
       try {
+        // 確保 updatedOrder 包含 orderNumber
+        console.log('💾 準備儲存，updatedOrder.orderNumber =', updatedOrder.orderNumber);
+        console.log('💾 準備儲存，updatedOrder.id =', updatedOrder.id);
+        
         localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
-        await db.updateDoc('dco_orders', editingOrderId, updatedOrder);
+        
+        // 確保 Firebase 更新包含所有欄位
+        const dataToUpdate = {
+          ...updatedOrder,
+          orderNumber: updatedOrder.orderNumber // 明確指定單號
+        };
+        
+        console.log('☁️ 即將寫入 Firebase 的資料:', dataToUpdate);
+        await db.updateDoc('dco_orders', editingOrderId, dataToUpdate);
+        
+        console.log('✅ Firebase 更新成功，ID:', editingOrderId, ', 新單號:', dataToUpdate.orderNumber);
+        
+        // 重新從 Firebase 載入確保資料同步
+        setTimeout(async () => {
+          console.log('🔄 開始重新載入 Firebase 資料...');
+          const freshData = await db.getDocs('dco_orders');
+          if (freshData && freshData.length > 0) {
+            const updatedRecord = freshData.find(o => o.id === editingOrderId);
+            console.log('🔍 重新載入後的記錄:', updatedRecord);
+            setOrders(freshData);
+            localStorage.setItem('dco_orders', JSON.stringify(freshData));
+            console.log('✅ 已重新載入 Firebase 資料');
+          }
+        }, 1000); // 增加延遲到 1 秒
+        
       } catch (err) {
         console.error('更新 DCO 資料失敗:', err);
         alert('更新失敗，請稍後再試');
@@ -21979,7 +22609,8 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     setIsEditing(true);
     setEditingOrderId(order.id);
     setNewOrder({
-      orderNumber: order.id || '',
+      ...order, // 保留所有原始欄位
+      orderNumber: order.orderNumber || order.id || '',
       title: order.title || '',
       partNumber: order.partNumber || '',
       productName: order.productName || '',
@@ -22510,7 +23141,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                       )}
                     </div>
                     <div>
-                      <span className="font-mono text-xs font-bold text-slate-700 block">{order.id}</span>
+                      <span className="font-mono text-xs font-bold text-slate-700 block">{order.orderNumber || order.id}</span>
                       {order.partNumber && (
                         <span className="text-[10px] text-slate-400 font-mono mt-0.5 block"># {order.partNumber}</span>
                       )}
@@ -23617,18 +24248,87 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                 <div className="mb-8">
                   <div className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">單位執行進度</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {selectedOrder.executionUnits.map((u) => (
+                    {selectedOrder.executionUnits.map((u) => {
+                      const isEditingThis = editingUnitDates[u.id];
+                      return (
                       <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         <div className="text-xs flex-1">
                           <div className="font-bold text-slate-700 flex items-center gap-1 mb-1">
                             {u.label} {u.approved ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Clock size={12} className="text-amber-500" />}
                           </div>
-                          <div className="text-slate-500">
+                          <div className="text-slate-500 mb-2">
                             主辦: {u.owner || '-'} {u.coOwner && `| 副辦: ${u.coOwner}`}
                           </div>
-                          <div className="text-slate-400 mt-1">
-                            期間: {u.startDate || '-'} ~ {u.endDate || '-'}
-                          </div>
+                          {isEditingThis ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="date"
+                                value={isEditingThis.startDate || u.startDate || ''}
+                                onChange={(e) => setEditingUnitDates(prev => ({
+                                  ...prev,
+                                  [u.id]: { ...prev[u.id], startDate: e.target.value }
+                                }))}
+                                className="text-[10px] px-2 py-1 border border-slate-300 rounded"
+                              />
+                              <span className="text-slate-400">~</span>
+                              <input
+                                type="date"
+                                value={isEditingThis.endDate || u.endDate || ''}
+                                onChange={(e) => setEditingUnitDates(prev => ({
+                                  ...prev,
+                                  [u.id]: { ...prev[u.id], endDate: e.target.value }
+                                }))}
+                                className="text-[10px] px-2 py-1 border border-slate-300 rounded"
+                              />
+                              <button
+                                onClick={async () => {
+                                  const updatedUnits = selectedOrder.executionUnits.map(unit => 
+                                    unit.id === u.id 
+                                      ? { ...unit, startDate: isEditingThis.startDate, endDate: isEditingThis.endDate }
+                                      : unit
+                                  );
+                                  const updatedOrder = { ...selectedOrder, executionUnits: updatedUnits };
+                                  await db.updateDoc('dco_orders', selectedOrder.id, updatedOrder);
+                                  setOrders(orders.map(o => o.id === selectedOrder.id ? updatedOrder : o));
+                                  setSelectedOrder(updatedOrder);
+                                  setEditingUnitDates(prev => {
+                                    const newState = { ...prev };
+                                    delete newState[u.id];
+                                    return newState;
+                                  });
+                                }}
+                                className="text-[10px] bg-emerald-600 text-white px-2 py-1 rounded font-bold"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={() => setEditingUnitDates(prev => {
+                                  const newState = { ...prev };
+                                  delete newState[u.id];
+                                  return newState;
+                                })}
+                                className="text-[10px] bg-slate-400 text-white px-2 py-1 rounded font-bold"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-slate-400 flex items-center gap-2">
+                              <span>期間: {u.startDate || '-'} ~ {u.endDate || '-'}</span>
+                              {canEdit && (
+                                <button
+                                  onClick={() => setEditingUnitDates(prev => ({
+                                    ...prev,
+                                    [u.id]: { startDate: u.startDate || '', endDate: u.endDate || '' }
+                                  }))}
+                                  className="text-blue-600 hover:text-blue-800"
+                                  title="編輯時間"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {!u.approved && (
                           <button 
@@ -23639,7 +24339,7 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                           </button>
                         )}
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </div>
 
