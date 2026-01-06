@@ -12093,16 +12093,26 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
 
   const handleAddHistory = async (newHistory) => {
     try {
-      // 如果有附件，先上傳到 Storage
+      // 如果有附件，先嘗試上傳到 Storage
       if (newHistory.attachment && newHistory.attachment.startsWith('data:')) {
-        console.log('📎 偵測到附件，準備上傳到 Firebase Storage...');
-        // Base64 資料太大，需要上傳到 Storage
         const fileName = newHistory.fileName || 'attachment';
+        const base64Data = newHistory.attachment.split(',')[1];
+        const attachmentSize = base64Data.length * 0.75; // 估算檔案大小
+        
+        // 檔案小於 500KB，直接用 base64 儲存
+        if (attachmentSize < 512000) {
+          console.log(`📎 檔案較小 (${(attachmentSize / 1024).toFixed(2)} KB)，直接儲存 base64`);
+          await db.addDoc('rd_history', newHistory);
+          console.log('✅ 設計履歷新增成功（base64附件）');
+          return;
+        }
+        
+        // 檔案較大，嘗試上傳到 Storage
+        console.log('📎 偵測到大型附件，準備上傳到 Firebase Storage...');
         const timestamp = Date.now();
         const storagePath = `history_attachments/${timestamp}_${fileName}`;
         
         // 將 base64 轉換為 blob
-        const base64Data = newHistory.attachment.split(',')[1];
         const mimeType = newHistory.attachment.split(';')[0].split(':')[1];
         const byteCharacters = atob(base64Data);
         const byteNumbers = new Array(byteCharacters.length);
@@ -12114,33 +12124,54 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         
         console.log(`📤 上傳檔案: ${fileName} (${(blob.size / 1024).toFixed(2)} KB)`);
         
-        // 上傳到 Storage
-        const storageRef = window.firebase.ref(storage, storagePath);
-        const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
-        
-        await new Promise((resolve, reject) => {
-          uploadTask.on('state_changed',
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
-            },
-            (error) => {
-              console.error('❌ Storage 上傳失敗:', error);
-              reject(error);
-            },
-            async () => {
-              const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
-              console.log('✅ 檔案上傳成功，URL:', downloadURL);
-              // 替換 attachment 為 URL
-              newHistory.attachmentUrl = downloadURL;
-              newHistory.attachmentName = fileName;
-              delete newHistory.attachment; // 移除 base64 資料
-              await db.addDoc('rd_history', newHistory);
-              console.log('✅ 設計履歷新增成功');
-              resolve();
+        try {
+          // 嘗試上傳到 Storage
+          const storageRef = window.firebase.ref(db.storage, storagePath);
+          const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
+          
+          await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+              (snapshot) => {
+                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
+              },
+              (error) => {
+                console.error('❌ Storage 上傳失敗:', error);
+                reject(error);
+              },
+              async () => {
+                const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
+                console.log('✅ 檔案上傳成功，URL:', downloadURL);
+                // 替換 attachment 為 URL
+                newHistory.attachmentUrl = downloadURL;
+                newHistory.attachmentName = fileName;
+                delete newHistory.attachment; // 移除 base64 資料
+                await db.addDoc('rd_history', newHistory);
+                console.log('✅ 設計履歷新增成功');
+                resolve();
+              }
+            );
+          });
+        } catch (storageError) {
+          // Storage 上傳失敗（例如 CORS 問題），回退到 base64
+          const errMsg = storageError.toString();
+          if (errMsg.includes('CORS') || errMsg.includes('ERR_FAILED') || errMsg.includes('origin')) {
+            console.warn('⚠️ Firebase Storage 上傳失敗（CORS限制），改用 base64 儲存');
+            console.warn('💡 建議：請透過 HTTP 伺服器（如 Live Server）開啟此頁面，而非直接開啟檔案');
+            
+            // 檢查檔案是否小於 1MB
+            if (attachmentSize > 1048487) {
+              alert('❌ 上傳失敗！\n\n檔案過大且無法上傳到雲端儲存。\n\n解決方案：\n1. 請壓縮圖片後再試\n2. 或透過 HTTP 伺服器開啟此頁面（推薦使用 VS Code 的 Live Server 擴充功能）');
+              throw storageError;
             }
-          );
-        });
+            
+            // 檔案小於 1MB，使用 base64 儲存
+            await db.addDoc('rd_history', newHistory);
+            console.log('✅ 設計履歷新增成功（使用 base64 備援方案）');
+          } else {
+            throw storageError;
+          }
+        }
       } else {
         await db.addDoc('rd_history', newHistory);
         console.log('✅ 設計履歷新增成功（無附件）');
@@ -12149,7 +12180,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       console.error("❌ Error adding history: ", e);
       const errMsg = e.toString();
       if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
-        alert('新增失敗: 資料過大！\n\n請重新整理頁面後再試，系統會自動將附件上傳至雲端儲存。');
+        alert('新增失敗: 資料過大！\n\n請壓縮圖片或透過 HTTP 伺服器開啟此頁面。');
       } else {
         alert('新增失敗: ' + errMsg);
       }
