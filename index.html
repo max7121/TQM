@@ -12093,16 +12093,26 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
 
   const handleAddHistory = async (newHistory) => {
     try {
-      // 如果有附件，先上傳到 Storage
+      // 如果有附件，先嘗試上傳到 Storage
       if (newHistory.attachment && newHistory.attachment.startsWith('data:')) {
-        console.log('📎 偵測到附件，準備上傳到 Firebase Storage...');
-        // Base64 資料太大，需要上傳到 Storage
         const fileName = newHistory.fileName || 'attachment';
+        const base64Data = newHistory.attachment.split(',')[1];
+        const attachmentSize = base64Data.length * 0.75; // 估算檔案大小
+        
+        // 檔案小於 500KB，直接用 base64 儲存
+        if (attachmentSize < 512000) {
+          console.log(`📎 檔案較小 (${(attachmentSize / 1024).toFixed(2)} KB)，直接儲存 base64`);
+          await db.addDoc('rd_history', newHistory);
+          console.log('✅ 設計履歷新增成功（base64附件）');
+          return;
+        }
+        
+        // 檔案較大，嘗試上傳到 Storage
+        console.log('📎 偵測到大型附件，準備上傳到 Firebase Storage...');
         const timestamp = Date.now();
         const storagePath = `history_attachments/${timestamp}_${fileName}`;
         
         // 將 base64 轉換為 blob
-        const base64Data = newHistory.attachment.split(',')[1];
         const mimeType = newHistory.attachment.split(';')[0].split(':')[1];
         const byteCharacters = atob(base64Data);
         const byteNumbers = new Array(byteCharacters.length);
@@ -12114,33 +12124,54 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
         
         console.log(`📤 上傳檔案: ${fileName} (${(blob.size / 1024).toFixed(2)} KB)`);
         
-        // 上傳到 Storage
-        const storageRef = window.firebase.ref(storage, storagePath);
-        const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
-        
-        await new Promise((resolve, reject) => {
-          uploadTask.on('state_changed',
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
-            },
-            (error) => {
-              console.error('❌ Storage 上傳失敗:', error);
-              reject(error);
-            },
-            async () => {
-              const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
-              console.log('✅ 檔案上傳成功，URL:', downloadURL);
-              // 替換 attachment 為 URL
-              newHistory.attachmentUrl = downloadURL;
-              newHistory.attachmentName = fileName;
-              delete newHistory.attachment; // 移除 base64 資料
-              await db.addDoc('rd_history', newHistory);
-              console.log('✅ 設計履歷新增成功');
-              resolve();
+        try {
+          // 嘗試上傳到 Storage
+          const storageRef = window.firebase.ref(db.storage, storagePath);
+          const uploadTask = window.firebase.uploadBytesResumable(storageRef, blob);
+          
+          await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+              (snapshot) => {
+                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                console.log('⏳ 上傳進度: ' + progress.toFixed(1) + '%');
+              },
+              (error) => {
+                console.error('❌ Storage 上傳失敗:', error);
+                reject(error);
+              },
+              async () => {
+                const downloadURL = await window.firebase.getDownloadURL(uploadTask.snapshot.ref);
+                console.log('✅ 檔案上傳成功，URL:', downloadURL);
+                // 替換 attachment 為 URL
+                newHistory.attachmentUrl = downloadURL;
+                newHistory.attachmentName = fileName;
+                delete newHistory.attachment; // 移除 base64 資料
+                await db.addDoc('rd_history', newHistory);
+                console.log('✅ 設計履歷新增成功');
+                resolve();
+              }
+            );
+          });
+        } catch (storageError) {
+          // Storage 上傳失敗（例如 CORS 問題），回退到 base64
+          const errMsg = storageError.toString();
+          if (errMsg.includes('CORS') || errMsg.includes('ERR_FAILED') || errMsg.includes('origin')) {
+            console.warn('⚠️ Firebase Storage 上傳失敗（CORS限制），改用 base64 儲存');
+            console.warn('💡 建議：請透過 HTTP 伺服器（如 Live Server）開啟此頁面，而非直接開啟檔案');
+            
+            // 檢查檔案是否小於 1MB
+            if (attachmentSize > 1048487) {
+              alert('❌ 上傳失敗！\n\n檔案過大且無法上傳到雲端儲存。\n\n解決方案：\n1. 請壓縮圖片後再試\n2. 或透過 HTTP 伺服器開啟此頁面（推薦使用 VS Code 的 Live Server 擴充功能）');
+              throw storageError;
             }
-          );
-        });
+            
+            // 檔案小於 1MB，使用 base64 儲存
+            await db.addDoc('rd_history', newHistory);
+            console.log('✅ 設計履歷新增成功（使用 base64 備援方案）');
+          } else {
+            throw storageError;
+          }
+        }
       } else {
         await db.addDoc('rd_history', newHistory);
         console.log('✅ 設計履歷新增成功（無附件）');
@@ -12149,7 +12180,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
       console.error("❌ Error adding history: ", e);
       const errMsg = e.toString();
       if (errMsg.includes('exceeds') || errMsg.includes('too large') || errMsg.includes('1048487')) {
-        alert('新增失敗: 資料過大！\n\n請重新整理頁面後再試，系統會自動將附件上傳至雲端儲存。');
+        alert('新增失敗: 資料過大！\n\n請壓縮圖片或透過 HTTP 伺服器開啟此頁面。');
       } else {
         alert('新增失敗: ' + errMsg);
       }
@@ -22222,63 +22253,27 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     })
   });
 
-  // 精簡版存儲函數 - 移除大型圖片數據以避免 localStorage 配額問題
-  const saveToLocalStorage = (ordersData) => {
-    try {
-      // 創建精簡版本 - 移除圖片和檔案的 base64 數據
-      const lightweightOrders = ordersData.map(order => ({
-        ...order,
-        images: order.images?.map(img => ({ name: img.name, size: img.size })) || [],
-        files: order.files?.map(file => ({ name: file.name, size: file.size })) || [],
-        thumbnail: null // 移除縮圖以節省空間
-      }));
-      
-      localStorage.setItem('dco_orders', JSON.stringify(lightweightOrders));
-      console.log('✅ 已保存精簡版數據到 localStorage');
-    } catch (err) {
-      console.warn('localStorage 保存失敗（已忽略）:', err.message);
-      // 如果還是失敗，嘗試只保存最近的 20 筆
-      try {
-        const recentOrders = ordersData.slice(0, 20).map(order => ({
-          id: order.id,
-          orderNumber: order.orderNumber,
-          title: order.title,
-          status: order.status,
-          createdTime: order.createdTime
-        }));
-        localStorage.setItem('dco_orders_recent', JSON.stringify(recentOrders));
-        console.log('✅ 已保存最近 20 筆精簡數據');
-      } catch (e) {
-        console.error('localStorage 完全失敗:', e);
-      }
-    }
-  };
-
   // 載入資料
   useEffect(() => {
     const loadData = async () => {
       try {
-        console.log('🔄 開始載入 DCO 資料...');
-        
-        // 優先從 Firebase 載入（確保數據最新）
-        const firebaseData = await db.getDocs('dco_orders');
-        if (firebaseData && firebaseData.length > 0) {
-          console.log('✅ 從 Firebase 載入', firebaseData.length, '筆資料');
-          setOrders(firebaseData);
-          saveToLocalStorage(firebaseData);
-        } else {
-          // Firebase 無資料時才從 localStorage 載入
-          const localData = localStorage.getItem('dco_orders');
-          if (localData) {
-            console.log('📦 從 localStorage 載入資料');
-            setOrders(JSON.parse(localData));
-          }
+        // 優先從 localStorage 載入
+        const localData = localStorage.getItem('dco_orders');
+        if (localData) {
+          setOrders(JSON.parse(localData));
         }
         
         // 載入通知
         const localNotifications = localStorage.getItem('dco_notifications');
         if (localNotifications) {
           setNotifications(JSON.parse(localNotifications));
+        }
+        
+        // 從 Firebase 同步
+        const firebaseData = await db.getDocs('dco_orders');
+        if (firebaseData && firebaseData.length > 0) {
+          setOrders(firebaseData);
+          localStorage.setItem('dco_orders', JSON.stringify(firebaseData));
         }
       } catch (err) {
         console.error('載入 DCO 資料失敗:', err);
@@ -22536,7 +22531,9 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         console.log('💾 準備儲存，updatedOrder.orderNumber =', updatedOrder.orderNumber);
         console.log('💾 準備儲存，updatedOrder.id =', updatedOrder.id);
         
-        // 先更新 Firebase（優先）
+        localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+        
+        // 確保 Firebase 更新包含所有欄位
         const dataToUpdate = {
           ...updatedOrder,
           orderNumber: updatedOrder.orderNumber // 明確指定單號
@@ -22544,16 +22541,25 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         
         console.log('☁️ 即將寫入 Firebase 的資料:', dataToUpdate);
         await db.updateDoc('dco_orders', editingOrderId, dataToUpdate);
+        
         console.log('✅ Firebase 更新成功，ID:', editingOrderId, ', 新單號:', dataToUpdate.orderNumber);
         
-        // 再更新 localStorage（使用精簡版）
-        saveToLocalStorage(updatedOrders);
-        
-        alert('✅ 設變單更新成功');
+        // 重新從 Firebase 載入確保資料同步
+        setTimeout(async () => {
+          console.log('🔄 開始重新載入 Firebase 資料...');
+          const freshData = await db.getDocs('dco_orders');
+          if (freshData && freshData.length > 0) {
+            const updatedRecord = freshData.find(o => o.id === editingOrderId);
+            console.log('🔍 重新載入後的記錄:', updatedRecord);
+            setOrders(freshData);
+            localStorage.setItem('dco_orders', JSON.stringify(freshData));
+            console.log('✅ 已重新載入 Firebase 資料');
+          }
+        }, 1000); // 增加延遲到 1 秒
         
       } catch (err) {
         console.error('更新 DCO 資料失敗:', err);
-        alert('更新失敗: ' + err.message);
+        alert('更新失敗，請稍後再試');
         return;
       }
     } else {
@@ -22580,17 +22586,11 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       
       // 儲存到 localStorage 和 Firebase
       try {
-        // 先保存到 Firebase（優先）
+        localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
         await db.addDoc('dco_orders', createdOrder);
-        console.log('✅ 已保存到 Firebase');
-        
-        // 再更新 localStorage（使用精簡版）
-        saveToLocalStorage(updatedOrders);
-        
-        alert('✅ 設變單建立成功');
       } catch (err) {
         console.error('儲存 DCO 資料失敗:', err);
-        alert('儲存失敗: ' + err.message);
+        alert('儲存失敗，請稍後再試');
         return;
       }
     }
@@ -22890,128 +22890,13 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     setOrders(updatedOrders);
     
     try {
+      localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
       const orderToUpdate = updatedOrders.find(o => o.id === orderId);
       if (orderToUpdate) {
-        // 先更新 Firebase（優先）
         await db.updateDoc('dco_orders', orderId, orderToUpdate);
-        console.log('✅ 簽核已保存到 Firebase');
-        
-        // 再更新 localStorage（使用精簡版）
-        saveToLocalStorage(updatedOrders);
       }
     } catch (err) {
       console.error('更新 DCO 資料失敗:', err);
-      alert('簽核保存失敗: ' + err.message);
-    }
-  };
-
-  // 刪除設變單功能
-  const handleDeleteOrder = async (orderId) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    
-    if (!hasPermission('delete')) {
-      alert('您沒有刪除權限');
-      return;
-    }
-    
-    if (!confirm(`確定要刪除設變單「${order.orderNumber} - ${order.title}」嗎？\n此操作無法復原！`)) {
-      return;
-    }
-    
-    const remainingOrders = orders.filter(o => o.id !== orderId);
-    setOrders(remainingOrders);
-    
-    // 發送通知
-    addNotification({
-      type: 'deleted',
-      message: `設變單 ${order.orderNumber} 已被 ${user?.displayName} 刪除`,
-      orderId: orderId,
-      timestamp: getCurrentTimestamp()
-    });
-    
-    try {
-      // 先從 Firebase 刪除（優先）
-      await db.deleteDoc('dco_orders', orderId);
-      console.log('✅ 已從 Firebase 刪除');
-      
-      // 再更新 localStorage（使用精簡版）
-      saveToLocalStorage(remainingOrders);
-      
-      setShowDetail(false);
-      alert('設變單已成功刪除');
-    } catch (err) {
-      console.error('刪除設變單失敗:', err);
-      alert('刪除失敗: ' + err.message);
-    }
-  };
-
-  // 回復簽核功能（取消單位簽核）
-  const handleRevertApproval = async (orderId, unitId) => {
-    if (!hasPermission('unitApprove')) {
-      alert('您沒有回復簽核權限');
-      return;
-    }
-    
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    
-    const unit = order.executionUnits.find(u => u.id === unitId);
-    if (!unit || !unit.approved) {
-      alert('此單位尚未簽核，無需回復');
-      return;
-    }
-    
-    if (!confirm(`確定要回復「${unit.label}」的簽核狀態嗎？`)) {
-      return;
-    }
-    
-    const updatedOrders = orders.map(o => {
-      if (o.id !== orderId) return o;
-      const updatedUnits = o.executionUnits.map(u => 
-        u.id === unitId ? { 
-          ...u, 
-          approved: false, 
-          approvedBy: undefined, 
-          approvedTime: undefined,
-          revertedBy: user?.displayName,
-          revertedTime: getCurrentTimestamp()
-        } : u
-      );
-      const newOrderState = { 
-        ...o, 
-        executionUnits: updatedUnits, 
-        status: '單位執行中' // 回復後狀態改為單位執行中
-      };
-      if (selectedOrder?.id === orderId) setSelectedOrder(newOrderState);
-      
-      // 發送通知
-      addNotification({
-        type: 'approvalReverted',
-        message: `${user?.displayName} 已回復 ${order.orderNumber} 的 ${unit.label} 簽核`,
-        orderId: orderId,
-        timestamp: getCurrentTimestamp()
-      });
-      
-      return newOrderState;
-    });
-    
-    setOrders(updatedOrders);
-    
-    try {
-      const orderToUpdate = updatedOrders.find(o => o.id === orderId);
-      if (orderToUpdate) {
-        // 先更新 Firebase（優先）
-        await db.updateDoc('dco_orders', orderId, orderToUpdate);
-        console.log('✅ 回復簽核已保存到 Firebase');
-        
-        // 再更新 localStorage（使用精簡版）
-        saveToLocalStorage(updatedOrders);
-      }
-      alert('簽核狀態已成功回復');
-    } catch (err) {
-      console.error('回復簽核失敗:', err);
-      alert('回復失敗: ' + err.message);
     }
   };
   
@@ -23049,20 +22934,15 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     setOrders(remainingOrders);
     
     try {
-      // 先從 Firebase 刪除（優先）
+      localStorage.setItem('dco_orders', JSON.stringify(remainingOrders));
       for (const orderId of selectedOrders) {
         await db.deleteDoc('dco_orders', orderId);
       }
-      console.log('✅ 已從 Firebase 批次刪除');
-      
-      // 再更新 localStorage（使用精簡版）
-      saveToLocalStorage(remainingOrders);
-      
       setSelectedOrders([]);
       alert('批次刪除成功');
     } catch (err) {
       console.error('批次刪除失敗:', err);
-      alert('批次刪除失敗: ' + err.message);
+      alert('批次刪除失敗');
     }
   };
   
@@ -24481,25 +24361,14 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                             </div>
                           )}
                         </div>
-                        {/* 簽核與回復簽核按鈕 */}
-                        <div className="flex flex-col gap-2">
-                          {!u.approved ? (
-                            <button 
-                              onClick={() => handleUnitApprove(selectedOrder.id, u.id)} 
-                              className="text-[10px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors"
-                            >
-                              簽核
-                            </button>
-                          ) : (
-                            <button 
-                              onClick={() => handleRevertApproval(selectedOrder.id, u.id)} 
-                              className="text-[10px] bg-amber-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-amber-700 transition-colors flex items-center gap-1"
-                              title="回復簽核狀態"
-                            >
-                              <RotateCcw size={10} /> 回復
-                            </button>
-                          )}
-                        </div>
+                        {!u.approved && (
+                          <button 
+                            onClick={() => handleUnitApprove(selectedOrder.id, u.id)} 
+                            className="text-[10px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold"
+                          >
+                            簽核
+                          </button>
+                        )}
                       </div>
                     )})}
                   </div>
@@ -24612,16 +24481,6 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                     <ArrowLeft size={16}/> 返回
                   </button>
                   <div className="flex gap-3">
-                    {/* 刪除按鈕（僅管理員可見）*/}
-                    {hasPermission('delete') && (
-                      <button 
-                        onClick={() => handleDeleteOrder(selectedOrder.id)}
-                        className="px-6 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl font-bold flex items-center gap-2 transition-colors"
-                      >
-                        <Trash2 size={16} /> 刪除設變單
-                      </button>
-                    )}
-                    
                     {/* PDF 匯出按鈕 */}
                     <button 
                       onClick={() => exportToPDF(selectedOrder)}
@@ -24648,15 +24507,11 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                       <button 
                         onClick={async () => {
                           const finishTimestamp = getCurrentTimestamp();
-                          const updatedOrder = { 
-                            ...selectedOrder, 
+                          const updatedOrders = orders.map(o => o.id === selectedOrder.id ? { 
+                            ...o, 
                             status: '已核准',
-                            completedTime: finishTimestamp,
-                            approvedBy: user?.displayName || '主管',
-                            approvedTime: finishTimestamp
-                          };
-                          
-                          const updatedOrders = orders.map(o => o.id === selectedOrder.id ? updatedOrder : o);
+                            completedTime: finishTimestamp
+                          } : o);
                           setOrders(updatedOrders);
                           
                           // 發送通知
@@ -24668,20 +24523,17 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
                           });
                           
                           try {
-                            // 先更新 Firebase（優先）
-                            await db.updateDoc('dco_orders', selectedOrder.id, updatedOrder);
-                            console.log('✅ 主管核准已保存到 Firebase');
-                            
-                            // 再更新 localStorage（使用精簡版）
-                            saveToLocalStorage(updatedOrders);
-                            
-                            alert('✅ 設變單已核准結案');
-                            setShowDetail(false);
-                            setActiveTab('archive');
+                            localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+                            await db.updateDoc('dco_orders', selectedOrder.id, { 
+                              status: '已核准', 
+                              completedTime: finishTimestamp 
+                            });
                           } catch (err) {
                             console.error('更新狀態失敗:', err);
-                            alert('核准保存失敗: ' + err.message + '\n請重新嘗試或聯絡系統管理員');
                           }
+                          
+                          setShowDetail(false);
+                          setActiveTab('archive'); 
                         }}
                         className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-colors"
                       >
