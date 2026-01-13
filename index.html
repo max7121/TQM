@@ -33,6 +33,13 @@
             uploadBytesResumable,
             getDownloadURL
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        import {
+            getAuth,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            onAuthStateChanged,
+            signOut
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         
         // 將 Firebase 函數掛載到 window 以供後續使用
         window.firebase = {
@@ -52,7 +59,12 @@
             getStorage,
             ref,
             uploadBytesResumable,
-            getDownloadURL
+            getDownloadURL,
+            getAuth,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            onAuthStateChanged,
+            signOut
         };
     </script>
     <!-- <script type="importmap">
@@ -973,10 +985,13 @@ class FirebaseDB {
         this.db = window.firebase.getFirestore(this.app);
         this.storage = window.firebase.getStorage(this.app);
         this.analytics = window.firebase.getAnalytics(this.app);
+        this.auth = window.firebase.getAuth(this.app);
         this.listeners = {};
         console.log("Firebase 連線成功！");
         console.log("Firebase Storage 已初始化");
-        this.ensureAdminExists();
+        console.log("Firebase Auth 已初始化");
+        // 暫時註解以避免未驗證就訪問 Firestore
+        // this.ensureAdminExists();
     } catch (e) {
         console.error("Firebase 初始化失敗:", e);
         alert("資料庫連線失敗，請檢查網路。");
@@ -26392,14 +26407,74 @@ function App() {
 
   const handleLogin = async (username, password, setError) => {
     try {
+      const email = username.includes('@') ? username : `${username}@tqm.local`;
+      const auth = db.auth;
+      
+      try {
+        // 嘗試使用 Firebase Auth 登入
+        const userCredential = await window.firebase.signInWithEmailAndPassword(auth, email, password);
+        console.log('✅ Firebase Auth 登入成功', userCredential.user);
+      } catch (authError) {
+        // 如果 Firebase Auth 登入失敗，檢查是否為舊帳號
+        if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
+          console.log('🔄 帳號不存在於 Firebase Auth，嘗試從 Firestore 驗證...');
+          
+          // 從 Firestore 驗證帳號密碼
+          const users = await db.getDocs('tqm_users', u => u.username === username);
+          if (users.length === 0) { 
+            setError('帳號不存在'); 
+            return; 
+          }
+          
+          const userData = users[0];
+          if (userData.password !== password) {
+            setError('密碼錯誤');
+            return;
+          }
+          
+          // 帳密正確，自動在 Firebase Auth 中創建此帳號
+          try {
+            console.log('🆕 為舊帳號創建 Firebase Auth 用戶:', email);
+            await window.firebase.createUserWithEmailAndPassword(auth, email, password);
+            console.log('✅ Firebase Auth 帳號創建成功，重新登入...');
+            
+            // 創建成功後自動登入
+            await window.firebase.signInWithEmailAndPassword(auth, email, password);
+            console.log('✅ 自動登入成功');
+          } catch (createError) {
+            console.error('❌ 創建 Firebase Auth 帳號失敗:', createError);
+            setError('帳號遷移失敗，請聯繫管理員');
+            return;
+          }
+        } else {
+          // 其他 Auth 錯誤
+          throw authError;
+        }
+      }
+      
+      // 從 Firestore 取得用戶資料
       const users = await db.getDocs('tqm_users', u => u.username === username);
-      if (users.length === 0) { setError('帳號不存在'); return; }
+      if (users.length === 0) { 
+        setError('帳號資料不存在'); 
+        await window.firebase.signOut(auth);
+        return; 
+      }
+      
       const userData = users[0];
-      if (userData.password === password) {
-        setUser(userData);
-        sessionStorage.setItem('tqm_user', JSON.stringify(userData));
-      } else { setError('密碼錯誤'); }
-    } catch (err) { console.error(err); setError('登入系統發生錯誤'); }
+      setUser(userData);
+      sessionStorage.setItem('tqm_user', JSON.stringify(userData));
+    } catch (err) { 
+      console.error('登入錯誤:', err); 
+      if (err.code === 'auth/user-not-found') {
+        setError('帳號不存在');
+      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('密碼錯誤');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('帳號格式錯誤');
+      } else {
+        setError('登入失敗: ' + err.message);
+      }
+    }
   };
 
   const handleLogout = () => {
