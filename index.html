@@ -25,6 +25,8 @@
             getDocs, 
             query, 
             where, 
+            orderBy,
+            limit,
             onSnapshot 
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import {
@@ -55,6 +57,8 @@
             getDocs,
             query,
             where,
+            orderBy,
+            limit,
             onSnapshot,
             getStorage,
             ref,
@@ -965,6 +969,7 @@ class FirebaseDB {
     this.pendingRequests = new Map(); // 追蹤進行中的請求，避免重複
     this.subscriptionRetryCount = {}; // 追蹤訂閱重試次數
     this.activeSubscriptions = new Map(); // 追蹤活躍的訂閱
+    this.subscriptionManager = new Map(); // 全域訂閱管理器: key -> {unsubscribe, callbacks: Set}
     
     // 監聽網路狀態變化
     window.addEventListener('online', () => {
@@ -1062,25 +1067,47 @@ class FirebaseDB {
       } catch (e) { console.warn("檢查管理員帳號錯誤:", e); }
   }
 
-  // 優化的訂閱方法，加入錯誤處理和重試機制
-  subscribe(collectionName, callback) {
+  // 優化的訂閱方法，加入錯誤處理、重試機制和去重
+  subscribe(collectionName, callback, queryConstraints = []) {
+    // 建立訂閱的唯一鍵（集合名稱 + 查詢條件）
+    const subscriptionKey = `${collectionName}:${JSON.stringify(queryConstraints)}`;
+    
     // 記錄活躍的訂閱
     this.activeSubscriptions.set(collectionName, { callback });
     
     // 先從快取載入（如果有），提供即時響應
     if (this.cache[collectionName]) {
       console.log(`📦 從快取載入 ${collectionName} (${this.cache[collectionName].data?.length || 0} 筆)`);
-      // 使用 setTimeout 確保非同步執行，避免阻塞
       setTimeout(() => callback(this.cache[collectionName].data), 0);
     }
 
     // 如果離線，只使用快取
     if (!this.isOnline) {
       console.warn(`📴 離線模式，${collectionName} 使用快取`);
-      return () => this.activeSubscriptions.delete(collectionName);
+      return () => {
+        this.activeSubscriptions.delete(collectionName);
+        this._removeSubscriptionCallback(subscriptionKey, callback);
+      };
     }
 
-    // 設定超時處理 - 10 秒後如果還沒載入成功，使用快取或空陣列
+    // 檢查是否已有相同的訂閱
+    if (this.subscriptionManager.has(subscriptionKey)) {
+      console.log(`♻️ 複用現有訂閱: ${collectionName}`);
+      const sub = this.subscriptionManager.get(subscriptionKey);
+      sub.callbacks.add(callback);
+      
+      // 如果已有快取，立即回調
+      if (this.cache[collectionName]) {
+        setTimeout(() => callback(this.cache[collectionName].data), 0);
+      }
+      
+      return () => {
+        this.activeSubscriptions.delete(collectionName);
+        this._removeSubscriptionCallback(subscriptionKey, callback);
+      };
+    }
+
+    // 設定超時處理
     let timeoutId = setTimeout(() => {
       if (this.cache[collectionName]) {
         console.warn(`⏰ ${collectionName} 載入超時，繼續使用快取數據`);
@@ -1093,12 +1120,18 @@ class FirebaseDB {
     let unsubscribe = () => {};
     
     try {
+      // 建立查詢（如果有查詢條件）
+      let collectionRef = window.firebase.collection(this.db, collectionName);
+      if (queryConstraints.length > 0) {
+        collectionRef = window.firebase.query(collectionRef, ...queryConstraints);
+      }
+      
       unsubscribe = window.firebase.onSnapshot(
-        window.firebase.collection(this.db, collectionName),
-        { includeMetadataChanges: false }, // 減少不必要的更新
+        collectionRef,
+        { includeMetadataChanges: false },
         (snapshot) => {
           clearTimeout(timeoutId);
-          this.subscriptionRetryCount[collectionName] = 0; // 重置重試計數
+          this.subscriptionRetryCount[collectionName] = 0;
           
           const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
           
@@ -1108,22 +1141,33 @@ class FirebaseDB {
             timestamp: Date.now()
           };
           
-          // 儲存到持久化快取
           this.savePersistentCache();
           
           console.log(`✅ ${collectionName} 訂閱成功 (${data.length} 筆)`);
-          callback(data);
+          
+          // 通知所有訂閱者
+          if (this.subscriptionManager.has(subscriptionKey)) {
+            const sub = this.subscriptionManager.get(subscriptionKey);
+            sub.callbacks.forEach(cb => cb(data));
+          } else {
+            callback(data);
+          }
         },
         (error) => {
           clearTimeout(timeoutId);
           console.error(`❌ ${collectionName} 訂閱錯誤:`, error.message || error);
           
-          // 使用快取作為備用
+          const fallbackData = this.cache[collectionName]?.data || [];
           if (this.cache[collectionName]) {
             console.log(`📦 錯誤後使用 ${collectionName} 快取數據`);
-            callback(this.cache[collectionName].data);
+          }
+          
+          // 通知所有訂閱者
+          if (this.subscriptionManager.has(subscriptionKey)) {
+            const sub = this.subscriptionManager.get(subscriptionKey);
+            sub.callbacks.forEach(cb => cb(fallbackData));
           } else {
-            callback([]);
+            callback(fallbackData);
           }
           
           // 嘗試重新訂閱（最多 3 次）
@@ -1133,28 +1177,47 @@ class FirebaseDB {
             console.log(`🔄 ${collectionName} 將在 ${(retryCount + 1) * 2} 秒後重試訂閱...`);
             setTimeout(() => {
               if (this.activeSubscriptions.has(collectionName)) {
-                this.subscribe(collectionName, callback);
+                this.subscribe(collectionName, callback, queryConstraints);
               }
             }, (retryCount + 1) * 2000);
           }
         }
       );
+      
+      // 註冊到訂閱管理器
+      this.subscriptionManager.set(subscriptionKey, {
+        unsubscribe,
+        callbacks: new Set([callback])
+      });
+      
     } catch (error) {
       clearTimeout(timeoutId);
       console.error(`❌ ${collectionName} 訂閱失敗:`, error.message || error);
       
-      if (this.cache[collectionName]) {
-        callback(this.cache[collectionName].data);
-      } else {
-        callback([]);
-      }
+      const fallbackData = this.cache[collectionName]?.data || [];
+      callback(fallbackData);
     }
     
     // 返回取消訂閱函數
     return () => {
       this.activeSubscriptions.delete(collectionName);
-      unsubscribe();
+      this._removeSubscriptionCallback(subscriptionKey, callback);
     };
+  }
+  
+  // 內部方法：移除訂閱回調
+  _removeSubscriptionCallback(subscriptionKey, callback) {
+    if (!this.subscriptionManager.has(subscriptionKey)) return;
+    
+    const sub = this.subscriptionManager.get(subscriptionKey);
+    sub.callbacks.delete(callback);
+    
+    // 如果沒有任何回調了，取消訂閱
+    if (sub.callbacks.size === 0) {
+      console.log(`🗑️ 取消訂閱: ${subscriptionKey.split(':')[0]}`);
+      sub.unsubscribe();
+      this.subscriptionManager.delete(subscriptionKey);
+    }
   }
   
   // 批次訂閱多個集合（優化效能）
@@ -6408,6 +6471,7 @@ const MachineSelectionView = ({ machines, onSelect, onBack, onAddMachine, onUpda
   const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
+    // 訂閱所有專案，然後在客戶端過濾
     const unsubProjects = db.subscribe('rd_projects', setProjects);
     const unsubTasks = db.subscribe('rd_tasks', setTasks);
     
@@ -11783,42 +11847,51 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
 
   // Sync with DB
   useEffect(() => {
+    // 訂閱所有專案，然後在客戶端過濾（確保向後兼容）
     const unsubProjects = db.subscribe('rd_projects', (data) => {
-      setAllProjects(data); // 儲存所有專案
-      setProjects(data.filter(p => p.machineId === machine.id)); // 過濾當前機台專案
+      setAllProjects(data);
+      // 客戶端過濾當前機台的專案
+      setProjects(data.filter(p => p.machineId === machine.id));
     });
+    
+    // 訂閱所有任務，然後在客戶端過濾
     const unsubTasks = db.subscribe('rd_tasks', (data) => setTasks(data));
+    
     const unsubChanges = db.subscribe('rd_changes', (data) => setChanges(data));
-    const unsubMachines = db.subscribe('rd_machines', (data) => setMachines(data)); // 訂閱機台
-    // 訂閱 history 並按時間排序（越新的越上面）
+    const unsubMachines = db.subscribe('rd_machines', (data) => setMachines(data));
+    
+    // 訂閱 history 並排序
     const unsubHistory = db.subscribe('rd_history', (data) => {
       const sortedData = [...data].sort((a, b) => {
-        // 優先使用 createdAt，其次使用 date
         const timeA = new Date(a.createdAt || a.date || 0).getTime();
         const timeB = new Date(b.createdAt || b.date || 0).getTime();
-        return timeB - timeA; // 降序排列（新的在前）
-      });
+        return timeB - timeA;
+      }).slice(0, 100); // 只保留最近 100 筆
       setHistory(sortedData);
     });
+    
     const unsubMessages = db.subscribe('rd_messages', (data) => setMessages(data));
+    
     // 訂閱會議紀錄
     const unsubMeetings = db.subscribe('rd_meetings', (data) => {
       const sortedData = [...data].sort((a, b) => {
         const timeA = new Date(a.date + ' ' + (a.time || '00:00')).getTime();
         const timeB = new Date(b.date + ' ' + (b.time || '00:00')).getTime();
-        return timeB - timeA; // 降序排列（新的在前）
-      });
+        return timeB - timeA;
+      }).slice(0, 50); // 只保留最近 50 筆
       setMeetings(sortedData);
     });
+    
     // 訂閱通知
     const unsubNotifications = db.subscribe('rd_notifications', (data) => {
       const sortedData = [...data].sort((a, b) => {
         const timeA = new Date(a.createdAt || 0).getTime();
         const timeB = new Date(b.createdAt || 0).getTime();
         return timeB - timeA;
-      });
+      }).slice(0, 30); // 只保留最近 30 筆
       setNotifications(sortedData);
     });
+    
     // 訂閱用戶列表（用於通知選擇收件人）
     const unsubUsers = db.subscribe('tqm_users', (data) => setAllUsers(data));
     
@@ -12489,18 +12562,21 @@ const KPIReportSystem = ({ onBackToMenu, user }) => {
 
   // 訂閱數據
   useEffect(() => {
+    // 訂閱所有專案
     const unsubProjects = db.subscribe('rd_projects', (data) => {
       console.log('🔍 KPI Report: 載入 rd_projects 資料', data);
       setProjects(data);
     });
+    
     const unsubTasks = db.subscribe('rd_tasks', setTasks);
     const unsubTqm = db.subscribe('tqm_records', setTqmRecords);
-    // 直接從 KPI 績效系統資料庫抓取
+    
+    // KPI 績效資料
     const unsubKpi = db.subscribe('kpi_performance', (data) => {
-      // KPI 系統的數據格式: { name, department, month, metrics: [{name, target, actual, status}] }
       console.log('🔍 KPI Report: 載入 kpi_performance 資料', data);
       setKpiData(data || []);
     });
+    
     // 訂閱每月預算記錄
     const unsubBudget = db.subscribe('monthly_budgets', setMonthlyBudgets);
     // 訂閱每月成本記錄
