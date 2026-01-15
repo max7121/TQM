@@ -996,6 +996,7 @@ class LocalDB {
       'rd_notifications',
       'rd_project_proposals',  // ✅ 專案提案
       'dco_orders',            // ✅ 設計變更訂單 (DCO)
+      'dco_history',           // ✅ DCO 歷史記錄
       'spec_discussion_urls',
       'kpi_performance',
       'kpi_personal_entries',
@@ -25206,6 +25207,12 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   const [showUnitManager, setShowUnitManager] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
   const [editingUnitId, setEditingUnitId] = useState(null);
+  
+  // 日期範圍選擇（用於匯出）
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [showDateRangePicker, setShowDateRangePicker] = useState(false);
+  const [dateFilterType, setDateFilterType] = useState('created'); // 'created' 或 'completed'
 
   // 執行單位主數據（初始值，可動態修改）
   const getDefaultUnits = () => {
@@ -25232,6 +25239,73 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       year: 'numeric', month: '2-digit', day: '2-digit', 
       hour: '2-digit', minute: '2-digit', second: '2-digit' 
     });
+  };
+  
+  // 快速日期選項工具函數
+  const setQuickDateRange = (range) => {
+    const today = new Date();
+    let start, end;
+    
+    switch(range) {
+      case 'today':
+        start = end = today.toISOString().split('T')[0];
+        break;
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        start = end = yesterday.toISOString().split('T')[0];
+        break;
+      case 'thisWeek':
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        start = weekStart.toISOString().split('T')[0];
+        end = today.toISOString().split('T')[0];
+        break;
+      case 'lastWeek':
+        const lastWeekEnd = new Date(today);
+        lastWeekEnd.setDate(today.getDate() - today.getDay() - 1);
+        const lastWeekStart = new Date(lastWeekEnd);
+        lastWeekStart.setDate(lastWeekEnd.getDate() - 6);
+        start = lastWeekStart.toISOString().split('T')[0];
+        end = lastWeekEnd.toISOString().split('T')[0];
+        break;
+      case 'thisMonth':
+        start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+        end = today.toISOString().split('T')[0];
+        break;
+      case 'lastMonth':
+        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+        start = lastMonthStart.toISOString().split('T')[0];
+        end = lastMonthEnd.toISOString().split('T')[0];
+        break;
+      case 'thisQuarter':
+        const quarter = Math.floor(today.getMonth() / 3);
+        start = new Date(today.getFullYear(), quarter * 3, 1).toISOString().split('T')[0];
+        end = today.toISOString().split('T')[0];
+        break;
+      case 'lastQuarter':
+        const lastQuarter = Math.floor(today.getMonth() / 3) - 1;
+        const lastQuarterYear = lastQuarter < 0 ? today.getFullYear() - 1 : today.getFullYear();
+        const lastQuarterMonth = lastQuarter < 0 ? 9 : lastQuarter * 3;
+        start = new Date(lastQuarterYear, lastQuarterMonth, 1).toISOString().split('T')[0];
+        const lastQuarterEnd = new Date(lastQuarterYear, lastQuarterMonth + 3, 0);
+        end = lastQuarterEnd.toISOString().split('T')[0];
+        break;
+      case 'thisYear':
+        start = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+        end = today.toISOString().split('T')[0];
+        break;
+      case 'lastYear':
+        start = new Date(today.getFullYear() - 1, 0, 1).toISOString().split('T')[0];
+        end = new Date(today.getFullYear() - 1, 11, 31).toISOString().split('T')[0];
+        break;
+      default:
+        return;
+    }
+    
+    setExportStartDate(start);
+    setExportEndDate(end);
   };
 
   // 表單狀態
@@ -25294,27 +25368,46 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     })
   });
 
-  // 載入資料
+  // 載入資料（優化版：Firebase 優先，避免 localStorage 超限）
   useEffect(() => {
     const loadData = async () => {
       try {
-        // 優先從 localStorage 載入
-        const localData = localStorage.getItem('dco_orders');
-        if (localData) {
-          setOrders(JSON.parse(localData));
-        }
-        
         // 載入通知
         const localNotifications = localStorage.getItem('dco_notifications');
         if (localNotifications) {
           setNotifications(JSON.parse(localNotifications));
         }
         
-        // 從 Firebase 同步
+        // 優先從 Firebase 載入（雲端資料最完整）
         const firebaseData = await db.getDocs('dco_orders');
         if (firebaseData && firebaseData.length > 0) {
           setOrders(firebaseData);
-          localStorage.setItem('dco_orders', JSON.stringify(firebaseData));
+          
+          // 只儲存精簡版本到 localStorage 避免配額問題
+          const simplifiedData = firebaseData.map(order => ({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            title: order.title,
+            status: order.status,
+            category: order.category,
+            priority: order.priority,
+            createdTime: order.createdTime,
+            completedTime: order.completedTime,
+            thumbnail: order.thumbnail,
+            // 圖片和檔案僅存在 Firebase，不存 localStorage
+          }));
+          
+          try {
+            localStorage.setItem('dco_orders', JSON.stringify(simplifiedData));
+          } catch (e) {
+            console.warn('LocalStorage 空間不足，跳過本地快取');
+          }
+        } else {
+          // Firebase 無資料時，嘗試從 localStorage 載入
+          const localData = localStorage.getItem('dco_orders');
+          if (localData) {
+            setOrders(JSON.parse(localData));
+          }
         }
       } catch (err) {
         console.error('載入 DCO 資料失敗:', err);
@@ -25497,6 +25590,52 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   };
 
   // 建立/更新變更單
+  // 新增：檢查並清理 localStorage 配額
+  const checkAndCleanStorage = (dataToSave) => {
+    try {
+      const testKey = 'dco_orders';
+      const currentData = localStorage.getItem(testKey);
+      
+      // 嘗試儲存
+      localStorage.setItem(testKey, JSON.stringify(dataToSave));
+      return true;
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        console.warn('⚠️ LocalStorage 配額不足，開始清理...');
+        
+        // 清理策略：只保留最近 50 筆訂單的精簡版本
+        const simplifiedData = dataToSave.slice(0, 50).map(order => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          title: order.title,
+          status: order.status,
+          category: order.category,
+          priority: order.priority,
+          createdTime: order.createdTime,
+          completedTime: order.completedTime,
+          // 移除圖片和檔案 Base64 資料
+          images: [],
+          files: []
+        }));
+        
+        try {
+          localStorage.setItem('dco_orders', JSON.stringify(simplifiedData));
+          console.log('✅ LocalStorage 清理成功，已移除圖片/檔案資料');
+          alert('提示：由於儲存空間限制，已將圖片檔案儲存至雲端，本地僅保留訂單基本資訊。');
+          return true;
+        } catch (err) {
+          console.error('❌ LocalStorage 清理失敗:', err);
+          // 最後手段：完全清空重新開始
+          localStorage.removeItem('dco_orders');
+          alert('儲存空間已滿，已清理本地快取。資料已安全儲存至雲端。');
+          return false;
+        }
+      }
+      console.error('LocalStorage 儲存錯誤:', e);
+      return false;
+    }
+  };
+
   const handleCreateOrder = async (e) => {
     e.preventDefault();
     
@@ -25537,25 +25676,32 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         try {
           // 儲存精簡版歷史記錄（不含圖片檔案）
           const historyEntry = {
+            id: `${editingOrderId}_v${currentOrder.version || 1}_${Date.now()}`,  // 添加唯一 ID
+            orderId: editingOrderId,
             version: currentOrder.version || 1,
             orderNumber: currentOrder.orderNumber,
             title: currentOrder.title,
             status: currentOrder.status,
             modifiedBy: user?.displayName || '管理員 A001',
             modifiedAt: getCurrentTimestamp(),
+            timestamp: Date.now(),  // 添加時間戳
             changes: {
               from: currentOrder.status,
               to: updatedOrder.status
             }
           };
           
-          // 儲存到 Firebase 的歷史集合
-          await db.addDoc('dco_history', {
-            orderId: editingOrderId,
-            ...historyEntry
-          });
+          // 儲存到 Firebase 的歷史集合（使用 setDoc 而非 addDoc 避免 ID 問題）
+          const currentMode = db.getCurrentMode();
+          if (currentMode === 'firebase') {
+            await db.setDoc('dco_history', historyEntry.id, historyEntry);
+          } else {
+            // 本地模式使用 addDoc
+            await db.addDoc('dco_history', historyEntry);
+          }
+          console.log('✅ 歷史記錄已儲存');
         } catch (err) {
-          console.warn('歷史記錄儲存失敗（不影響主要功能）:', err);
+          console.warn('⚠️ 歷史記錄儲存失敗（不影響主要功能）:', err);
         }
       }
       
@@ -25572,7 +25718,8 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
         console.log('💾 準備儲存，updatedOrder.orderNumber =', updatedOrder.orderNumber);
         console.log('💾 準備儲存，updatedOrder.id =', updatedOrder.id);
         
-        localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+        // 使用新的清理機制儲存
+        checkAndCleanStorage(updatedOrders);
         
         // 確保 Firebase 更新包含所有欄位
         const dataToUpdate = {
@@ -25627,8 +25774,11 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       
       // 儲存到 localStorage 和 Firebase
       try {
-        localStorage.setItem('dco_orders', JSON.stringify(updatedOrders));
+        // 先儲存到 Firebase（雲端優先）
         await db.addDoc('dco_orders', createdOrder);
+        
+        // 再儲存到 localStorage（使用清理機制）
+        checkAndCleanStorage(updatedOrders);
       } catch (err) {
         console.error('儲存 DCO 資料失敗:', err);
         alert('儲存失敗，請稍後再試');
@@ -25735,14 +25885,14 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       };
       
       if (isImage) {
-        // 圖片壓縮並產生預覽
+        // 圖片壓縮並產生預覽（優化版：限制大小為 300KB）
         const reader = new FileReader();
         reader.onload = (event) => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const maxWidth = 1200;
-            const maxHeight = 1200;
+            const maxWidth = 800;  // 降低解析度
+            const maxHeight = 800;
             let width = img.width;
             let height = img.height;
             
@@ -25759,8 +25909,25 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             
-            fileData.preview = canvas.toDataURL('image/jpeg', 0.8);
+            // 自動調整品質直到檔案小於 300KB
+            let quality = 0.7;  // 降低初始品質
+            let base64 = canvas.toDataURL('image/jpeg', quality);
+            const maxSize = 300 * 1024;  // 300KB 限制
+            
+            while (base64.length > maxSize && quality > 0.1) {
+              quality -= 0.1;
+              base64 = canvas.toDataURL('image/jpeg', quality);
+            }
+            
+            if (base64.length > maxSize) {
+              alert(`圖片 ${file.name} 壓縮後仍超過 300KB，請選擇較小的圖片`);
+              return;
+            }
+            
+            fileData.preview = base64;
             fileData.compressed = true;
+            fileData.originalSize = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+            fileData.compressedSize = (base64.length / 1024).toFixed(2) + ' KB';
             setNewOrder(prev => ({ ...prev, images: [...prev.images, fileData] }));
           };
           img.src = event.target.result;
@@ -25959,8 +26126,62 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
   };
   
   const handleBatchExport = () => {
-    const selectedData = orders.filter(o => selectedOrders.includes(o.id));
+    let selectedData = orders.filter(o => selectedOrders.includes(o.id));
+    
+    // 如果有設定日期範圍，進行過濾
+    if (exportStartDate || exportEndDate) {
+      selectedData = selectedData.filter(order => {
+        const dateField = dateFilterType === 'completed' ? order.completedTime : order.createdTime;
+        if (!dateField && dateFilterType === 'completed') return false; // 完成日期模式下排除未完成的
+        
+        const orderDate = new Date(dateField);
+        const startDate = exportStartDate ? new Date(exportStartDate) : null;
+        const endDate = exportEndDate ? new Date(exportEndDate + 'T23:59:59') : null;
+        
+        if (startDate && orderDate < startDate) return false;
+        if (endDate && orderDate > endDate) return false;
+        return true;
+      });
+    }
+    
+    if (selectedData.length === 0) {
+      alert('所選日期範圍內沒有資料');
+      return;
+    }
+    
     exportToExcel(selectedData);
+    setShowDateRangePicker(false);
+  };
+  
+  const handleExportAll = () => {
+    // 根據當前 tab 選擇要匯出的資料
+    let dataToExport = activeTab === 'archive' ? completedOrders : activeOrders;
+    
+    // 如果有設定日期範圍，進行過濾
+    if (exportStartDate || exportEndDate) {
+      dataToExport = dataToExport.filter(order => {
+        const dateField = dateFilterType === 'completed' ? order.completedTime : order.createdTime;
+        if (!dateField && dateFilterType === 'completed') return false;
+        
+        const orderDate = new Date(dateField);
+        const startDate = exportStartDate ? new Date(exportStartDate) : null;
+        const endDate = exportEndDate ? new Date(exportEndDate + 'T23:59:59') : null;
+        
+        if (startDate && orderDate < startDate) return false;
+        if (endDate && orderDate > endDate) return false;
+        return true;
+      });
+    }
+    
+    if (dataToExport.length === 0) {
+      alert('所選日期範圍內沒有資料');
+      return;
+    }
+    
+    exportToExcel(dataToExport);
+    setShowDateRangePicker(false);
+    setExportStartDate('');
+    setExportEndDate('');
   };
   
   const handleBatchDelete = async () => {
@@ -26021,31 +26242,259 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
     });
   };
   
-  // Excel 匯出功能
-  const exportToExcel = (data) => {
-    const headers = ['單號', '變更主題', '料號', '品名', '機種', '申請人', '需求日', '分類', '優先級', '狀態', '建立時間'];
-    const csvContent = [
-      headers.join(','),
-      ...data.map(order => [
-        order.orderNumber,
-        `"${order.title}"`,
-        order.partNumber || '',
-        order.productName || '',
-        order.machineModel || '',
-        order.requester,
-        order.requireDate || '',
-        order.category,
-        order.priority,
-        order.status,
-        order.createdTime
-      ].join(','))
-    ].join('\\n');
+  // Excel 匯出功能（優化版 - 使用 XLSX 庫）
+  const exportToExcel = async (data) => {
+    // 確保 XLSX 庫已載入
+    if (!window.XLSX) {
+      alert('正在載入 Excel 匯出功能，請稍後再試...');
+      const script = document.createElement('script');
+      script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+      script.onload = () => exportToExcel(data);
+      document.head.appendChild(script);
+      return;
+    }
+
+    const XLSX = window.XLSX;
+
+    // ==================== 工作表 1：詳細資料 ====================
+    const excelData = data.map(order => ({
+      '單號': order.orderNumber || '',
+      '變更主題': order.title || '',
+      '料號': order.partNumber || '',
+      '品名': order.productName || '',
+      '機種': order.machineModel || '',
+      '申請人': order.requester || '',
+      '需求日': order.requireDate || '',
+      '分類': order.category || '',
+      '優先級': order.priority || '',
+      '狀態': order.status || '',
+      '建立時間': order.createdTime || '',
+      '完成時間': order.completedTime || '',
+      '設變原因': order.changeReason || '',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(excelData);
+
+    // 設定列寬
+    ws1['!cols'] = [
+      { wch: 18 },  // 單號
+      { wch: 40 },  // 變更主題
+      { wch: 18 },  // 料號
+      { wch: 25 },  // 品名
+      { wch: 18 },  // 機種
+      { wch: 12 },  // 申請人
+      { wch: 12 },  // 需求日
+      { wch: 15 },  // 分類
+      { wch: 10 },  // 優先級
+      { wch: 15 },  // 狀態
+      { wch: 20 },  // 建立時間
+      { wch: 20 },  // 完成時間
+      { wch: 40 },  // 設變原因
+    ];
+
+    const range1 = XLSX.utils.decode_range(ws1['!ref']);
+
+    // 表頭樣式
+    for (let C = range1.s.c; C <= range1.e.c; ++C) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!ws1[cellAddress]) continue;
+      ws1[cellAddress].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+        fill: { fgColor: { rgb: "4F46E5" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin" }, bottom: { style: "thin" },
+          left: { style: "thin" }, right: { style: "thin" }
+        }
+      };
+    }
+
+    // 數據行樣式
+    for (let R = range1.s.r + 1; R <= range1.e.r; ++R) {
+      for (let C = range1.s.c; C <= range1.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws1[cellAddress]) continue;
+
+        ws1[cellAddress].s = {
+          alignment: { horizontal: "left", vertical: "center", wrapText: true },
+          border: {
+            top: { style: "thin", color: { rgb: "E0E0E0" } },
+            bottom: { style: "thin", color: { rgb: "E0E0E0" } },
+            left: { style: "thin", color: { rgb: "E0E0E0" } },
+            right: { style: "thin", color: { rgb: "E0E0E0" } }
+          }
+        };
+
+        // 狀態列顏色標記（第 10 列，索引 9）
+        if (C === 9) {
+          const status = ws1[cellAddress].v;
+          let fillColor = "FFFFFF";
+          
+          if (status?.includes('已結案') || status?.includes('已完成') || status?.includes('已核准')) {
+            fillColor = "D4EDDA"; // 綠色
+          } else if (status?.includes('執行中')) {
+            fillColor = "FFF3CD"; // 黃色
+          } else if (status?.includes('待核准')) {
+            fillColor = "D1ECF1"; // 藍色
+          } else if (status?.includes('駁回') || status?.includes('退回')) {
+            fillColor = "F8D7DA"; // 紅色
+          }
+          
+          ws1[cellAddress].s.fill = { fgColor: { rgb: fillColor } };
+          ws1[cellAddress].s.alignment = { horizontal: "center", vertical: "center" };
+        }
+
+        // 優先級居中
+        if (C === 8) {
+          ws1[cellAddress].s.alignment = { horizontal: "center", vertical: "center" };
+        }
+      }
+    }
+
+    // 凍結首行和自動篩選
+    ws1['!freeze'] = { xSplit: 0, ySplit: 1 };
+    ws1['!autofilter'] = { ref: XLSX.utils.encode_range(range1) };
+
+    XLSX.utils.book_append_sheet(wb, ws1, "詳細資料");
+
+    // ==================== 工作表 2：統計報表 ====================
     
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `DCO設變單_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+    // 計算統計數據
+    const stats = {
+      總單數: data.length,
+      已結案: data.filter(o => o.status?.includes('已結案') || o.status?.includes('已完成') || o.status?.includes('已核准')).length,
+      執行中: data.filter(o => o.status?.includes('執行中')).length,
+      待核准: data.filter(o => o.status?.includes('待核准')).length,
+      駁回: data.filter(o => o.status?.includes('駁回') || o.status?.includes('退回')).length,
+    };
+
+    // 按分類統計
+    const categoryStats = {};
+    data.forEach(o => {
+      const cat = o.category || '未分類';
+      categoryStats[cat] = (categoryStats[cat] || 0) + 1;
+    });
+
+    // 按優先級統計
+    const priorityStats = {};
+    data.forEach(o => {
+      const pri = o.priority || '未設定';
+      priorityStats[pri] = (priorityStats[pri] || 0) + 1;
+    });
+
+    // 按申請人統計
+    const requesterStats = {};
+    data.forEach(o => {
+      const req = o.requester || '未知';
+      requesterStats[req] = (requesterStats[req] || 0) + 1;
+    });
+
+    // 建立統計工作表
+    const statsData = [
+      ['DCO 設變單統計報表'],
+      [''],
+      ['匯出日期', new Date().toLocaleString('zh-TW')],
+      ['資料範圍', `${data.length} 筆設變單`],
+      [''],
+      ['📊 狀態統計', '數量', '佔比'],
+      ['總單數', stats.總單數, '100%'],
+      ['已結案', stats.已結案, `${(stats.已結案/stats.總單數*100).toFixed(1)}%`],
+      ['執行中', stats.執行中, `${(stats.執行中/stats.總單數*100).toFixed(1)}%`],
+      ['待核准', stats.待核准, `${(stats.待核准/stats.總單數*100).toFixed(1)}%`],
+      ['駁回', stats.駁回, `${(stats.駁回/stats.總單數*100).toFixed(1)}%`],
+      [''],
+      ['📁 分類統計', '數量', '佔比'],
+      ...Object.entries(categoryStats).map(([cat, count]) => 
+        [cat, count, `${(count/stats.總單數*100).toFixed(1)}%`]
+      ),
+      [''],
+      ['⚡ 優先級統計', '數量', '佔比'],
+      ...Object.entries(priorityStats).map(([pri, count]) => 
+        [pri, count, `${(count/stats.總單數*100).toFixed(1)}%`]
+      ),
+      [''],
+      ['👤 申請人統計（Top 10）', '數量', '佔比'],
+      ...Object.entries(requesterStats)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([req, count]) => 
+          [req, count, `${(count/stats.總單數*100).toFixed(1)}%`]
+        ),
+    ];
+
+    const ws2 = XLSX.utils.aoa_to_sheet(statsData);
+
+    // 設定列寬
+    ws2['!cols'] = [{ wch: 30 }, { wch: 15 }, { wch: 15 }];
+
+    // 標題樣式（第一行）
+    ws2['A1'].s = {
+      font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "1E40AF" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+    ws2['!rows'] = [{ hpt: 30 }];
+
+    // 合併標題（A1:C1）
+    ws2['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }
+    ];
+
+    // 區塊標題樣式
+    statsData.forEach((row, idx) => {
+      if (row[0]?.includes('📊') || row[0]?.includes('📁') || row[0]?.includes('⚡') || row[0]?.includes('👤')) {
+        const cellAddr = XLSX.utils.encode_cell({ r: idx, c: 0 });
+        if (ws2[cellAddr]) {
+          ws2[cellAddr].s = {
+            font: { bold: true, sz: 12, color: { rgb: "1F2937" } },
+            fill: { fgColor: { rgb: "E5E7EB" } },
+            alignment: { horizontal: "left", vertical: "center" }
+          };
+        }
+        
+        // 標題行合併
+        if (!ws2['!merges']) ws2['!merges'] = [];
+        ws2['!merges'].push({ s: { r: idx, c: 0 }, e: { r: idx, c: 2 } });
+      }
+    });
+
+    // 數據行樣式
+    for (let R = 2; R < statsData.length; R++) {
+      for (let C = 0; C < 3; C++) {
+        const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws2[cellAddr]) continue;
+
+        if (!ws2[cellAddr].s) {
+          ws2[cellAddr].s = {
+            alignment: { horizontal: C === 0 ? "left" : "center", vertical: "center" },
+            border: {
+              top: { style: "thin", color: { rgb: "E5E7EB" } },
+              bottom: { style: "thin", color: { rgb: "E5E7EB" } }
+            }
+          };
+        }
+
+        // 狀態顏色標記
+        if (statsData[R][0] === '已結案') {
+          ws2[cellAddr].s.fill = { fgColor: { rgb: "D4EDDA" } };
+        } else if (statsData[R][0] === '執行中') {
+          ws2[cellAddr].s.fill = { fgColor: { rgb: "FFF3CD" } };
+        } else if (statsData[R][0] === '待核准') {
+          ws2[cellAddr].s.fill = { fgColor: { rgb: "D1ECF1" } };
+        } else if (statsData[R][0] === '駁回') {
+          ws2[cellAddr].s.fill = { fgColor: { rgb: "F8D7DA" } };
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws2, "統計報表");
+
+    // ==================== 匯出檔案 ====================
+    const fileName = `DCO設變單報表_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    console.log('✅ Excel 匯出成功:', fileName);
   };
   
   // PDF 匯出功能（簡化版）
@@ -26134,21 +26583,126 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-in fade-in duration-500">
         {/* 批次操作工具列 */}
         {selectedOrders.length > 0 && (
-          <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-3 flex items-center justify-between">
-            <span className="text-sm text-indigo-700 font-medium">已選擇 {selectedOrders.length} 筆</span>
-            <div className="flex gap-2">
-              <button onClick={handleBatchExport} className="px-3 py-1.5 text-xs bg-white hover:bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1">
-                <Download className="w-3.5 h-3.5" /> 匯出
-              </button>
-              {hasPermission('delete') && (
-                <button onClick={handleBatchDelete} className="px-3 py-1.5 text-xs bg-white hover:bg-rose-50 text-rose-600 rounded-lg border border-rose-200 transition-colors flex items-center gap-1">
-                  <Trash2 className="w-3.5 h-3.5" /> 刪除
+          <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-indigo-700 font-medium">已選擇 {selectedOrders.length} 筆</span>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowDateRangePicker(!showDateRangePicker)} 
+                  className="px-3 py-1.5 text-xs bg-white hover:bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1"
+                >
+                  <Calendar className="w-3.5 h-3.5" /> {showDateRangePicker ? '隱藏日期' : '日期範圍'}
                 </button>
-              )}
-              <button onClick={() => setSelectedOrders([])} className="px-3 py-1.5 text-xs bg-white hover:bg-slate-50 text-slate-600 rounded-lg border border-slate-200 transition-colors">
-                取消選擇
-              </button>
+                <button 
+                  onClick={handleBatchExport} 
+                  className="px-3 py-1.5 text-xs bg-white hover:bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1"
+                >
+                  <Download className="w-3.5 h-3.5" /> 匯出選擇
+                </button>
+                {hasPermission('delete') && (
+                  <button 
+                    onClick={handleBatchDelete} 
+                    className="px-3 py-1.5 text-xs bg-white hover:bg-rose-50 text-rose-600 rounded-lg border border-rose-200 transition-colors flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> 刪除
+                  </button>
+                )}
+                <button 
+                  onClick={() => setSelectedOrders([])} 
+                  className="px-3 py-1.5 text-xs bg-white hover:bg-slate-50 text-slate-600 rounded-lg border border-slate-200 transition-colors"
+                >
+                  取消選擇
+                </button>
+              </div>
             </div>
+            
+            {/* 日期範圍選擇器 */}
+            {showDateRangePicker && (
+              <div className="mt-3 pt-3 border-t border-indigo-200 space-y-3">
+                {/* 日期類型選擇 */}
+                <div className="flex items-center gap-4">
+                  <label className="text-xs font-medium text-slate-700">篩選依據：</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDateFilterType('created')}
+                      className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                        dateFilterType === 'created' 
+                          ? 'bg-indigo-500 text-white' 
+                          : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      建立日期
+                    </button>
+                    <button
+                      onClick={() => setDateFilterType('completed')}
+                      className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                        dateFilterType === 'completed' 
+                          ? 'bg-indigo-500 text-white' 
+                          : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      完成日期
+                    </button>
+                  </div>
+                </div>
+                
+                {/* 快速日期選項 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="text-xs font-medium text-slate-700">快速選擇：</label>
+                  <button onClick={() => setQuickDateRange('today')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">今天</button>
+                  <button onClick={() => setQuickDateRange('yesterday')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">昨天</button>
+                  <button onClick={() => setQuickDateRange('thisWeek')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">本週</button>
+                  <button onClick={() => setQuickDateRange('lastWeek')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">上週</button>
+                  <button onClick={() => setQuickDateRange('thisMonth')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">本月</button>
+                  <button onClick={() => setQuickDateRange('lastMonth')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">上月</button>
+                  <button onClick={() => setQuickDateRange('thisQuarter')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">本季</button>
+                  <button onClick={() => setQuickDateRange('lastQuarter')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">上季</button>
+                  <button onClick={() => setQuickDateRange('thisYear')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">今年</button>
+                  <button onClick={() => setQuickDateRange('lastYear')} className="px-2 py-1 text-xs bg-white hover:bg-indigo-50 text-slate-600 rounded border border-slate-200">去年</button>
+                </div>
+                
+                {/* 自訂日期範圍 */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-slate-700">起始日期：</label>
+                    <input 
+                      type="date" 
+                      value={exportStartDate}
+                      onChange={(e) => setExportStartDate(e.target.value)}
+                      className="px-2 py-1 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-slate-700">結束日期：</label>
+                    <input 
+                      type="date" 
+                      value={exportEndDate}
+                      onChange={(e) => setExportEndDate(e.target.value)}
+                      className="px-2 py-1 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setExportStartDate('');
+                      setExportEndDate('');
+                    }}
+                    className="px-3 py-1 text-xs text-slate-500 hover:text-slate-700 underline"
+                  >
+                    清除日期
+                  </button>
+                  {(exportStartDate || exportEndDate) && (
+                    <span className="text-xs text-indigo-600 font-medium ml-auto">
+                      {exportStartDate && exportEndDate 
+                        ? `${exportStartDate} ~ ${exportEndDate}`
+                        : exportStartDate 
+                          ? `${exportStartDate} 起`
+                          : `~ ${exportEndDate}`
+                      }
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
         
@@ -26417,6 +26971,28 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
             )}
           </h2>
           <div className="flex items-center gap-3">
+            {/* 匯出全部按鈕（僅在列表和完成區顯示） */}
+            {(activeTab === 'list' || activeTab === 'archive') && (
+              <>
+                <button
+                  onClick={() => setShowDateRangePicker(!showDateRangePicker)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                    showDateRangePicker ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Calendar size={16} />
+                  {showDateRangePicker ? '隱藏日期' : '日期範圍'}
+                </button>
+                <button
+                  onClick={handleExportAll}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all text-sm font-medium shadow-lg shadow-emerald-500/25 flex items-center gap-2"
+                >
+                  <Download size={16} />
+                  匯出全部
+                </button>
+              </>
+            )}
+            
             {/* 篩選按鈕 */}
             {(activeTab === 'list' || activeTab === 'archive') && (
               <button 
@@ -26494,6 +27070,111 @@ const DCOManagerApp = ({ onBackToMenu, user }) => {
             </button>
           </div>
         </header>
+        
+        {/* 全局日期範圍選擇器（用於匯出全部） */}
+        {showDateRangePicker && (activeTab === 'list' || activeTab === 'archive') && (
+          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-200 px-8 py-4">
+            <div className="space-y-3">
+              {/* 日期類型選擇 */}
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-bold text-slate-700">📅 匯出日期設定</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setDateFilterType('created')}
+                    className={`px-4 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                      dateFilterType === 'created' 
+                        ? 'bg-indigo-500 text-white shadow-md' 
+                        : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    🔧 建立日期
+                  </button>
+                  <button
+                    onClick={() => setDateFilterType('completed')}
+                    className={`px-4 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                      dateFilterType === 'completed' 
+                        ? 'bg-indigo-500 text-white shadow-md' 
+                        : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    ✅ 完成日期
+                  </button>
+                </div>
+              </div>
+              
+              {/* 快速日期選項 */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-sm font-medium text-slate-700">⚡ 快速選擇：</label>
+                <button onClick={() => setQuickDateRange('today')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all">今天</button>
+                <button onClick={() => setQuickDateRange('yesterday')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all">昨天</button>
+                <button onClick={() => setQuickDateRange('thisWeek')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all">本週</button>
+                <button onClick={() => setQuickDateRange('lastWeek')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all">上週</button>
+                <button onClick={() => setQuickDateRange('thisMonth')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all font-medium">本月</button>
+                <button onClick={() => setQuickDateRange('lastMonth')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all font-medium">上月</button>
+                <button onClick={() => setQuickDateRange('thisQuarter')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all font-medium">本季</button>
+                <button onClick={() => setQuickDateRange('lastQuarter')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all font-medium">上季</button>
+                <button onClick={() => setQuickDateRange('thisYear')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all font-bold">今年</button>
+                <button onClick={() => setQuickDateRange('lastYear')} className="px-3 py-1.5 text-sm bg-white hover:bg-indigo-50 text-slate-700 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all font-bold">去年</button>
+              </div>
+              
+              {/* 自訂日期範圍 */}
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-slate-700">📆 自訂範圍：</label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="date" 
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                    placeholder="起始日期"
+                  />
+                  <span className="text-slate-400 font-bold">~</span>
+                  <input 
+                    type="date" 
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                    placeholder="結束日期"
+                  />
+                </div>
+                <button 
+                  onClick={() => {
+                    setExportStartDate('');
+                    setExportEndDate('');
+                  }}
+                  className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-white rounded-lg transition-all flex items-center gap-1"
+                >
+                  <X size={14} />
+                  清除
+                </button>
+                {(exportStartDate || exportEndDate) && (
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-sm text-indigo-700 font-bold bg-white px-4 py-2 rounded-lg border-2 border-indigo-200 shadow-sm">
+                      {exportStartDate && exportEndDate 
+                        ? `📅 ${exportStartDate} ~ ${exportEndDate}`
+                        : exportStartDate 
+                          ? `📅 ${exportStartDate} 起`
+                          : `📅 ~ ${exportEndDate}`
+                      }
+                    </span>
+                    <span className="text-sm text-emerald-700 font-bold bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200">
+                      {(activeTab === 'archive' ? completedOrders : activeOrders).filter(order => {
+                        const dateField = dateFilterType === 'completed' ? order.completedTime : order.createdTime;
+                        if (!dateField && dateFilterType === 'completed') return false;
+                        const orderDate = new Date(dateField);
+                        const startDate = exportStartDate ? new Date(exportStartDate) : null;
+                        const endDate = exportEndDate ? new Date(exportEndDate + 'T23:59:59') : null;
+                        if (startDate && orderDate < startDate) return false;
+                        if (endDate && orderDate > endDate) return false;
+                        return true;
+                      }).length} 筆符合
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* 篩選面板 */}
         {showFilters && (activeTab === 'list' || activeTab === 'archive') && (
