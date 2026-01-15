@@ -13729,6 +13729,388 @@ const SpecDiscussionView = ({ machine }) => {
   );
 };
 
+// === 專案進度管制表 - 甘特圖視圖 ===
+const GanttChartView = ({ projects, tasks, machine }) => {
+  const [viewMode, setViewMode] = React.useState('month'); // 'week', 'month', 'quarter'
+  const [selectedProject, setSelectedProject] = React.useState(null);
+  const [showLegend, setShowLegend] = React.useState(true);
+  const [currentDate, setCurrentDate] = React.useState(new Date());
+
+  // 計算日期範圍
+  const getDateRange = () => {
+    const now = currentDate;
+    let start, end, days;
+    
+    switch (viewMode) {
+      case 'week':
+        start = new Date(now);
+        start.setDate(now.getDate() - now.getDay()); // 週日
+        end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        days = 7;
+        break;
+      case 'quarter':
+        start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        end = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0);
+        days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        break;
+      default: // month
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        days = end.getDate();
+    }
+    
+    return { start, end, days };
+  };
+
+  const { start: rangeStart, end: rangeEnd, days: totalDays } = getDateRange();
+
+  // 獲取專案時間線
+  const getProjectTimeline = (project) => {
+    const projectTasks = tasks.filter(t => t.projectId === project.id);
+    if (projectTasks.length === 0) return null;
+
+    const dates = projectTasks.map(t => ({
+      start: t.startDate ? new Date(t.startDate) : null,
+      end: t.endDate ? new Date(t.endDate) : null
+    })).filter(d => d.start && d.end);
+
+    if (dates.length === 0) return null;
+
+    const projectStart = new Date(Math.min(...dates.map(d => d.start)));
+    const projectEnd = new Date(Math.max(...dates.map(d => d.end)));
+
+    return { start: projectStart, end: projectEnd, tasks: projectTasks };
+  };
+
+  // 計算任務在時間軸上的位置和寬度
+  const calculatePosition = (startDate, endDate) => {
+    if (!startDate || !endDate) return { left: 0, width: 0, isVisible: false };
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // 計算相對於時間範圍的位置（百分比）
+    const totalMs = rangeEnd - rangeStart;
+    const startMs = start - rangeStart;
+    const durationMs = end - start;
+    
+    const left = Math.max(0, (startMs / totalMs) * 100);
+    const width = Math.min(100 - left, (durationMs / totalMs) * 100);
+    
+    // 檢查是否在可見範圍內
+    const isVisible = start <= rangeEnd && end >= rangeStart;
+    
+    return { left: `${left}%`, width: `${width}%`, isVisible };
+  };
+
+  // 獲取狀態顏色
+  const getStatusColor = (status) => {
+    const colors = {
+      'To Do': 'bg-slate-500',
+      'In Progress': 'bg-blue-500',
+      'Testing': 'bg-purple-500',
+      'Done': 'bg-emerald-500',
+      'Blocked': 'bg-rose-500'
+    };
+    return colors[status] || 'bg-gray-500';
+  };
+
+  // 格式化日期標題
+  const formatDateHeader = () => {
+    const headers = [];
+    const current = new Date(rangeStart);
+    
+    for (let i = 0; i < totalDays; i++) {
+      if (viewMode === 'week') {
+        headers.push(current.toLocaleDateString('zh-TW', { weekday: 'short', day: 'numeric' }));
+      } else if (viewMode === 'month') {
+        headers.push(current.getDate());
+      } else {
+        if (current.getDate() === 1 || i === 0) {
+          headers.push(current.toLocaleDateString('zh-TW', { month: 'short' }));
+        } else {
+          headers.push('');
+        }
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return headers;
+  };
+
+  const dateHeaders = formatDateHeader();
+  
+  // 過濾有時間線的專案
+  const projectsWithTimeline = projects
+    .map(p => ({ ...p, timeline: getProjectTimeline(p) }))
+    .filter(p => p.timeline);
+
+  return (
+    <div className="space-y-6">
+      {/* 標題與控制列 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+            <GanttChartIcon className="text-cyan-400" size={32} />
+            專案進度管制表
+          </h2>
+          <p className="text-slate-400 mt-2">機台: {machine.name} • 甘特圖視覺化管理</p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {/* 視圖切換 */}
+          <div className="flex gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
+            {[
+              { id: 'week', label: '週' },
+              { id: 'month', label: '月' },
+              { id: 'quarter', label: '季' }
+            ].map(mode => (
+              <button
+                key={mode.id}
+                onClick={() => setViewMode(mode.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  viewMode === mode.id
+                    ? 'bg-cyan-500 text-white shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 時間導航 */}
+          <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/10">
+            <button
+              onClick={() => {
+                const newDate = new Date(currentDate);
+                viewMode === 'week' ? newDate.setDate(newDate.getDate() - 7) :
+                viewMode === 'month' ? newDate.setMonth(newDate.getMonth() - 1) :
+                newDate.setMonth(newDate.getMonth() - 3);
+                setCurrentDate(newDate);
+              }}
+              className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <ChevronLeft size={20} className="text-slate-400 hover:text-white" />
+            </button>
+            
+            <span className="text-sm font-medium text-white px-3">
+              {viewMode === 'week' && rangeStart.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' }) + ' - ' + rangeEnd.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' })}
+              {viewMode === 'month' && rangeStart.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' })}
+              {viewMode === 'quarter' && `${rangeStart.getFullYear()} Q${Math.floor(rangeStart.getMonth() / 3) + 1}`}
+            </span>
+            
+            <button
+              onClick={() => {
+                const newDate = new Date(currentDate);
+                viewMode === 'week' ? newDate.setDate(newDate.getDate() + 7) :
+                viewMode === 'month' ? newDate.setMonth(newDate.getMonth() + 1) :
+                newDate.setMonth(newDate.getMonth() + 3);
+                setCurrentDate(newDate);
+              }}
+              className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <ChevronRight size={20} className="text-slate-400 hover:text-white" />
+            </button>
+            
+            <button
+              onClick={() => setCurrentDate(new Date())}
+              className="ml-2 px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium text-white transition-colors"
+            >
+              今天
+            </button>
+          </div>
+
+          {/* 圖例開關 */}
+          <button
+            onClick={() => setShowLegend(!showLegend)}
+            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-colors flex items-center gap-2"
+          >
+            <Info size={16} />
+            {showLegend ? '隱藏' : '顯示'}圖例
+          </button>
+        </div>
+      </div>
+
+      {/* 圖例 */}
+      {showLegend && (
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+          <div className="flex items-center gap-6">
+            <span className="text-sm font-medium text-slate-400">狀態標示：</span>
+            <div className="flex items-center gap-4">
+              {[
+                { label: '待處理', color: 'bg-slate-500', status: 'To Do' },
+                { label: '進行中', color: 'bg-blue-500', status: 'In Progress' },
+                { label: '測試中', color: 'bg-purple-500', status: 'Testing' },
+                { label: '已完成', color: 'bg-emerald-500', status: 'Done' },
+                { label: '受阻', color: 'bg-rose-500', status: 'Blocked' }
+              ].map(item => (
+                <div key={item.status} className="flex items-center gap-2">
+                  <div className={`w-4 h-4 ${item.color} rounded`}></div>
+                  <span className="text-xs text-slate-300">{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 甘特圖主體 */}
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <div className="min-w-[1200px]">
+            {/* 表頭 - 日期刻度 */}
+            <div className="flex border-b border-white/10">
+              <div className="w-64 flex-shrink-0 bg-slate-800/50 p-4 border-r border-white/10">
+                <span className="text-sm font-bold text-white">專案 / 任務</span>
+              </div>
+              <div className="flex-1 flex">
+                {dateHeaders.map((date, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex-1 p-2 text-center text-xs font-medium border-r border-white/5 ${
+                      idx === 0 || idx === dateHeaders.length - 1 ? 'text-cyan-400' : 'text-slate-400'
+                    }`}
+                  >
+                    {date}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 專案列表與時間軸 */}
+            <div className="divide-y divide-white/5">
+              {projectsWithTimeline.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Calendar size={48} className="mx-auto text-slate-600 mb-4" />
+                  <p className="text-slate-400">尚無專案時間線資料</p>
+                  <p className="text-xs text-slate-500 mt-2">請為專案添加任務並設定開始與結束日期</p>
+                </div>
+              ) : (
+                projectsWithTimeline.map((project) => {
+                  const timeline = project.timeline;
+                  const projectPos = calculatePosition(timeline.start, timeline.end);
+
+                  return (
+                    <div key={project.id} className="hover:bg-white/5 transition-colors">
+                      {/* 專案行 */}
+                      <div className="flex items-center group">
+                        <div className="w-64 flex-shrink-0 p-4 border-r border-white/10">
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setSelectedProject(
+                                selectedProject === project.id ? null : project.id
+                              )}
+                              className="p-1 hover:bg-white/10 rounded transition-colors"
+                            >
+                              {selectedProject === project.id ? (
+                                <ChevronDown size={16} className="text-slate-400" />
+                              ) : (
+                                <ChevronRight size={16} className="text-slate-400" />
+                              )}
+                            </button>
+                            <div className="flex-1">
+                              <div className="font-medium text-white text-sm">{project.name}</div>
+                              <div className="text-xs text-slate-500 mt-0.5">
+                                {timeline.tasks.length} 個任務
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex-1 relative p-3">
+                          {projectPos.isVisible && (
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 h-8 bg-gradient-to-r from-cyan-500/30 to-blue-500/30 border border-cyan-500/50 rounded-lg group-hover:from-cyan-500/40 group-hover:to-blue-500/40 transition-all"
+                              style={{
+                                left: projectPos.left,
+                                width: projectPos.width
+                              }}
+                            >
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-xs font-medium text-white drop-shadow">
+                                  {timeline.start.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' })} - 
+                                  {timeline.end.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' })}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 任務列表（展開時） */}
+                      {selectedProject === project.id && timeline.tasks.map((task) => {
+                        const taskPos = calculatePosition(task.startDate, task.endDate);
+                        
+                        return (
+                          <div key={task.id} className="flex items-center bg-slate-900/30">
+                            <div className="w-64 flex-shrink-0 p-3 pl-12 border-r border-white/10">
+                              <div className="text-sm text-slate-300">{task.title}</div>
+                              <div className="text-xs text-slate-500 mt-1">{task.owner}</div>
+                            </div>
+                            
+                            <div className="flex-1 relative p-2">
+                              {taskPos.isVisible && (
+                                <div
+                                  className={`absolute top-1/2 -translate-y-1/2 h-6 ${getStatusColor(task.status)} rounded-md shadow-lg hover:shadow-xl transition-all cursor-pointer group`}
+                                  style={{
+                                    left: taskPos.left,
+                                    width: taskPos.width
+                                  }}
+                                  title={`${task.title}\n狀態: ${task.status}\n${task.startDate} ~ ${task.endDate}`}
+                                >
+                                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 px-2 py-1 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap text-xs text-white pointer-events-none z-10">
+                                    {task.status} • {task.priority}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 統計資訊 */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
+          <div className="text-xs text-slate-400 mb-1">專案總數</div>
+          <div className="text-2xl font-bold text-white">{projectsWithTimeline.length}</div>
+        </div>
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
+          <div className="text-xs text-slate-400 mb-1">任務總數</div>
+          <div className="text-2xl font-bold text-white">
+            {projectsWithTimeline.reduce((sum, p) => sum + p.timeline.tasks.length, 0)}
+          </div>
+        </div>
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
+          <div className="text-xs text-slate-400 mb-1">進行中</div>
+          <div className="text-2xl font-bold text-blue-400">
+            {projectsWithTimeline.reduce((sum, p) => 
+              sum + p.timeline.tasks.filter(t => t.status === 'In Progress').length, 0
+            )}
+          </div>
+        </div>
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
+          <div className="text-xs text-slate-400 mb-1">已完成</div>
+          <div className="text-2xl font-bold text-emerald-400">
+            {projectsWithTimeline.reduce((sum, p) => 
+              sum + p.timeline.tasks.filter(t => t.status === 'Done').length, 0
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App (ProjectApp) ---
 
 const ProjectApp = ({ machine, onBackToMachines, user }) => {
@@ -14259,6 +14641,8 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
             onDeleteProject={handleDeleteProject}
           />
         );
+      case 'gantt':
+        return <GanttChartView projects={projects} tasks={tasks} machine={machine} />;
       case 'detail':
         return (
           <ProjectDetailView 
@@ -14367,6 +14751,7 @@ const ProjectApp = ({ machine, onBackToMachines, user }) => {
             <p className="px-4 text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">管理中心</p>
             <NavItem id="dashboard" icon={LayoutDashboard} label="總覽儀表板" />
             <NavItem id="list" icon={ListTodo} label="專案列表" />
+            <NavItem id="gantt" icon={GanttChartIcon} label="專案進度管制表" />
             <NavItem id="analytics" icon={BarChart3} label="分析報告" />
             <NavItem id="spec-discussion" icon={ExternalLink} label="專案規格討論歷程" />
           </div>
